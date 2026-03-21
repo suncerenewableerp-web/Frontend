@@ -4,3 +4,4 @@ export default function LoginPage() {
   return <ErpApp initialAuthView="login" />;
 }
 
+
