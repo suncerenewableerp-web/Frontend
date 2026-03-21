@@ -1,0 +1,328 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  apiCreateTicket,
+  apiLogin,
+  apiRolesPublic,
+  apiSignup,
+  apiTicketsList,
+  apiUpdateTicketStatus,
+  apiUsersList,
+  clearAuthStorage,
+  getStoredAuth,
+  type TicketCreateInput,
+} from "./api";
+import type { Ticket, User, RoleDefinition } from "./types";
+import { canAccess } from "./utils";
+
+import AuthScreen from "./components/AuthScreen";
+import SignupScreen from "./components/SignupScreen";
+import Sidebar from "./components/Sidebar";
+import Dashboard from "./components/Dashboard";
+import TicketsList from "./components/TicketsList";
+import TicketDetail from "./components/TicketDetail";
+import JobCards from "./components/JobCards";
+import Logistics from "./components/Logistics";
+import SLAMonitor from "./components/SLAMonitor";
+import Reports from "./components/Reports";
+import UserManagement from "./components/UserManagement";
+import Settings from "./components/Settings";
+import NewTicketModal from "./components/NewTicketModal";
+import Notification from "./components/Notification";
+
+export default function ErpApp({
+  initialAuthView = "login",
+}: {
+  initialAuthView?: "login" | "signup";
+}) {
+  const router = useRouter();
+  const [authView, setAuthView] = useState<"login" | "signup">(initialAuthView);
+  const [user, setUser] = useState<User | null>(null);
+  const [page, setPage] = useState("dashboard");
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [roles, setRoles] = useState<RoleDefinition[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+  const [showNewTicket, setShowNewTicket] = useState(false);
+  const [notification, setNotification] = useState("");
+  const [bootError, setBootError] = useState("");
+  const [hydrated, setHydrated] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const notify = (msg: string) => setNotification(msg);
+
+  const loadTickets = async () => {
+    const list = await apiTicketsList();
+    setTickets(list);
+  };
+
+  const loadUsers = async () => {
+    const list = await apiUsersList();
+    setUsers(list);
+  };
+
+  useEffect(() => {
+    apiRolesPublic()
+      .then((r) => {
+        setRoles(r);
+        if (!r.length) setBootError("No roles found in database. Run backend seed.");
+      })
+      .catch((e) => {
+        setRoles([]);
+        setBootError(e instanceof Error ? e.message : "Failed to load roles");
+      });
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setHydrated(true);
+
+      const stored = getStoredAuth();
+      if (stored?.user) setUser(stored.user);
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated || !user) return;
+    const t = setTimeout(() => {
+      void loadTickets();
+      void loadUsers();
+    }, 0);
+    return () => clearTimeout(t);
+  }, [hydrated, user]);
+
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSidebarOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [sidebarOpen]);
+
+  const handleLogin = async (email: string, password: string) => {
+    const { user: u } = await apiLogin({ email, password });
+    setUser(u);
+    setPage("dashboard");
+    setSelectedTicket(null);
+    setSidebarOpen(false);
+    notify(`Welcome back, ${u.name.split(" ")[0]}!`);
+    await Promise.allSettled([loadTickets(), loadUsers()]);
+    router.push("/");
+  };
+
+  const handleLogout = () => {
+    clearAuthStorage();
+    setUser(null);
+    setPage("dashboard");
+    setSelectedTicket(null);
+    setAuthView("login");
+    setSidebarOpen(false);
+    router.push("/login");
+    setTickets([]);
+    setUsers([]);
+  };
+
+  const handleCreateAccount = async (input: {
+    name: string;
+    email: string;
+    password: string;
+    role: string;
+    phone?: string;
+    company?: string;
+  }) => {
+    const { user: created } = await apiSignup(input);
+    return created;
+  };
+
+  const handleFinishSignup = async (u: User) => {
+    setUser(u);
+    setPage("dashboard");
+    setSelectedTicket(null);
+    setAuthView("login");
+    notify(`Welcome to Sunce ERP, ${u.name.split(" ")[0]}! 🎉`);
+    await Promise.allSettled([loadTickets(), loadUsers()]);
+    router.push("/");
+  };
+
+  const handleNewTicket = async (input: TicketCreateInput) => {
+    const created = await apiCreateTicket(input);
+    setTickets((prev) => [created, ...prev]);
+    notify(`Ticket ${created.ticketId} created successfully!`);
+  };
+
+  const handleUpdateSelectedTicketStatus = async (status: Ticket["status"]) => {
+    if (!selectedTicket) return;
+    const updated = await apiUpdateTicketStatus(selectedTicket.id, status);
+    setTickets((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+    setSelectedTicket(updated);
+    notify(`Ticket ${updated.ticketId} updated to ${updated.status}`);
+  };
+
+  const getPageTitle = () => {
+    const titles: Record<string, string> = {
+      dashboard: "Dashboard",
+      tickets: "Service Tickets",
+      ticket_detail: selectedTicket?.ticketId || "",
+      jobcard: "Job Cards",
+      logistics: "Logistics",
+      sla: "SLA Monitor",
+      reports: "Reports",
+      users: "User Management",
+      settings: "Settings",
+    };
+    return titles[page] || page;
+  };
+
+  return (
+    <>
+      {!user ? (
+        authView === "signup" ? (
+          <SignupScreen
+            roles={roles}
+            onCreateAccount={handleCreateAccount}
+            onFinish={handleFinishSignup}
+            onGoLogin={() => {
+              setAuthView("login");
+              router.push("/login");
+            }}
+          />
+        ) : (
+          <AuthScreen
+            onLogin={handleLogin}
+            onGoSignup={() => {
+              setAuthView("signup");
+              router.push("/signup");
+            }}
+            roles={roles}
+          />
+        )
+      ) : (
+        <div className="erp-root">
+          <div
+            className={`sidebar-backdrop ${sidebarOpen ? "open" : ""}`}
+            onClick={() => setSidebarOpen(false)}
+          />
+          <Sidebar
+            user={user}
+            roles={roles}
+            active={page}
+            open={sidebarOpen}
+            onNav={(p) => {
+              setPage(p);
+              setSelectedTicket(null);
+            }}
+            onClose={() => setSidebarOpen(false)}
+            onLogout={handleLogout}
+          />
+          <div className="main">
+            <div className="topbar">
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <button
+                  className="sidebar-toggle"
+                  aria-controls="erp-sidebar"
+                  aria-expanded={sidebarOpen}
+                  aria-label={sidebarOpen ? "Close menu" : "Open menu"}
+                  onClick={() => setSidebarOpen((v) => !v)}
+                >
+                  ☰
+                </button>
+                <div className="topbar-title">{getPageTitle()}</div>
+              </div>
+              <div className="topbar-actions">
+                {canAccess(roles, user.role, "tickets", "create") &&
+                  page !== "ticket_detail" && (
+                    <button
+                      className="btn btn-accent btn-sm"
+                      onClick={() => setShowNewTicket(true)}
+                    >
+                      + New Ticket
+                    </button>
+                  )}
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    background: `linear-gradient(135deg, ${roles.find((r) => r.id === user.role)?.color || "#8B4513"}, ${(roles.find((r) => r.id === user.role)?.color || "#a0522d") + "bb"})`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: "white",
+                  }}
+                >
+                  {user.name[0]}
+                </div>
+              </div>
+            </div>
+
+            {page === "dashboard" && (
+              <Dashboard user={user} tickets={tickets} onNav={setPage} />
+            )}
+            {page === "tickets" && (
+              <TicketsList
+                user={user}
+                roles={roles}
+                tickets={tickets}
+                onView={(t) => {
+                  setSelectedTicket(t);
+                  setPage("ticket_detail");
+                }}
+                onNew={() => setShowNewTicket(true)}
+              />
+            )}
+            {page === "ticket_detail" && selectedTicket && (
+              <TicketDetail
+                ticket={selectedTicket}
+                user={user}
+                roles={roles}
+                onBack={() => setPage("tickets")}
+                onUpdateStatus={handleUpdateSelectedTicketStatus}
+              />
+            )}
+            {page === "jobcard" && <JobCards tickets={tickets} user={user} />}
+            {page === "logistics" && <Logistics tickets={tickets} />}
+            {page === "sla" && <SLAMonitor tickets={tickets} />}
+            {page === "reports" && <Reports tickets={tickets} />}
+            {page === "users" && (
+              <UserManagement
+                roles={roles}
+                users={users}
+                onRolesChange={(r) => {
+                  setRoles(r);
+                  notify("Role permissions updated!");
+                }}
+              />
+            )}
+            {page === "settings" && <Settings />}
+          </div>
+        </div>
+      )}
+
+      {showNewTicket && (
+        <NewTicketModal
+          onClose={() => setShowNewTicket(false)}
+          onSubmit={handleNewTicket}
+        />
+      )}
+      {notification && (
+        <Notification msg={notification} onDone={() => setNotification("")} />
+      )}
+      {bootError && !user && (
+        <div style={{ position: "fixed", left: 16, bottom: 16, fontSize: 12, color: "var(--text3)" }}>
+          Backend warning: {bootError}
+        </div>
+      )}
+    </>
+  );
+}

@@ -1,0 +1,204 @@
+"use client";
+
+import type { Ticket, User } from "../types";
+import { PriorityBadge, SlaBadge, StatusBadge } from "./Badges";
+import { STATUS_COLORS } from "../constants";
+
+export default function Dashboard({
+  user,
+  tickets,
+  onNav,
+}: {
+  user: User;
+  tickets: Ticket[];
+  onNav: (p: string) => void;
+}) {
+  const open = tickets.filter((t) => t.status !== "CLOSED").length;
+  const closed = tickets.filter((t) => t.status === "CLOSED").length;
+  const breached = tickets.filter((t) => t.slaStatus === "BREACHED").length;
+  const high = tickets.filter((t) => t.priority === "HIGH" && t.status !== "CLOSED").length;
+
+  const myTickets = tickets;
+
+  const statusCounts: Record<string, number> = {};
+  tickets.forEach((t) => {
+    statusCounts[t.status] = (statusCounts[t.status] || 0) + 1;
+  });
+  const maxCount = Math.max(...Object.values(statusCounts), 1);
+
+  return (
+    <div className="content">
+      <div className="page-header">
+        <div className="page-title">
+          Good morning, {user.name.split(" ")[0]} 👋
+        </div>
+        <div className="page-sub">
+          Here&apos;s what&apos;s happening with your service operations today
+        </div>
+      </div>
+      <div className="kpi-grid">
+        {[
+          {
+            label: "Open Tickets",
+            value: open,
+            sub: "Active service requests",
+            color: "#6b3a1f",
+            icon: "🎫",
+          },
+          {
+            label: "High Priority",
+            value: high,
+            sub: "Needs immediate attention",
+            color: "#d97706",
+            icon: "⚠️",
+          },
+          {
+            label: "SLA Breached",
+            value: breached,
+            sub: "Exceeding deadline",
+            color: "#c0392b",
+            icon: "🚨",
+          },
+          {
+            label: "Resolved",
+            value: closed,
+            sub: "Tickets closed this month",
+            color: "#16a34a",
+            icon: "✅",
+          },
+        ].map((k) => (
+          <div key={k.label} className="kpi-card">
+            <div className="kpi-accent-bar" style={{ background: k.color }} />
+            <div className="kpi-icon">{k.icon}</div>
+            <div className="kpi-label">{k.label}</div>
+            <div className="kpi-value" style={{ color: k.color }}>
+              {k.value}
+            </div>
+            <div className="kpi-sub">{k.sub}</div>
+          </div>
+        ))}
+      </div>
+      <div className="two-col">
+        <div className="table-card">
+          <div className="table-header">
+            <div className="table-title">Ticket Status Distribution</div>
+          </div>
+          <div style={{ padding: "20px" }}>
+            <div className="bar-chart">
+              {Object.entries(statusCounts).map(([status, count]) => (
+                <div key={status} className="bar-col">
+                  <div className="bar-val">{count}</div>
+                  <div
+                    className="bar"
+                    style={{
+                      height: `${(count / maxCount) * 80}px`,
+                      background: STATUS_COLORS[status as keyof typeof STATUS_COLORS],
+                    }}
+                  />
+                  <div className="bar-label">
+                    {status.replace("_", " ").substring(0, 7)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="table-card">
+          <div className="table-header">
+            <div className="table-title">Priority Breakdown</div>
+          </div>
+          <div style={{ padding: "20px" }}>
+            {(["HIGH", "MEDIUM", "LOW"] as const).map((p) => {
+              const count = tickets.filter((t) => t.priority === p).length;
+              return (
+                <div key={p} style={{ marginBottom: 14 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginBottom: 4,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: "var(--text2)",
+                        fontWeight: 500,
+                      }}
+                    >
+                      {p}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontFamily: "var(--mono)",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {count}
+                    </span>
+                  </div>
+                  <div className="sla-bar">
+                    <div
+                      className="sla-fill"
+                      style={{
+                        width: `${(count / tickets.length) * 100}%`,
+                        background: p === "LOW" ? "#16a34a" : p === "MEDIUM" ? "#d97706" : "#dc2626",
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+      <div className="table-card">
+        <div className="table-header">
+          <div className="table-title">Recent Tickets</div>
+          <button className="btn btn-ghost btn-sm" onClick={() => onNav("tickets")}>
+            View All →
+          </button>
+        </div>
+        <div className="scroll-x">
+          <table>
+            <thead>
+              <tr>
+                <th>Ticket ID</th>
+                <th>Customer</th>
+                <th>Inverter</th>
+                <th>Priority</th>
+                <th>Status</th>
+                <th>SLA</th>
+              </tr>
+            </thead>
+            <tbody>
+              {myTickets.slice(0, 5).map((t) => (
+                <tr key={t.id}>
+                  <td>
+                    <span className="td-mono">{t.ticketId}</span>
+                  </td>
+                  <td>{t.customer}</td>
+                  <td>
+                    <span className="tag">
+                      {t.inverterMake} {t.capacity}
+                    </span>
+                  </td>
+                  <td>
+                    <PriorityBadge priority={t.priority} />
+                  </td>
+                  <td>
+                    <StatusBadge status={t.status} />
+                  </td>
+                  <td>
+                    <SlaBadge status={t.slaStatus} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}

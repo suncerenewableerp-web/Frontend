@@ -1,0 +1,10 @@
+import type { NextRequest } from "next/server";
+import { proxyToBackend } from "../_lib/backend";
+
+export async function GET(request: NextRequest) {
+  const qs = request.nextUrl.searchParams.toString();
+  return proxyToBackend(request, `/api/users${qs ? `?${qs}` : ""}`, {
+    requireAuth: true,
+  });
+}
+
