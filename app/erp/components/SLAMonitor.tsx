@@ -2,6 +2,7 @@
 
 import type { Ticket } from "../types";
 import { PriorityBadge, SlaBadge, StatusBadge } from "./Badges";
+import { LuChartBar, LuCircleCheck, LuSiren, LuTriangleAlert } from "react-icons/lu";
 
 export default function SLAMonitor({ tickets }: { tickets: Ticket[] }) {
   const breached = tickets.filter((t) => t.slaStatus === "BREACHED");
@@ -21,33 +22,35 @@ export default function SLAMonitor({ tickets }: { tickets: Ticket[] }) {
             value: met.length,
             sub: "On track",
             color: "#16a34a",
-            icon: "✅",
+            Icon: LuCircleCheck,
           },
           {
             label: "At Risk",
             value: atRisk.length,
             sub: "Approaching limit",
             color: "#d97706",
-            icon: "⚠️",
+            Icon: LuTriangleAlert,
           },
           {
             label: "Breached",
             value: breached.length,
             sub: "Exceeded SLA",
             color: "#c0392b",
-            icon: "🚨",
+            Icon: LuSiren,
           },
           {
             label: "Compliance",
             value: `${Math.round((met.length / tickets.length) * 100)}%`,
             sub: "Overall SLA rate",
             color: "#6b3a1f",
-            icon: "📊",
+            Icon: LuChartBar,
           },
         ].map((k) => (
           <div key={k.label} className="kpi-card">
             <div className="kpi-accent-bar" style={{ background: k.color }} />
-            <div className="kpi-icon">{k.icon}</div>
+            <div className="kpi-icon" style={{ color: k.color }} aria-hidden>
+              <k.Icon />
+            </div>
             <div className="kpi-label">{k.label}</div>
             <div className="kpi-value" style={{ color: k.color }}>
               {k.value}

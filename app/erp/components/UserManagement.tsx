@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ALL_MODULES } from "../constants";
 import type { ModulePermission, RoleDefinition, User } from "../types";
+import { LuKeyRound, LuTags, LuUsers } from "react-icons/lu";
 import { Badge } from "./Badges";
 import RoleBuilderModal from "./RoleBuilderModal";
 
@@ -53,16 +54,27 @@ export default function UserManagement({
 
       <div className="tabs" style={{ marginBottom: 20 }}>
         {[
-          { id: "users", label: "👥 Users" },
-          { id: "roles", label: "🏷️ Role Management" },
-          { id: "permissions", label: "🔐 Permission Matrix" },
+          { id: "users", label: "Users", Icon: LuUsers },
+          { id: "roles", label: "Role Management", Icon: LuTags },
+          { id: "permissions", label: "Permission Matrix", Icon: LuKeyRound },
         ].map((tab) => (
           <div
             key={tab.id}
             className={`tab ${activeTab === tab.id ? "active" : ""}`}
             onClick={() => setActiveTab(tab.id as typeof activeTab)}
           >
-            {tab.label}
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <span aria-hidden style={{ display: "inline-flex" }}>
+                <tab.Icon />
+              </span>
+              {tab.label}
+            </span>
           </div>
         ))}
       </div>
@@ -327,7 +339,16 @@ export default function UserManagement({
                   <tr key={m.id}>
                     <td>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontSize: 16 }}>{m.icon}</span>
+                        <span
+                          style={{
+                            fontSize: 16,
+                            display: "inline-flex",
+                            alignItems: "center",
+                          }}
+                          aria-hidden
+                        >
+                          <m.Icon />
+                        </span>
                         <span style={{ fontWeight: 600, fontSize: 13 }}>{m.label}</span>
                       </div>
                     </td>

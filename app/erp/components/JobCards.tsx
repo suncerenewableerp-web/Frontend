@@ -2,6 +2,7 @@
 
 import type { Ticket, User } from "../types";
 import { StatusBadge } from "./Badges";
+import { LuWrench } from "react-icons/lu";
 
 export default function JobCards({ tickets, user }: { tickets: Ticket[]; user: User }) {
   const myTickets =
@@ -39,7 +40,9 @@ export default function JobCards({ tickets, user }: { tickets: Ticket[]; user: U
                 <tr>
                   <td colSpan={5}>
                     <div className="empty-state">
-                      <div className="empty-icon">🔧</div>
+                      <div className="empty-icon" aria-hidden>
+                        <LuWrench />
+                      </div>
                       <div className="empty-text">No active job cards</div>
                     </div>
                   </td>

@@ -6,6 +6,7 @@ import type { RoleDefinition, User } from "../types";
 import { getPasswordStrength } from "../utils";
 import { Badge } from "./Badges";
 import { ApiRequestError } from "../api";
+import { LuSunMedium } from "react-icons/lu";
 
 export default function SignupScreen({
   roles,
@@ -188,7 +189,9 @@ export default function SignupScreen({
         <div className="signup-left">
           <div className="signup-left-content">
             <div className="signup-left-logo">
-              <div className="signup-left-icon">☀️</div>
+              <div className="signup-left-icon" aria-hidden>
+                <LuSunMedium />
+              </div>
               <div>
                 <div className="signup-left-brand">Sunce ERP</div>
                 <div className="signup-left-sub">Service Platform</div>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { RoleDefinition } from "../types";
+import { LuSunMedium } from "react-icons/lu";
 
 export default function AuthScreen({
   onLogin,
@@ -12,8 +13,8 @@ export default function AuthScreen({
   onGoSignup: () => void;
   roles: RoleDefinition[];
 }) {
-  const [email, setEmail] = useState("admin@sunce.in");
-  const [password, setPassword] = useState("admin123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -39,7 +40,9 @@ export default function AuthScreen({
     <div className="auth-screen">
       <div className="auth-card">
         <div className="auth-logo">
-          <div className="auth-logo-icon">☀️</div>
+          <div className="auth-logo-icon" aria-hidden>
+            <LuSunMedium />
+          </div>
           <div>
             <div className="auth-logo-text">Sunce ERP</div>
             <div className="auth-logo-sub">
@@ -59,19 +62,19 @@ export default function AuthScreen({
             if (!loading) handleLogin();
           }}
         >
-          <label className="auth-label">Email Address</label>
+          <label className="auth-label">Username</label>
           <input
             className="auth-input"
             value={email}
-            type="email"
+            type="text"
             inputMode="email"
-            autoComplete="email"
+            autoComplete="username"
             enterKeyHint="next"
             onChange={(e) => {
               setEmail(e.target.value);
               setError("");
             }}
-            placeholder="email@sunce.in"
+            placeholder="Enter your username"
             aria-invalid={!!error}
           />
 
@@ -84,7 +87,7 @@ export default function AuthScreen({
               autoComplete="current-password"
               enterKeyHint="done"
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
+              placeholder="Enter your password"
               aria-invalid={!!error}
             />
             <button

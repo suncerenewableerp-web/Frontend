@@ -5,6 +5,7 @@ import { STATUS_ORDER } from "../constants";
 import type { RoleDefinition, Ticket, User } from "../types";
 import { canAccess } from "../utils";
 import { PriorityBadge, SlaBadge, StatusBadge } from "./Badges";
+import { LuSearch, LuTicket } from "react-icons/lu";
 
 export default function TicketsList({
   user,
@@ -58,7 +59,9 @@ export default function TicketsList({
         <div className="table-header">
           <div className="table-actions">
             <div className="search-wrap">
-              <span className="search-icon">🔍</span>
+              <span className="search-icon" aria-hidden>
+                <LuSearch />
+              </span>
               <input
                 className="search-input"
                 placeholder="Search tickets..."
@@ -111,7 +114,9 @@ export default function TicketsList({
                 <tr>
                   <td colSpan={10}>
                     <div className="empty-state">
-                      <div className="empty-icon">🎫</div>
+                      <div className="empty-icon" aria-hidden>
+                        <LuTicket />
+                      </div>
                       <div className="empty-text">No tickets found</div>
                     </div>
                   </td>

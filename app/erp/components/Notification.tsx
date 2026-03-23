@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { LuCircleCheck } from "react-icons/lu";
 
 export default function Notification({
   msg,
@@ -16,9 +17,10 @@ export default function Notification({
 
   return (
     <div className="notification">
-      <span>✅</span>
+      <span aria-hidden style={{ display: "inline-flex" }}>
+        <LuCircleCheck />
+      </span>
       {msg}
     </div>
   );
 }
-

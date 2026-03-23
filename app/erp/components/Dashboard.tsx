@@ -3,6 +3,7 @@
 import type { Ticket, User } from "../types";
 import { PriorityBadge, SlaBadge, StatusBadge } from "./Badges";
 import { STATUS_COLORS } from "../constants";
+import { LuCircleCheck, LuSiren, LuTicket, LuTriangleAlert } from "react-icons/lu";
 
 export default function Dashboard({
   user,
@@ -43,33 +44,35 @@ export default function Dashboard({
             value: open,
             sub: "Active service requests",
             color: "#6b3a1f",
-            icon: "🎫",
+            Icon: LuTicket,
           },
           {
             label: "High Priority",
             value: high,
             sub: "Needs immediate attention",
             color: "#d97706",
-            icon: "⚠️",
+            Icon: LuTriangleAlert,
           },
           {
             label: "SLA Breached",
             value: breached,
             sub: "Exceeding deadline",
             color: "#c0392b",
-            icon: "🚨",
+            Icon: LuSiren,
           },
           {
             label: "Resolved",
             value: closed,
             sub: "Tickets closed this month",
             color: "#16a34a",
-            icon: "✅",
+            Icon: LuCircleCheck,
           },
         ].map((k) => (
           <div key={k.label} className="kpi-card">
             <div className="kpi-accent-bar" style={{ background: k.color }} />
-            <div className="kpi-icon">{k.icon}</div>
+            <div className="kpi-icon" style={{ color: k.color }} aria-hidden>
+              <k.Icon />
+            </div>
             <div className="kpi-label">{k.label}</div>
             <div className="kpi-value" style={{ color: k.color }}>
               {k.value}

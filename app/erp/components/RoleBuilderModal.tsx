@@ -207,7 +207,16 @@ export default function RoleBuilderModal({
                         <div
                           style={{ display: "flex", alignItems: "center", gap: 8 }}
                         >
-                          <span style={{ fontSize: 16 }}>{m.icon}</span>
+                          <span
+                            style={{
+                              fontSize: 16,
+                              display: "inline-flex",
+                              alignItems: "center",
+                            }}
+                            aria-hidden
+                          >
+                            <m.Icon />
+                          </span>
                           <span style={{ fontWeight: 600, fontSize: 13 }}>
                             {m.label}
                           </span>
@@ -253,4 +262,3 @@ export default function RoleBuilderModal({
     </div>
   );
 }
-

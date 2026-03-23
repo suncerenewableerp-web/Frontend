@@ -2,6 +2,7 @@
 
 import type { RoleDefinition, User } from "../types";
 import { getNavItems } from "../utils";
+import { LuLogOut, LuSunMedium } from "react-icons/lu";
 
 export default function Sidebar({
   user,
@@ -31,7 +32,9 @@ export default function Sidebar({
       aria-label="Primary"
     >
       <div className="sidebar-header">
-        <div className="logo-icon">☀️</div>
+        <div className="logo-icon" aria-hidden>
+          <LuSunMedium />
+        </div>
         <div>
           <div className="logo-text">Sunce ERP</div>
           <div className="logo-sub">Service Platform</div>
@@ -66,7 +69,9 @@ export default function Sidebar({
               onClose();
             }}
           >
-            <span className="nav-icon">{item.icon}</span>
+            <span className="nav-icon" aria-hidden>
+              <item.Icon />
+            </span>
             {item.label}
           </div>
         ))}
@@ -79,7 +84,10 @@ export default function Sidebar({
             onClose();
           }}
         >
-          <span>⬅</span> Sign Out
+          <span aria-hidden style={{ display: "inline-flex" }}>
+            <LuLogOut />
+          </span>{" "}
+          Sign Out
         </button>
       </div>
     </div>

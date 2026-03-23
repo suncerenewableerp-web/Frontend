@@ -5,17 +5,28 @@ import type {
   TicketStatus,
   User,
 } from "./types";
+import type { IconType } from "react-icons";
+import {
+  LuChartBar,
+  LuLayoutDashboard,
+  LuSettings2,
+  LuTicket,
+  LuTimer,
+  LuTruck,
+  LuUsers,
+  LuWrench,
+} from "react-icons/lu";
 
 export const ALL_MODULES = [
-  { id: "dashboard", label: "Dashboard", icon: "▦" },
-  { id: "tickets", label: "Tickets", icon: "🎫" },
-  { id: "jobcard", label: "Job Cards", icon: "🔧" },
-  { id: "logistics", label: "Logistics", icon: "🚚" },
-  { id: "sla", label: "SLA Monitor", icon: "⏱" },
-  { id: "reports", label: "Reports", icon: "📊" },
-  { id: "users", label: "User Management", icon: "👥" },
-  { id: "settings", label: "Settings", icon: "⚙️" },
-] as const;
+  { id: "dashboard", label: "Dashboard", Icon: LuLayoutDashboard },
+  { id: "tickets", label: "Tickets", Icon: LuTicket },
+  { id: "jobcard", label: "Job Cards", Icon: LuWrench },
+  { id: "logistics", label: "Logistics", Icon: LuTruck },
+  { id: "sla", label: "SLA Monitor", Icon: LuTimer },
+  { id: "reports", label: "Reports", Icon: LuChartBar },
+  { id: "users", label: "User Management", Icon: LuUsers },
+  { id: "settings", label: "Settings", Icon: LuSettings2 },
+] satisfies ReadonlyArray<{ id: string; label: string; Icon: IconType }>;
 
 export const DEFAULT_PERMISSIONS: ModulePermission = {
   view: false,
@@ -255,4 +266,3 @@ export const ROLE_DESCRIPTIONS: Record<string, string> = {
   ENGINEER: "Job cards, diagnosis & repairs",
   CUSTOMER: "Track your service requests",
 };
-
