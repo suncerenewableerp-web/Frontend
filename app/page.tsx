@@ -1,5 +1,5 @@
-import ErpApp from "./erp/ErpApp";
+import HomePage from "./homepage";
 
 export default function Page() {
-  return <ErpApp />;
+  return <HomePage />;
 }
