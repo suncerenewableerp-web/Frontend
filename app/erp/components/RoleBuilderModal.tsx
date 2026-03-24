@@ -12,7 +12,7 @@ export default function RoleBuilderModal({
 }: {
   role: RoleDefinition | null;
   onClose: () => void;
-  onSave: (r: RoleDefinition) => void;
+  onSave: (r: RoleDefinition) => Promise<void>;
 }) {
   const isNew = role === null;
   const [name, setName] = useState(role?.name || "");
@@ -24,6 +24,8 @@ export default function RoleBuilderModal({
         ALL_MODULES.map((m) => [m.id, { ...DEFAULT_PERMISSIONS }]),
       ),
   );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   const togglePerm = (moduleId: string, action: keyof ModulePermission) => {
     setPermissions((prev) => ({
@@ -55,18 +57,27 @@ export default function RoleBuilderModal({
     setPermissions(updated);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim() || !label.trim()) return;
+    setSaving(true);
+    setError("");
     const roleId = name.toUpperCase().replace(/\s+/g, "_");
-    onSave({
-      id: isNew ? roleId : role?.id || roleId,
+    try {
+      await onSave({
+        id: roleId,
+        dbId: role?.dbId,
       name: roleId,
       label,
       color,
       permissions,
       isSystem: role?.isSystem,
-    });
-    onClose();
+      });
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save role");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -104,6 +115,11 @@ export default function RoleBuilderModal({
           </button>
         </div>
         <div className="modal-body">
+          {error && (
+            <div className="form-error" style={{ marginBottom: 12, marginTop: -6 }}>
+              {error}
+            </div>
+          )}
           <div className="form-section">Role Identity</div>
           <div className="form-grid" style={{ marginBottom: 20 }}>
             <div className="form-group">
@@ -115,10 +131,10 @@ export default function RoleBuilderModal({
                 onChange={(e) =>
                   setName(e.target.value.toUpperCase().replace(/\s+/g, "_"))
                 }
-                disabled={role?.isSystem}
+                disabled={Boolean(role)}
                 style={{
                   fontFamily: "var(--mono)",
-                  opacity: role?.isSystem ? 0.6 : 1,
+                  opacity: role ? 0.6 : 1,
                 }}
               />
             </div>
@@ -254,8 +270,8 @@ export default function RoleBuilderModal({
           <button className="btn btn-ghost" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn btn-accent" onClick={handleSave}>
-            {isNew ? "Create Role →" : "Save Changes →"}
+          <button className="btn btn-accent" onClick={handleSave} disabled={saving}>
+            {saving ? "Saving..." : isNew ? "Create Role →" : "Save Changes →"}
           </button>
         </div>
       </div>

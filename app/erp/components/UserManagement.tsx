@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ALL_MODULES } from "../constants";
 import type { ModulePermission, RoleDefinition, User } from "../types";
+import { apiRoleCreate, apiRoleDelete, apiRoleUpdate } from "../api";
 import { LuKeyRound, LuTags, LuUsers } from "react-icons/lu";
 import { Badge } from "./Badges";
 import RoleBuilderModal from "./RoleBuilderModal";
@@ -24,10 +25,36 @@ export default function UserManagement({
     undefined,
   );
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [savingRole, setSavingRole] = useState(false);
+  const [roleError, setRoleError] = useState("");
 
-  const handleSaveRole = (r: RoleDefinition) => {
-    const exists = roles.find((x) => x.id === r.id);
-    onRolesChange(exists ? roles.map((x) => (x.id === r.id ? r : x)) : [...roles, r]);
+  const handleSaveRole = async (r: RoleDefinition) => {
+    setSavingRole(true);
+    setRoleError("");
+    try {
+      const saved = r.dbId
+        ? await apiRoleUpdate(r.dbId, {
+            label: r.label,
+            color: r.color,
+            permissions: r.permissions,
+          })
+        : await apiRoleCreate({
+            name: r.name,
+            label: r.label,
+            color: r.color,
+            permissions: r.permissions,
+          });
+
+      const exists = roles.find((x) => x.id === saved.id);
+      onRolesChange(
+        exists ? roles.map((x) => (x.id === saved.id ? saved : x)) : [...roles, saved],
+      );
+    } catch (e) {
+      setRoleError(e instanceof Error ? e.message : "Failed to save role");
+      throw e;
+    } finally {
+      setSavingRole(false);
+    }
   };
 
   return (
@@ -233,9 +260,19 @@ export default function UserManagement({
                     <div style={{ display: "flex", gap: 4 }}>
                       <button
                         className="btn btn-danger btn-sm"
-                        onClick={() => {
-                          onRolesChange(roles.filter((r) => r.id !== role.id));
-                          setDeleteConfirm(null);
+                        disabled={savingRole}
+                        onClick={async () => {
+                          setSavingRole(true);
+                          setRoleError("");
+                          try {
+                            if (role.dbId) await apiRoleDelete(role.dbId);
+                            onRolesChange(roles.filter((r) => r.id !== role.id));
+                            setDeleteConfirm(null);
+                          } catch (e) {
+                            setRoleError(e instanceof Error ? e.message : "Failed to delete role");
+                          } finally {
+                            setSavingRole(false);
+                          }
                         }}
                       >
                         Confirm
@@ -401,6 +438,12 @@ export default function UserManagement({
           }}
           onSave={handleSaveRole}
         />
+      )}
+
+      {roleError && (
+        <div style={{ position: "fixed", left: 16, bottom: 16, fontSize: 12, color: "var(--red)" }}>
+          {roleError}
+        </div>
       )}
     </div>
   );

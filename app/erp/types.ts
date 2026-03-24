@@ -9,6 +9,7 @@ export interface ModulePermission {
 
 export interface RoleDefinition {
   id: string;
+  dbId?: string;
   name: string;
   label: string;
   color: string;

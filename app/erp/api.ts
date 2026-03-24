@@ -118,6 +118,8 @@ async function apiFetch<T>(
 type BackendRole = {
   _id: string;
   name: string;
+  label?: string;
+  color?: string;
   description?: string;
   permissions: Record<string, ModulePermission>;
   isSystem?: boolean;
@@ -209,9 +211,10 @@ function toRoleDefinition(role: BackendRole): RoleDefinition {
   const ui = ROLE_UI[name] || { label: name || "ROLE", color: "#8B4513" };
   return {
     id: name,
+    dbId: String(role?._id || ""),
     name,
-    label: ui.label,
-    color: ui.color,
+    label: String(role?.label || ui.label),
+    color: String(role?.color || ui.color),
     permissions: role?.permissions || ({} as Record<string, ModulePermission>),
     isSystem: role?.isSystem ?? true,
   };
@@ -469,6 +472,46 @@ export async function apiUsersList(): Promise<User[]> {
   });
   if (!env.success) throw new Error(env.message || "Failed to fetch users");
   return env.data.users.map(toUser);
+}
+
+export async function apiRoleCreate(input: {
+  name: string;
+  label: string;
+  color: string;
+  permissions: Record<string, ModulePermission>;
+  description?: string;
+}): Promise<RoleDefinition> {
+  const env = await apiFetch<BackendRole>("/api/roles", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  if (!env.success) throw new Error(env.message || "Failed to create role");
+  return toRoleDefinition(env.data);
+}
+
+export async function apiRoleUpdate(
+  dbId: string,
+  input: Partial<{
+    name: string;
+    label: string;
+    color: string;
+    permissions: Record<string, ModulePermission>;
+    description: string;
+  }>,
+): Promise<RoleDefinition> {
+  const env = await apiFetch<BackendRole>(`/api/roles/${encodeURIComponent(dbId)}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+  if (!env.success) throw new Error(env.message || "Failed to update role");
+  return toRoleDefinition(env.data);
+}
+
+export async function apiRoleDelete(dbId: string): Promise<void> {
+  const env = await apiFetch<{ message?: string }>(`/api/roles/${encodeURIComponent(dbId)}`, {
+    method: "DELETE",
+  });
+  if (!env.success) throw new Error(env.message || "Failed to delete role");
 }
 
 export type JobCardUpdateInput = Partial<{
