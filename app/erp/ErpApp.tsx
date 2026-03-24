@@ -119,7 +119,7 @@ export default function ErpApp({
     setSidebarOpen(false);
     notify(`Welcome back, ${u.name.split(" ")[0]}!`);
     await Promise.allSettled([loadTickets(), loadUsers()]);
-    router.push("/");
+    router.push("/erp");
   };
 
   const handleLogout = () => {
@@ -153,7 +153,7 @@ export default function ErpApp({
     setAuthView("login");
     notify(`Welcome to Sunce ERP, ${u.name.split(" ")[0]}! 🎉`);
     await Promise.allSettled([loadTickets(), loadUsers()]);
-    router.push("/");
+    router.push("/erp");
   };
 
   const handleNewTicket = async (input: TicketCreateInput) => {
