@@ -1,6 +1,9 @@
 "use client";
 
 import type {
+  JobCard,
+  JobCardFinalTestingActivity,
+  JobCardServiceJob,
   ModulePermission,
   RoleDefinition,
   Ticket,
@@ -155,6 +158,45 @@ type BackendTicket = {
   priority?: string;
 };
 
+type BackendJobCardServiceJob = {
+  sn?: number;
+  jobName?: string;
+  specification?: string;
+  qty?: number;
+  reason?: string;
+  date?: string | Date;
+  doneBy?: string;
+};
+
+type BackendJobCardFinalTestingActivity = {
+  sr?: number;
+  activity?: string;
+  result?: string;
+  remarks?: string;
+};
+
+type BackendJobCard = {
+  _id?: string;
+  id?: string;
+  ticket?: string | { _id?: string; id?: string };
+  jobNo?: string;
+  item?: string;
+  itemAndSiteDetails?: string;
+  customerName?: string;
+  inDate?: string | Date;
+  outDate?: string | Date;
+  currentStatus?: string;
+  remarks?: string;
+  checkedByName?: string;
+  checkedByDate?: string | Date;
+  serviceJobs?: BackendJobCardServiceJob[];
+  finalTestingActivities?: BackendJobCardFinalTestingActivity[];
+  finalStatus?: string;
+  finalRemarks?: string;
+  finalCheckedByName?: string;
+  finalCheckedByDate?: string | Date;
+};
+
 const ROLE_UI: Record<string, { label: string; color: string }> = {
   ADMIN: { label: "Administrator", color: "#8B4513" },
   SALES: { label: "Sales / BD", color: "#B8860B" },
@@ -207,6 +249,68 @@ function isInWarranty(warrantyEnd?: string | Date | null) {
   const end = new Date(warrantyEnd).getTime();
   if (Number.isNaN(end)) return false;
   return Date.now() <= end;
+}
+
+function toDateInput(value: unknown): string {
+  if (!value) return "";
+  const d = new Date(value as string);
+  const t = d.getTime();
+  if (Number.isNaN(t)) return "";
+  return new Date(t - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+function toYesNo(v: unknown): "YES" | "NO" | "" {
+  const s = String(v || "").toUpperCase();
+  if (s === "YES") return "YES";
+  if (s === "NO") return "NO";
+  return "";
+}
+
+function toServiceJob(j: BackendJobCardServiceJob, idx: number): JobCardServiceJob {
+  return {
+    sn: typeof j?.sn === "number" ? j.sn : idx + 1,
+    jobName: String(j?.jobName || ""),
+    specification: String(j?.specification || ""),
+    qty: typeof j?.qty === "number" ? j.qty : "",
+    reason: String(j?.reason || ""),
+    date: toDateInput(j?.date),
+    doneBy: String(j?.doneBy || ""),
+  };
+}
+
+function toFinalTestingActivity(
+  a: BackendJobCardFinalTestingActivity,
+  idx: number,
+): JobCardFinalTestingActivity {
+  return {
+    sr: typeof a?.sr === "number" ? a.sr : idx + 1,
+    activity: String(a?.activity || ""),
+    result: toYesNo(a?.result),
+    remarks: String(a?.remarks || ""),
+  };
+}
+
+function toJobCard(jc: BackendJobCard, ticketId: string): JobCard {
+  return {
+    id: String(jc?._id || jc?.id || ""),
+    ticketId,
+    jobNo: String(jc?.jobNo || ""),
+    item: String(jc?.item || ""),
+    itemAndSiteDetails: String(jc?.itemAndSiteDetails || ""),
+    customerName: String(jc?.customerName || ""),
+    inDate: toDateInput(jc?.inDate),
+    outDate: toDateInput(jc?.outDate),
+    currentStatus: String(jc?.currentStatus || ""),
+    remarks: String(jc?.remarks || ""),
+    checkedByName: String(jc?.checkedByName || ""),
+    checkedByDate: toDateInput(jc?.checkedByDate),
+    serviceJobs: (jc?.serviceJobs || []).map(toServiceJob),
+    finalTestingActivities: (jc?.finalTestingActivities || []).map(toFinalTestingActivity),
+    finalStatus: String(jc?.finalStatus || ""),
+    finalRemarks: String(jc?.finalRemarks || ""),
+    finalCheckedByName: String(jc?.finalCheckedByName || ""),
+    finalCheckedByDate: toDateInput(jc?.finalCheckedByDate),
+  };
 }
 
 function toTicket(t: BackendTicket): Ticket {
@@ -365,4 +469,61 @@ export async function apiUsersList(): Promise<User[]> {
   });
   if (!env.success) throw new Error(env.message || "Failed to fetch users");
   return env.data.users.map(toUser);
+}
+
+export type JobCardUpdateInput = Partial<{
+  jobNo: string;
+  item: string;
+  itemAndSiteDetails: string;
+  customerName: string;
+  inDate: string;
+  outDate: string;
+  currentStatus: string;
+  remarks: string;
+  checkedByName: string;
+  checkedByDate: string;
+  serviceJobs: Array<{
+    sn?: number;
+    jobName?: string;
+    specification?: string;
+    qty?: number | null;
+    reason?: string;
+    date?: string;
+    doneBy?: string;
+  }>;
+  finalTestingActivities: Array<{
+    sr?: number;
+    activity?: string;
+    result?: "YES" | "NO" | "";
+    remarks?: string;
+  }>;
+  finalStatus: string;
+  finalRemarks: string;
+  finalCheckedByName: string;
+  finalCheckedByDate: string;
+  // Legacy fields (optional)
+  diagnosis: string;
+  repairNotes: string;
+  testResults: string;
+  warrantyGiven: number;
+}>;
+
+export async function apiTicketJobCardGet(ticketId: string): Promise<JobCard> {
+  const env = await apiFetch<BackendJobCard>(`/api/tickets/${encodeURIComponent(ticketId)}/jobcard`, {
+    method: "GET",
+  });
+  if (!env.success) throw new Error(env.message || "Failed to fetch job card");
+  return toJobCard(env.data, ticketId);
+}
+
+export async function apiTicketJobCardUpdate(
+  ticketId: string,
+  input: JobCardUpdateInput,
+): Promise<JobCard> {
+  const env = await apiFetch<BackendJobCard>(`/api/tickets/${encodeURIComponent(ticketId)}/jobcard`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+  if (!env.success) throw new Error(env.message || "Failed to update job card");
+  return toJobCard(env.data, ticketId);
 }

@@ -45,6 +45,9 @@ export default function ErpApp({
   const [roles, setRoles] = useState<RoleDefinition[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+  const [ticketDetailTab, setTicketDetailTab] = useState<
+    "overview" | "jobcard" | "logistics" | "sla"
+  >("overview");
   const [showNewTicket, setShowNewTicket] = useState(false);
   const [notification, setNotification] = useState("");
   const [bootError, setBootError] = useState("");
@@ -276,6 +279,7 @@ export default function ErpApp({
                 tickets={tickets}
                 onView={(t) => {
                   setSelectedTicket(t);
+                  setTicketDetailTab("overview");
                   setPage("ticket_detail");
                 }}
                 onNew={() => setShowNewTicket(true)}
@@ -288,9 +292,20 @@ export default function ErpApp({
                 roles={roles}
                 onBack={() => setPage("tickets")}
                 onUpdateStatus={handleUpdateSelectedTicketStatus}
+                initialTab={ticketDetailTab}
               />
             )}
-            {page === "jobcard" && <JobCards tickets={tickets} user={user} />}
+            {page === "jobcard" && (
+              <JobCards
+                tickets={tickets}
+                user={user}
+                onOpenTicket={(t) => {
+                  setSelectedTicket(t);
+                  setTicketDetailTab("jobcard");
+                  setPage("ticket_detail");
+                }}
+              />
+            )}
             {page === "logistics" && <Logistics tickets={tickets} />}
             {page === "sla" && <SLAMonitor tickets={tickets} />}
             {page === "reports" && <Reports tickets={tickets} />}

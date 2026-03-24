@@ -540,6 +540,26 @@ tr:hover td { background: var(--surface2); }
   .signup-right-title { font-size: 22px; }
   .topbar-title { max-width: 48vw; font-size: 18px; }
   .kpi-grid { grid-template-columns: 1fr; }
+  .topbar { padding: 0 12px; height: 54px; }
+  .content { padding: 14px; padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+
+  .page-title { font-size: 20px; }
+  .page-sub { font-size: 12px; }
+
+  .table-header { padding: 14px; }
+  th { padding: 10px 12px; }
+  td { padding: 10px 12px; }
+  tr:hover td { background: transparent; }
+
+  .modal-overlay { align-items: flex-end; }
+  .modal, .modal-lg {
+    width: 100vw;
+    max-width: 100vw;
+    max-height: 92dvh;
+    border-radius: 18px 18px 0 0;
+  }
+  .modal-footer { flex-direction: column-reverse; }
+  .modal-footer .btn { width: 100%; justify-content: center; }
 
   .auth-input,
   .form-input,

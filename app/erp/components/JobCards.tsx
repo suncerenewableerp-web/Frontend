@@ -4,7 +4,15 @@ import type { Ticket, User } from "../types";
 import { StatusBadge } from "./Badges";
 import { LuWrench } from "react-icons/lu";
 
-export default function JobCards({ tickets, user }: { tickets: Ticket[]; user: User }) {
+export default function JobCards({
+  tickets,
+  user,
+  onOpenTicket,
+}: {
+  tickets: Ticket[];
+  user: User;
+  onOpenTicket?: (t: Ticket) => void;
+}) {
   const myTickets =
     user.role === "ENGINEER"
       ? tickets.filter(
@@ -33,12 +41,13 @@ export default function JobCards({ tickets, user }: { tickets: Ticket[]; user: U
                 <th>Customer</th>
                 <th>Stage</th>
                 <th>Engineer</th>
+                <th />
               </tr>
             </thead>
             <tbody>
               {myTickets.length === 0 ? (
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={6}>
                     <div className="empty-state">
                       <div className="empty-icon" aria-hidden>
                         <LuWrench />
@@ -63,6 +72,15 @@ export default function JobCards({ tickets, user }: { tickets: Ticket[]; user: U
                       <StatusBadge status={t.status} />
                     </td>
                     <td>{t.assignedEngineer}</td>
+                    <td style={{ textAlign: "right" }}>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        disabled={!onOpenTicket}
+                        onClick={() => onOpenTicket?.(t)}
+                      >
+                        Open
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}

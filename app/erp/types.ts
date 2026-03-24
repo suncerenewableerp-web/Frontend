@@ -23,6 +23,46 @@ export interface User {
   role: Role;
 }
 
+export type YesNo = "YES" | "NO" | "";
+
+export interface JobCardServiceJob {
+  sn: number;
+  jobName: string;
+  specification: string;
+  qty: number | "";
+  reason: string;
+  date: string; // YYYY-MM-DD
+  doneBy: string;
+}
+
+export interface JobCardFinalTestingActivity {
+  sr: number;
+  activity: string;
+  result: YesNo;
+  remarks: string;
+}
+
+export interface JobCard {
+  id: string;
+  ticketId: string;
+  jobNo: string;
+  item: string;
+  itemAndSiteDetails: string;
+  customerName: string;
+  inDate: string; // YYYY-MM-DD
+  outDate: string; // YYYY-MM-DD
+  currentStatus: string;
+  remarks: string;
+  checkedByName: string;
+  checkedByDate: string; // YYYY-MM-DD
+  serviceJobs: JobCardServiceJob[];
+  finalTestingActivities: JobCardFinalTestingActivity[];
+  finalStatus: string;
+  finalRemarks: string;
+  finalCheckedByName: string;
+  finalCheckedByDate: string; // YYYY-MM-DD
+}
+
 export type TicketStatus =
   | "CREATED"
   | "PICKUP_SCHEDULED"
@@ -50,5 +90,5 @@ export interface Ticket {
   assignedEngineer: string;
   createdAt: string;
   slaStatus: "MET" | "BREACHED" | "AT_RISK";
+  jobCard?: JobCard;
 }
-

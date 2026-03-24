@@ -251,7 +251,16 @@ export default function HomePage() {
         @media (max-width: 640px) {
           .hp-nav { padding-left: 16px !important; padding-right: 16px !important; }
           .hp-nav-links { display: none !important; }
-          .hp-nav-actions a { padding: 8px 14px !important; }
+          .hp-nav-brand { gap: 10px !important; }
+          .hp-brand-title { font-size: 18px !important; }
+          .hp-brand-tagline { display: none !important; }
+          .hp-nav-actions { gap: 8px !important; }
+          .hp-nav-actions a {
+            padding: 8px 12px !important;
+            white-space: nowrap !important;
+            line-height: 1.1 !important;
+            flex: 0 0 auto !important;
+          }
           .hp-hero-inner { padding: 64px 16px !important; }
           .hp-hero-actions { flex-direction: column !important; align-items: stretch !important; }
           .hp-hero-actions a { justify-content: center !important; }
@@ -294,6 +303,7 @@ export default function HomePage() {
           }}
         >
           <a
+            className="hp-nav-brand"
             href="#"
             style={{
               display: "flex",
@@ -329,6 +339,7 @@ export default function HomePage() {
             </div>
             <div>
               <div
+                className="hp-brand-title"
                 style={{
                   fontFamily: "'Cormorant Garamond',serif",
                   fontSize: 21,
@@ -340,6 +351,7 @@ export default function HomePage() {
                 Sunce ERP
               </div>
               <div
+                className="hp-brand-tagline"
                 style={{
                   fontSize: "9px",
                   color: "#9c8e80",
@@ -439,7 +451,7 @@ export default function HomePage() {
                   "0 3px 12px rgba(107,58,31,.3)";
               }}
             >
-              Get Started →
+              {"Get Started\u00A0→"}
             </Link>
           </div>
         </nav>
@@ -1631,7 +1643,7 @@ export default function HomePage() {
                 </div>
               </div>
               <p style={{ fontSize: 13, color: "#9c8e80", lineHeight: 1.65 }}>
-                India's service management platform built for solar inverter
+                India&apos;s service management platform built for solar inverter
                 companies.
               </p>
             </div>
