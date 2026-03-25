@@ -24,6 +24,18 @@ type ApiErr = { success: false; message?: string; errors?: unknown };
 type ApiEnvelope<T> = ApiOk<T> | ApiErr;
 
 export type Tokens = { accessToken: string; refreshToken: string };
+export type SlaSettings = { criticalHours: number; highHours: number; normalHours: number };
+export type ReportsData = {
+  totalTickets: number;
+  closedTickets: number;
+  breachedSLA: number;
+  priorityBreakdown: Array<{ priority: string; count: number }>;
+  monthlyTicketVolume: Array<{ month: string; count: number }>;
+  warranty: { inWarranty: number; outOfWarranty: number };
+  slaBreakdown: Record<string, number>;
+  statusBreakdown: Record<string, number>;
+  avgResolutionHours: number | null;
+};
 
 const STORAGE_KEY = "sunce_erp_auth_v1";
 
@@ -472,6 +484,31 @@ export async function apiUsersList(): Promise<User[]> {
   });
   if (!env.success) throw new Error(env.message || "Failed to fetch users");
   return env.data.users.map(toUser);
+}
+
+export async function apiSlaSettingsGet(): Promise<SlaSettings> {
+  const env = await apiFetch<SlaSettings>("/api/settings/sla", { method: "GET" });
+  if (!env.success) throw new Error(env.message || "Failed to fetch SLA settings");
+  return env.data;
+}
+
+export async function apiSlaSettingsUpdate(input: SlaSettings): Promise<SlaSettings> {
+  const env = await apiFetch<SlaSettings>("/api/settings/sla", {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+  if (!env.success) throw new Error(env.message || "Failed to update SLA settings");
+  return env.data;
+}
+
+export async function apiReportsGet(params?: { months?: number }): Promise<ReportsData> {
+  const qs = new URLSearchParams();
+  if (params?.months) qs.set("months", String(params.months));
+  const env = await apiFetch<ReportsData>(`/api/reports${qs.toString() ? `?${qs.toString()}` : ""}`, {
+    method: "GET",
+  });
+  if (!env.success) throw new Error(env.message || "Failed to fetch reports");
+  return env.data;
 }
 
 export async function apiRoleCreate(input: {

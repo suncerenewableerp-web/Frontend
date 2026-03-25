@@ -319,7 +319,7 @@ export default function ErpApp({
                 }}
               />
             )}
-            {page === "settings" && <Settings />}
+            {page === "settings" && <Settings onNotify={notify} />}
           </div>
         </div>
       )}
