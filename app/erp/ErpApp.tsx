@@ -328,6 +328,7 @@ export default function ErpApp({
         <NewTicketModal
           onClose={() => setShowNewTicket(false)}
           onSubmit={handleNewTicket}
+          userRole={user?.role}
         />
       )}
       {notification && (

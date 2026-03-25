@@ -430,31 +430,64 @@ export async function apiTicketsList(params?: {
 }
 
 export type TicketCreateInput = {
-  customer: string;
-  inverterMake?: string;
-  inverterModel: string;
-  capacity?: string;
-  serialNumber?: string;
+  // Client requirement: only these two are mandatory
+  capacity: string;
   faultDescription: string;
+  customerName?: string;
+  customerCompany?: string;
+  inverterLocation?: string;
+  inverterMake?: string;
+  inverterModel?: string;
+  serialNumber?: string;
   errorCode?: string;
-  priority: "LOW" | "MEDIUM" | "HIGH";
+  priority?: "LOW" | "MEDIUM" | "HIGH";
   warrantyStatus?: boolean;
+  warrantyEndDate?: string; // YYYY-MM-DD (only when under warranty)
 };
 
 export async function apiCreateTicket(input: TicketCreateInput): Promise<Ticket> {
+  const customerName = String(input.customerName || "").trim();
+  const customerCompany = String(input.customerCompany || "").trim();
+  const inverterLocation = String(input.inverterLocation || "").trim();
+  const inverterMake = String(input.inverterMake || "").trim();
+  const inverterModel = String(input.inverterModel || "").trim();
+  const capacity = String(input.capacity || "").trim();
+  const serialNumber = String(input.serialNumber || "").trim();
+  const faultDescription = String(input.faultDescription || "").trim();
+  const errorCode = String(input.errorCode || "").trim();
+
+  let warrantyEnd: string | undefined;
+  if (input.warrantyEndDate) {
+    const d = new Date(`${input.warrantyEndDate}T00:00:00.000Z`);
+    const t = d.getTime();
+    if (!Number.isNaN(t)) warrantyEnd = new Date(t).toISOString();
+  } else if (typeof input.warrantyStatus === "boolean" && input.warrantyStatus) {
+    // Fallback (if date not provided): assume 6 months coverage.
+    warrantyEnd = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString();
+  }
+
   const payload = {
     ticketId: `SR-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`,
-    customer: { company: input.customer, name: input.customer },
+    ...(customerName || customerCompany || inverterLocation
+      ? {
+          customer: {
+            ...(customerName ? { name: customerName } : {}),
+            ...(customerCompany ? { company: customerCompany } : {}),
+            ...(inverterLocation ? { address: inverterLocation } : {}),
+          },
+        }
+      : {}),
     inverter: {
-      make: input.inverterMake,
-      model: input.inverterModel,
-      serialNo: input.serialNumber,
-      capacity: input.capacity,
+      ...(inverterMake ? { make: inverterMake } : {}),
+      ...(inverterModel ? { model: inverterModel } : {}),
+      ...(serialNumber ? { serialNo: serialNumber } : {}),
+      ...(warrantyEnd ? { warrantyEnd } : {}),
+      capacity,
     },
     issue: {
-      description: input.faultDescription,
-      priority: input.priority,
-      errorCode: input.errorCode,
+      description: faultDescription,
+      ...(input.priority ? { priority: input.priority } : {}),
+      ...(errorCode ? { errorCode } : {}),
     },
   };
 
