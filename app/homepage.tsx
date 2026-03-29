@@ -165,7 +165,7 @@ export default function HomePage() {
     { num: "500+", label: "Tickets Resolved", icon: LuTicket },
     { num: "98%", label: "SLA Compliance", icon: LuCircleCheck },
     { num: "4", label: "Role Levels", icon: LuShieldCheck },
-    { num: "9", label: "Ticket Stages", icon: LuChartBar },
+    { num: "6", label: "Ticket Stages", icon: LuChartBar },
     { num: "48h", label: "Avg Resolution", icon: LuClock },
     { num: "100%", label: "Digital Job Cards", icon: LuWrench },
   ];

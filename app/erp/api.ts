@@ -149,7 +149,7 @@ type BackendTicket = {
   _id?: string;
   id?: string;
   ticketId?: string;
-  customer?: { name?: string; company?: string };
+  customer?: { name?: string; company?: string; phone?: string; address?: string };
   inverter?: {
     make?: string;
     model?: string;
@@ -158,8 +158,14 @@ type BackendTicket = {
     warrantyEnd?: string | Date;
   };
   issue?: { description?: string; priority?: string; errorCode?: string };
-  status?: TicketStatus;
+  status?: string;
   assignedTo?: Array<{ name?: string }> | { name?: string };
+  logistics?:
+    | string
+    | {
+        pickupDetails?: { scheduledDate?: string | Date };
+        courierDetails?: { courierName?: string; lrNumber?: string };
+      };
   createdAt?: string | Date;
   slaStatus?: string;
   warrantyStatus?: boolean;
@@ -329,6 +335,21 @@ function toJobCard(jc: BackendJobCard, ticketId: string): JobCard {
 }
 
 function toTicket(t: BackendTicket): Ticket {
+  const normalizeTicketStatus = (raw: unknown): TicketStatus => {
+    const s = String(raw || "CREATED").toUpperCase();
+    if (s === "CREATED") return "CREATED";
+    if (s === "PICKUP_SCHEDULED") return "PICKUP_SCHEDULED";
+    if (s === "IN_TRANSIT") return "IN_TRANSIT";
+    if (s === "UNDER_REPAIRED") return "UNDER_REPAIRED";
+    if (s === "DISPATCHED") return "DISPATCHED";
+    if (s === "CLOSED") return "CLOSED";
+
+    // Legacy backend statuses (collapse into the single "Under repaired" stage)
+    if (["RECEIVED", "DIAGNOSIS", "REPAIR", "TESTING"].includes(s)) return "UNDER_REPAIRED";
+
+    return "CREATED";
+  };
+
   const assignedEngineer =
     (Array.isArray(t?.assignedTo) ? t.assignedTo[0]?.name : undefined) ||
     (!Array.isArray(t?.assignedTo) && typeof t?.assignedTo === "object"
@@ -336,10 +357,37 @@ function toTicket(t: BackendTicket): Ticket {
       : undefined) ||
     "-";
 
+  const pickupDate =
+    t?.logistics && typeof t.logistics === "object"
+      ? toDateInput(t.logistics?.pickupDetails?.scheduledDate)
+      : "";
+  const courierName =
+    t?.logistics && typeof t.logistics === "object"
+      ? String(t.logistics?.courierDetails?.courierName || "")
+      : "";
+  const lrNumber =
+    t?.logistics && typeof t.logistics === "object"
+      ? String(t.logistics?.courierDetails?.lrNumber || "")
+      : "";
+
+  const customerName = t?.customer?.name ? String(t.customer.name).trim() : "";
+  const customerCompany = t?.customer?.company ? String(t.customer.company).trim() : "";
+  const customerDisplay =
+    customerName && customerCompany
+      ? `${customerName} / ${customerCompany}`
+      : customerName || customerCompany || "—";
+
   return {
     id: String(t?._id || t?.id || ""),
     ticketId: String(t?.ticketId || ""),
-    customer: String(t?.customer?.company || t?.customer?.name || "—"),
+    customer: customerDisplay,
+    customerName,
+    customerCompany,
+    customerPhone: t?.customer?.phone ? String(t.customer.phone) : "",
+    customerAddress: t?.customer?.address ? String(t.customer.address) : "",
+    pickupDate: pickupDate || undefined,
+    courierName: courierName || undefined,
+    lrNumber: lrNumber || undefined,
     inverterMake: String(t?.inverter?.make || t?.inverterMake || "—"),
     inverterModel: String(t?.inverter?.model || t?.inverterModel || "—"),
     capacity: String(t?.inverter?.capacity || t?.capacity || "—"),
@@ -347,8 +395,9 @@ function toTicket(t: BackendTicket): Ticket {
     faultDescription: String(t?.issue?.description || t?.faultDescription || "—"),
     errorCode: String(t?.issue?.errorCode || t?.errorCode || ""),
     priority: toPriority(t?.issue?.priority || t?.priority),
-    status: (t?.status || "CREATED") as TicketStatus,
+    status: normalizeTicketStatus(t?.status),
     warrantyStatus: isInWarranty(t?.inverter?.warrantyEnd) || Boolean(t?.warrantyStatus),
+    warrantyEndDate: toDateInput(t?.inverter?.warrantyEnd),
     assignedEngineer: String(assignedEngineer),
     createdAt: String(t?.createdAt ? String(t.createdAt).slice(0, 10) : ""),
     slaStatus: toSlaStatus(t?.slaStatus),
@@ -427,6 +476,14 @@ export async function apiTicketsList(params?: {
   );
   if (!env.success) throw new Error(env.message || "Failed to fetch tickets");
   return env.data.tickets.map(toTicket);
+}
+
+export async function apiTicketGet(id: string): Promise<Ticket> {
+  const env = await apiFetch<BackendTicket>(`/api/tickets/${encodeURIComponent(id)}`, {
+    method: "GET",
+  });
+  if (!env.success) throw new Error(env.message || "Failed to fetch ticket");
+  return toTicket(env.data);
 }
 
 export type TicketCreateInput = {
@@ -511,6 +568,79 @@ export async function apiUpdateTicketStatus(
   return toTicket(env.data);
 }
 
+export type TicketEditInput = {
+  customerName: string;
+  customerCompany: string;
+  customerPhone: string;
+  customerAddress: string;
+  inverterMake: string;
+  inverterModel: string;
+  capacity: string;
+  serialNumber: string;
+  faultDescription: string;
+  errorCode: string;
+  priority: "LOW" | "MEDIUM" | "HIGH";
+  warrantyStatus: boolean;
+  warrantyEndDate?: string; // YYYY-MM-DD (only when under warranty)
+};
+
+export async function apiUpdateTicketDetails(
+  id: string,
+  input: TicketEditInput,
+): Promise<Ticket> {
+  let warrantyEnd: string | null | undefined = undefined;
+  if (!input.warrantyStatus) {
+    warrantyEnd = null;
+  } else if (input.warrantyEndDate) {
+    const d = new Date(`${input.warrantyEndDate}T00:00:00.000Z`);
+    const t = d.getTime();
+    if (!Number.isNaN(t)) warrantyEnd = new Date(t).toISOString();
+  }
+
+  const payload = {
+    customer: {
+      name: String(input.customerName || "").trim(),
+      company: String(input.customerCompany || "").trim(),
+      phone: String(input.customerPhone || "").trim(),
+      address: String(input.customerAddress || "").trim(),
+    },
+    inverter: {
+      make: String(input.inverterMake || "").trim(),
+      model: String(input.inverterModel || "").trim(),
+      serialNo: String(input.serialNumber || "").trim(),
+      capacity: String(input.capacity || "").trim(),
+      ...(warrantyEnd !== undefined ? { warrantyEnd } : {}),
+    },
+    issue: {
+      description: String(input.faultDescription || "").trim(),
+      errorCode: String(input.errorCode || "").trim(),
+      priority: input.priority,
+    },
+  };
+
+  const env = await apiFetch<BackendTicket>(`/api/tickets/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  if (!env.success) throw new Error(env.message || "Failed to update ticket");
+  return toTicket(env.data);
+}
+
+export async function apiUpdateTicketFaultDescription(
+  id: string,
+  faultDescription: string,
+): Promise<Ticket> {
+  const payload = {
+    issue: { description: String(faultDescription || "").trim() },
+  };
+  const env = await apiFetch<BackendTicket>(`/api/tickets/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  if (!env.success) throw new Error(env.message || "Failed to update ticket");
+  return toTicket(env.data);
+}
+
 export async function apiUsersList(): Promise<User[]> {
   const env = await apiFetch<{ users: BackendUser[]; pagination: Json }>("/api/users", {
     method: "GET",
@@ -532,6 +662,27 @@ export async function apiSlaSettingsUpdate(input: SlaSettings): Promise<SlaSetti
   });
   if (!env.success) throw new Error(env.message || "Failed to update SLA settings");
   return env.data;
+}
+
+export async function apiSchedulePickup(input: {
+  ticketId: string;
+  pickupDate: string; // YYYY-MM-DD
+  courierName: string;
+  lrNumber: string;
+  pickupLocation: string;
+}): Promise<void> {
+  const payload = {
+    ticketId: input.ticketId,
+    pickupDate: `${input.pickupDate}T00:00:00.000Z`,
+    courierName: input.courierName,
+    lrNumber: input.lrNumber,
+    pickupLocation: input.pickupLocation,
+  };
+  const env = await apiFetch<unknown>("/api/logistics/schedule-pickup", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!env.success) throw new Error(env.message || "Failed to schedule pickup");
 }
 
 export async function apiReportsGet(params?: { months?: number }): Promise<ReportsData> {

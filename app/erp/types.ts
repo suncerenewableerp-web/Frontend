@@ -68,10 +68,7 @@ export type TicketStatus =
   | "CREATED"
   | "PICKUP_SCHEDULED"
   | "IN_TRANSIT"
-  | "RECEIVED"
-  | "DIAGNOSIS"
-  | "REPAIR"
-  | "TESTING"
+  | "UNDER_REPAIRED"
   | "DISPATCHED"
   | "CLOSED";
 
@@ -79,6 +76,13 @@ export interface Ticket {
   id: string;
   ticketId: string;
   customer: string;
+  customerName?: string;
+  customerCompany?: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  pickupDate?: string; // YYYY-MM-DD
+  courierName?: string;
+  lrNumber?: string;
   inverterMake: string;
   inverterModel: string;
   capacity: string;
@@ -88,6 +92,7 @@ export interface Ticket {
   priority: "LOW" | "MEDIUM" | "HIGH";
   status: TicketStatus;
   warrantyStatus: boolean;
+  warrantyEndDate?: string; // YYYY-MM-DD (derived from inverter.warrantyEnd)
   assignedEngineer: string;
   createdAt: string;
   slaStatus: "MET" | "BREACHED" | "AT_RISK";

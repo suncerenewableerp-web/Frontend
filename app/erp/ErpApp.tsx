@@ -6,6 +6,7 @@ import {
   apiCreateTicket,
   apiLogin,
   apiRolesPublic,
+  apiSchedulePickup,
   apiSignup,
   apiTicketsList,
   apiUpdateTicketStatus,
@@ -170,6 +171,23 @@ export default function ErpApp({
     notify(`Ticket ${updated.ticketId} updated to ${updated.status}`);
   };
 
+  const handleTicketUpdated = (updated: Ticket) => {
+    setTickets((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+    setSelectedTicket(updated);
+  };
+
+  const handleSchedulePickup = async (input: {
+    ticketId: string;
+    pickupDate: string;
+    courierName: string;
+    lrNumber: string;
+    pickupLocation: string;
+  }) => {
+    await apiSchedulePickup(input);
+    notify("Pickup scheduled!");
+    await loadTickets();
+  };
+
   const getPageTitle = () => {
     const titles: Record<string, string> = {
       dashboard: "Dashboard",
@@ -287,11 +305,13 @@ export default function ErpApp({
             )}
             {page === "ticket_detail" && selectedTicket && (
               <TicketDetail
+                key={`${selectedTicket.id}:${ticketDetailTab}`}
                 ticket={selectedTicket}
                 user={user}
                 roles={roles}
                 onBack={() => setPage("tickets")}
                 onUpdateStatus={handleUpdateSelectedTicketStatus}
+                onTicketUpdated={handleTicketUpdated}
                 initialTab={ticketDetailTab}
               />
             )}
@@ -306,8 +326,18 @@ export default function ErpApp({
                 }}
               />
             )}
-            {page === "logistics" && <Logistics tickets={tickets} />}
-            {page === "sla" && <SLAMonitor tickets={tickets} />}
+            {page === "logistics" && (
+              <Logistics
+                tickets={tickets}
+                onSchedulePickup={
+                  canAccess(roles, user.role, "logistics", "edit") ||
+                  canAccess(roles, user.role, "logistics", "create")
+                    ? handleSchedulePickup
+                    : undefined
+                }
+              />
+            )}
+            {page === "sla" && <SLAMonitor tickets={tickets} user={user} roles={roles} />}
             {page === "reports" && <Reports tickets={tickets} />}
             {page === "users" && (
               <UserManagement

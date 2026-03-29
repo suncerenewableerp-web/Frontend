@@ -18,9 +18,9 @@ export default function JobCards({
       ? tickets.filter(
           (t) =>
             t.assignedEngineer === user.name &&
-            ["DIAGNOSIS", "REPAIR", "TESTING"].includes(t.status),
+            t.status === "UNDER_REPAIRED",
         )
-      : tickets.filter((t) => ["DIAGNOSIS", "REPAIR", "TESTING"].includes(t.status));
+      : tickets.filter((t) => t.status === "UNDER_REPAIRED");
 
   return (
     <div className="content">

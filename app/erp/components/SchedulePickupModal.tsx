@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { Ticket } from "../types";
 
 function toDateInputValue(date: Date) {
@@ -17,7 +17,13 @@ export default function SchedulePickupModal({
 }: {
   tickets: Ticket[];
   onClose: () => void;
-  onSchedule: (ticketId: string) => Promise<void>;
+  onSchedule: (input: {
+    ticketId: string;
+    pickupDate: string;
+    courierName: string;
+    lrNumber: string;
+    pickupLocation: string;
+  }) => Promise<void>;
 }) {
   const eligible = useMemo(
     () => tickets.filter((t) => t.status === "CREATED"),
@@ -29,23 +35,29 @@ export default function SchedulePickupModal({
     toDateInputValue(new Date(Date.now() + 24 * 60 * 60 * 1000)),
   );
   const [courierName, setCourierName] = useState("BlueDart");
+  const [lrNumber, setLrNumber] = useState("");
   const [pickupLocation, setPickupLocation] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (!ticketId && eligible[0]) setTicketId(eligible[0].id);
-  }, [eligible, ticketId]);
+  const eligibleIds = useMemo(() => new Set(eligible.map((t) => t.id)), [eligible]);
+  const selectedTicketId = eligibleIds.has(ticketId) ? ticketId : eligible[0]?.id || "";
 
   const handleSubmit = () => {
-    if (!ticketId) {
+    if (!selectedTicketId) {
       setError("Please select a ticket");
       return;
     }
 
     setLoading(true);
     setError("");
-    onSchedule(ticketId)
+    onSchedule({
+      ticketId: selectedTicketId,
+      pickupDate,
+      courierName,
+      lrNumber,
+      pickupLocation,
+    })
       .then(() => onClose())
       .catch((e) =>
         setError(e instanceof Error ? e.message : "Failed to schedule pickup"),
@@ -78,7 +90,7 @@ export default function SchedulePickupModal({
               <label className="form-label">Select ticket *</label>
               <select
                 className="form-select"
-                value={ticketId}
+                value={selectedTicketId}
                 onChange={(e) => setTicketId(e.target.value)}
                 disabled={eligible.length === 0}
               >
@@ -113,6 +125,15 @@ export default function SchedulePickupModal({
                 placeholder="e.g. BlueDart"
                 value={courierName}
                 onChange={(e) => setCourierName(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">LR number</label>
+              <input
+                className="form-input"
+                placeholder="e.g. BD2026..."
+                value={lrNumber}
+                onChange={(e) => setLrNumber(e.target.value)}
               />
             </div>
             <div className="form-group full">

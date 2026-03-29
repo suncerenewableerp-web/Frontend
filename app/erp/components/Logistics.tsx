@@ -5,7 +5,19 @@ import type { Ticket } from "../types";
 import { StatusBadge } from "./Badges";
 import SchedulePickupModal from "./SchedulePickupModal";
 
-export default function Logistics({ tickets, onSchedulePickup }: { tickets: Ticket[], onSchedulePickup?: (ticketId: string) => Promise<void> }) {
+export default function Logistics({
+  tickets,
+  onSchedulePickup,
+}: {
+  tickets: Ticket[];
+  onSchedulePickup?: (input: {
+    ticketId: string;
+    pickupDate: string;
+    courierName: string;
+    lrNumber: string;
+    pickupLocation: string;
+  }) => Promise<void>;
+}) {
   const [showModal, setShowModal] = useState(false);
 
   return (
@@ -22,9 +34,11 @@ export default function Logistics({ tickets, onSchedulePickup }: { tickets: Tick
           <div className="page-title">Logistics & Pickup</div>
           <div className="page-sub">Track shipments and manage pickups</div>
         </div>
-        <button className="btn btn-accent" onClick={() => setShowModal(true)}>
-          + Schedule Pickup
-        </button>
+        {onSchedulePickup ? (
+          <button className="btn btn-accent" onClick={() => setShowModal(true)}>
+            + Schedule Pickup
+          </button>
+        ) : null}
       </div>
       <div className="table-card">
         <div className="table-header">
@@ -62,9 +76,9 @@ export default function Logistics({ tickets, onSchedulePickup }: { tickets: Tick
         <SchedulePickupModal
           tickets={tickets}
           onClose={() => setShowModal(false)}
-          onSchedule={async (ticketId) => {
+          onSchedule={async (input) => {
             if (onSchedulePickup) {
-              await onSchedulePickup(ticketId);
+              await onSchedulePickup(input);
             }
           }}
         />

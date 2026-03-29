@@ -104,15 +104,13 @@ export default function TicketsList({
                 <th>Priority</th>
                 <th>Status</th>
                 <th>SLA</th>
-                {user.role !== "CUSTOMER" && <th>Engineer</th>}
                 <th>Created</th>
-                <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10}>
+                  <td colSpan={8}>
                     <div className="empty-state">
                       <div className="empty-icon" aria-hidden>
                         <LuTicket />
@@ -125,7 +123,14 @@ export default function TicketsList({
                 filtered.map((t) => (
                   <tr key={t.id}>
                     <td>
-                      <span className="td-mono">{t.ticketId}</span>
+                      <button
+                        type="button"
+                        className="td-mono table-link"
+                        onClick={() => onView(t)}
+                        title="View ticket"
+                      >
+                        {t.ticketId}
+                      </button>
                     </td>
                     <td style={{ fontWeight: 500 }}>{t.customer}</td>
                     <td>
@@ -154,11 +159,6 @@ export default function TicketsList({
                     <td>
                       <SlaBadge status={t.slaStatus} />
                     </td>
-                    {user.role !== "CUSTOMER" && (
-                      <td style={{ fontSize: 12, color: "var(--text2)" }}>
-                        {t.assignedEngineer}
-                      </td>
-                    )}
                     <td
                       style={{
                         fontSize: 12,
@@ -167,11 +167,6 @@ export default function TicketsList({
                       }}
                     >
                       {t.createdAt}
-                    </td>
-                    <td>
-                      <button className="btn btn-ghost btn-sm" onClick={() => onView(t)}>
-                        View
-                      </button>
                     </td>
                   </tr>
                 ))

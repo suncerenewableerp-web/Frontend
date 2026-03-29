@@ -100,19 +100,21 @@ export default function NewTicketModal({
           <div className="form-section">Customer Information</div>
           <div className="form-grid">
             <div className="form-group">
-              <label className="form-label">Customer / Company Name</label>
-              <input
-                className="form-input"
-                placeholder="Your name"
-                onChange={(e) => set("customerName", e.target.value)}
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Company (Inverter Owner)</label>
+              <label className="form-label">Company Name</label>
               <input
                 className="form-input"
                 placeholder="Company name"
+                value={form.customerCompany}
                 onChange={(e) => set("customerCompany", e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Complaint Raised By</label>
+              <input
+                className="form-input"
+                placeholder="Customer name"
+                value={form.customerName}
+                onChange={(e) => set("customerName", e.target.value)}
               />
             </div>
           </div>
@@ -182,7 +184,7 @@ export default function NewTicketModal({
               <label className="form-label">Inverter Location</label>
               <input
                 className="form-input"
-                placeholder="Pickup/installation location (address / city / site)"
+                placeholder="Pickup/installation location (Full Address)"
                 onChange={(e) => set("inverterLocation", e.target.value)}
               />
             </div>

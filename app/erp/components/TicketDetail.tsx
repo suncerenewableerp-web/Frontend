@@ -2,7 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { STATUS_ORDER } from "../constants";
-import { apiTicketJobCardGet, apiTicketJobCardUpdate } from "../api";
+import {
+  apiSchedulePickup,
+  apiSlaSettingsGet,
+  apiSlaSettingsUpdate,
+  apiTicketJobCardGet,
+  apiTicketJobCardUpdate,
+  apiTicketGet,
+  apiUpdateTicketDetails,
+  apiUpdateTicketFaultDescription,
+} from "../api";
 import type {
   JobCard,
   JobCardFinalTestingActivity,
@@ -73,12 +82,30 @@ function normalizeFinalTesting(
   });
 }
 
+function toDateInputValue(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function formatHours(v: number) {
+  return `${v}h`;
+}
+
+function parseHours(input: string): number | null {
+  const raw = String(input || "").trim().toLowerCase();
+  const m = raw.match(/^(\d+)\s*h?$/);
+  if (!m) return null;
+  const n = Number.parseInt(m[1], 10);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
 export default function TicketDetail({
   ticket,
   user,
   roles,
   onBack,
   onUpdateStatus,
+  onTicketUpdated,
   initialTab = "overview",
 }: {
   ticket: Ticket;
@@ -86,6 +113,7 @@ export default function TicketDetail({
   roles: RoleDefinition[];
   onBack: () => void;
   onUpdateStatus: (status: TicketStatus) => Promise<void>;
+  onTicketUpdated: (t: Ticket) => void;
   initialTab?: "overview" | "jobcard" | "logistics" | "sla";
 }) {
   const tabs = ["overview", "jobcard", "logistics", "sla"] as const;
@@ -93,10 +121,77 @@ export default function TicketDetail({
   const [newStatus, setNewStatus] = useState(ticket.status);
   const [updating, setUpdating] = useState(false);
   const currentIdx = STATUS_ORDER.indexOf(ticket.status);
+  const roleName = String(user.role || "").toUpperCase();
+  const canUpdateStatus = useMemo(() => {
+    if (roleName !== "ADMIN" && roleName !== "ENGINEER") return false;
+    return canAccess(roles, user.role, "tickets", "edit") && ticket.status !== "CLOSED";
+  }, [roles, user.role, ticket.status, roleName]);
+  const canEditLogistics = useMemo(() => {
+    if (roleName !== "ADMIN" && roleName !== "SALES") return false;
+    return (
+      ticket.status !== "CLOSED" &&
+      (canAccess(roles, user.role, "logistics", "edit") ||
+        canAccess(roles, user.role, "logistics", "create"))
+    );
+  }, [roles, user.role, ticket.status, roleName]);
+  const canEditSla = useMemo(() => {
+    if (roleName !== "ADMIN" && roleName !== "SALES") return false;
+    return canAccess(roles, user.role, "sla", "edit");
+  }, [roles, user.role, roleName]);
   const canEditJobCard = useMemo(
     () => canAccess(roles, user.role, "jobcard", "edit"),
     [roles, user.role],
   );
+  const canEditTicketDetails = useMemo(() => {
+    if (roleName !== "ADMIN") return false;
+    return canAccess(roles, user.role, "tickets", "edit") && ticket.status !== "CLOSED";
+  }, [roles, user.role, ticket.status, roleName]);
+  const canEditFaultDescription = useMemo(() => {
+    if (roleName !== "SALES") return false;
+    return canAccess(roles, user.role, "tickets", "edit") && ticket.status !== "CLOSED";
+  }, [roles, user.role, ticket.status, roleName]);
+
+  const [details, setDetails] = useState({
+    customerName: ticket.customerName || "",
+    customerCompany: ticket.customerCompany || "",
+    customerPhone: ticket.customerPhone || "",
+    customerAddress: ticket.customerAddress || "",
+    inverterMake: ticket.inverterMake === "—" ? "" : ticket.inverterMake,
+    inverterModel: ticket.inverterModel === "—" ? "" : ticket.inverterModel,
+    capacity: ticket.capacity === "—" ? "" : ticket.capacity,
+    serialNumber: ticket.serialNumber === "—" ? "" : ticket.serialNumber,
+    faultDescription: ticket.faultDescription === "—" ? "" : ticket.faultDescription,
+    errorCode: ticket.errorCode || "",
+    priority: ticket.priority,
+    warrantyStatus: Boolean(ticket.warrantyStatus),
+    warrantyEndDate: ticket.warrantyEndDate || "",
+  });
+  const [detailsSaving, setDetailsSaving] = useState(false);
+  const [detailsError, setDetailsError] = useState("");
+  const [detailsSavedMsg, setDetailsSavedMsg] = useState("");
+
+  const [faultDesc, setFaultDesc] = useState(ticket.faultDescription === "—" ? "" : ticket.faultDescription);
+  const [faultSaving, setFaultSaving] = useState(false);
+  const [faultError, setFaultError] = useState("");
+  const [faultSavedMsg, setFaultSavedMsg] = useState("");
+
+  const [pickupDate, setPickupDate] = useState(() =>
+    ticket.pickupDate || toDateInputValue(new Date(Date.now() + 86400000)),
+  );
+  const [courierName, setCourierName] = useState(ticket.courierName || "BlueDart");
+  const [lrNumber, setLrNumber] = useState(ticket.lrNumber || "");
+  const [pickupLocation, setPickupLocation] = useState(ticket.customerAddress || "");
+  const [logisticsSaving, setLogisticsSaving] = useState(false);
+  const [logisticsError, setLogisticsError] = useState("");
+  const [logisticsSavedMsg, setLogisticsSavedMsg] = useState("");
+
+  const [showSlaSettings, setShowSlaSettings] = useState(false);
+  const [slaLoading, setSlaLoading] = useState(false);
+  const [slaSaving, setSlaSaving] = useState(false);
+  const [slaError, setSlaError] = useState("");
+  const [critical, setCritical] = useState("24h");
+  const [high, setHigh] = useState("48h");
+  const [normal, setNormal] = useState("72h");
 
   const [jobCard, setJobCard] = useState<JobCard | null>(null);
   const [jobLoading, setJobLoading] = useState(false);
@@ -106,11 +201,16 @@ export default function TicketDetail({
 
   useEffect(() => {
     if (activeTab !== "jobcard") return;
-    setJobLoading(true);
-    setJobError("");
-    setJobSavedMsg("");
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setJobLoading(true);
+      setJobError("");
+      setJobSavedMsg("");
+    });
     apiTicketJobCardGet(ticket.id)
       .then((jc) => {
+        if (cancelled) return;
         setJobCard({
           ...jc,
           serviceJobs: normalizeServiceJobs(jc.serviceJobs || []),
@@ -118,12 +218,54 @@ export default function TicketDetail({
         });
       })
       .catch((e) => setJobError(e instanceof Error ? e.message : "Failed to load job card"))
-      .finally(() => setJobLoading(false));
+      .finally(() => {
+        if (cancelled) return;
+        setJobLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [activeTab, ticket.id]);
 
   useEffect(() => {
-    setActiveTab(initialTab);
-  }, [initialTab, ticket.id]);
+    queueMicrotask(() => setNewStatus(ticket.status));
+  }, [ticket.status]);
+
+  useEffect(() => {
+    if (!showSlaSettings || !canEditSla) return;
+    let mounted = true;
+    queueMicrotask(() => {
+      if (!mounted) return;
+      setSlaLoading(true);
+      setSlaError("");
+    });
+    apiSlaSettingsGet()
+      .then((s) => {
+        if (!mounted) return;
+        setCritical(formatHours(s.criticalHours));
+        setHigh(formatHours(s.highHours));
+        setNormal(formatHours(s.normalHours));
+      })
+      .catch((e) => {
+        if (!mounted) return;
+        setSlaError(e instanceof Error ? e.message : "Failed to load SLA settings");
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setSlaLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [showSlaSettings, canEditSla]);
+
+  const parsedSla = useMemo(() => {
+    const criticalHours = parseHours(critical);
+    const highHours = parseHours(high);
+    const normalHours = parseHours(normal);
+    const ok = criticalHours !== null && highHours !== null && normalHours !== null;
+    return { ok, criticalHours, highHours, normalHours };
+  }, [critical, high, normal]);
 
   return (
     <div className="content">
@@ -195,7 +337,252 @@ export default function TicketDetail({
             </div>
           </div>
 
-          {canAccess(roles, user.role, "tickets", "edit") && ticket.status !== "CLOSED" && (
+          {canEditFaultDescription && (
+            <div className="table-card" style={{ marginBottom: 16 }}>
+              <div className="table-header">
+                <div className="table-title">Update Fault Description</div>
+              </div>
+              <div style={{ padding: "16px 20px" }}>
+                {faultError && (
+                  <div className="form-error" style={{ marginBottom: 12 }}>
+                    {faultError}
+                  </div>
+                )}
+                {faultSavedMsg && (
+                  <div style={{ marginBottom: 12, fontSize: 13, color: "#16a34a" }}>
+                    {faultSavedMsg}
+                  </div>
+                )}
+                <textarea
+                  className="form-input"
+                  value={faultDesc}
+                  onChange={(e) => setFaultDesc(e.target.value)}
+                  rows={4}
+                  style={{ resize: "vertical" }}
+                />
+                <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    className="btn btn-accent"
+                    disabled={faultSaving || !faultDesc.trim()}
+                    onClick={() => {
+                      setFaultSaving(true);
+                      setFaultError("");
+                      setFaultSavedMsg("");
+                      apiUpdateTicketFaultDescription(ticket.id, faultDesc)
+                        .then((updated) => {
+                          onTicketUpdated(updated);
+                          setFaultDesc(updated.faultDescription === "—" ? "" : updated.faultDescription);
+                          setFaultSavedMsg("Fault description saved.");
+                        })
+                        .catch((e) =>
+                          setFaultError(e instanceof Error ? e.message : "Failed to save fault description"),
+                        )
+                        .finally(() => setFaultSaving(false));
+                    }}
+                  >
+                    {faultSaving ? "Saving..." : "Save Fault Description"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {canEditTicketDetails && (
+            <div className="table-card" style={{ marginBottom: 16 }}>
+              <div className="table-header">
+                <div className="table-title">Edit Ticket Details</div>
+              </div>
+              <div style={{ padding: "16px 20px" }}>
+                {detailsError && (
+                  <div className="form-error" style={{ marginBottom: 12 }}>
+                    {detailsError}
+                  </div>
+                )}
+                {detailsSavedMsg && (
+                  <div style={{ marginBottom: 12, fontSize: 13, color: "#16a34a" }}>
+                    {detailsSavedMsg}
+                  </div>
+                )}
+
+                <div className="form-grid">
+                  <div>
+                    <div className="form-label">Customer Name</div>
+                    <input
+                      className="form-input"
+                      value={details.customerName}
+                      onChange={(e) => setDetails((p) => ({ ...p, customerName: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <div className="form-label">Company</div>
+                    <input
+                      className="form-input"
+                      value={details.customerCompany}
+                      onChange={(e) => setDetails((p) => ({ ...p, customerCompany: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <div className="form-label">Phone</div>
+                    <input
+                      className="form-input"
+                      value={details.customerPhone}
+                      onChange={(e) => setDetails((p) => ({ ...p, customerPhone: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <div className="form-label">Address</div>
+                    <input
+                      className="form-input"
+                      value={details.customerAddress}
+                      onChange={(e) => setDetails((p) => ({ ...p, customerAddress: e.target.value }))}
+                    />
+                  </div>
+
+                  <div>
+                    <div className="form-label">Inverter Make</div>
+                    <input
+                      className="form-input"
+                      value={details.inverterMake}
+                      onChange={(e) => setDetails((p) => ({ ...p, inverterMake: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <div className="form-label">Model</div>
+                    <input
+                      className="form-input"
+                      value={details.inverterModel}
+                      onChange={(e) => setDetails((p) => ({ ...p, inverterModel: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <div className="form-label">Capacity</div>
+                    <input
+                      className="form-input"
+                      value={details.capacity}
+                      onChange={(e) => setDetails((p) => ({ ...p, capacity: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <div className="form-label">Serial Number</div>
+                    <input
+                      className="form-input"
+                      value={details.serialNumber}
+                      onChange={(e) => setDetails((p) => ({ ...p, serialNumber: e.target.value }))}
+                    />
+                  </div>
+
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <div className="form-label">Fault Description</div>
+                    <textarea
+                      className="form-input"
+                      value={details.faultDescription}
+                      onChange={(e) => setDetails((p) => ({ ...p, faultDescription: e.target.value }))}
+                      rows={3}
+                      style={{ resize: "vertical" }}
+                    />
+                  </div>
+
+                  <div>
+                    <div className="form-label">Error Code</div>
+                    <input
+                      className="form-input"
+                      value={details.errorCode}
+                      onChange={(e) => setDetails((p) => ({ ...p, errorCode: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <div className="form-label">Priority</div>
+                    <select
+                      className="form-select"
+                      value={details.priority}
+                      onChange={(e) =>
+                        setDetails((p) => ({ ...p, priority: e.target.value as Ticket["priority"] }))
+                      }
+                    >
+                      <option value="LOW">LOW</option>
+                      <option value="MEDIUM">MEDIUM</option>
+                      <option value="HIGH">HIGH</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <div className="form-label">Warranty</div>
+                    <select
+                      className="form-select"
+                      value={details.warrantyStatus ? "true" : "false"}
+                      onChange={(e) => {
+                        const under = e.target.value === "true";
+                        setDetails((p) => ({
+                          ...p,
+                          warrantyStatus: under,
+                          warrantyEndDate: under ? p.warrantyEndDate : "",
+                        }));
+                      }}
+                    >
+                      <option value="true">Under Warranty</option>
+                      <option value="false">Out of Warranty</option>
+                    </select>
+                  </div>
+                  {details.warrantyStatus ? (
+                    <div>
+                      <div className="form-label">Warranty End Date</div>
+                      <input
+                        className="form-input"
+                        type="date"
+                        value={details.warrantyEndDate}
+                        onChange={(e) => setDetails((p) => ({ ...p, warrantyEndDate: e.target.value }))}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+
+                <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    className="btn btn-accent"
+                    disabled={
+                      detailsSaving ||
+                      !details.capacity.trim() ||
+                      !details.faultDescription.trim() ||
+                      (details.warrantyStatus && !details.warrantyEndDate.trim())
+                    }
+                    onClick={() => {
+                      setDetailsSaving(true);
+                      setDetailsError("");
+                      setDetailsSavedMsg("");
+                      apiUpdateTicketDetails(ticket.id, details)
+                        .then((updated) => {
+                          onTicketUpdated(updated);
+                          setDetails({
+                            customerName: updated.customerName || "",
+                            customerCompany: updated.customerCompany || "",
+                            customerPhone: updated.customerPhone || "",
+                            customerAddress: updated.customerAddress || "",
+                            inverterMake: updated.inverterMake === "—" ? "" : updated.inverterMake,
+                            inverterModel: updated.inverterModel === "—" ? "" : updated.inverterModel,
+                            capacity: updated.capacity === "—" ? "" : updated.capacity,
+                            serialNumber: updated.serialNumber === "—" ? "" : updated.serialNumber,
+                            faultDescription: updated.faultDescription === "—" ? "" : updated.faultDescription,
+                            errorCode: updated.errorCode || "",
+                            priority: updated.priority,
+                            warrantyStatus: Boolean(updated.warrantyStatus),
+                            warrantyEndDate: updated.warrantyEndDate || "",
+                          });
+                          setDetailsSavedMsg("Ticket details saved.");
+                        })
+                        .catch((e) =>
+                          setDetailsError(e instanceof Error ? e.message : "Failed to save ticket")
+                        )
+                        .finally(() => setDetailsSaving(false));
+                    }}
+                  >
+                    {detailsSaving ? "Saving..." : "Save Details"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {canUpdateStatus && (
             <div className="table-card">
               <div className="table-header">
                 <div className="table-title">Update Status</div>
@@ -596,6 +983,8 @@ export default function TicketDetail({
                       }));
 
                       const { id: _id, ticketId: _ticketId, ...rest } = jobCard;
+                      void _id;
+                      void _ticketId;
                       apiTicketJobCardUpdate(ticket.id, {
                         ...rest,
                         serviceJobs: cleanedService,
@@ -634,39 +1023,199 @@ export default function TicketDetail({
 
       {activeTab === "logistics" && (
         <div className="table-card">
-          <div className="table-header">
+          <div className="table-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div className="table-title">Logistics & Pickup</div>
+            {canEditLogistics ? (
+              <button
+                className="btn btn-accent btn-sm"
+                disabled={logisticsSaving || !pickupDate.trim()}
+                onClick={() => {
+                  setLogisticsSaving(true);
+                  setLogisticsError("");
+                  setLogisticsSavedMsg("");
+                  apiSchedulePickup({
+                    ticketId: ticket.id,
+                    pickupDate,
+                    courierName,
+                    lrNumber,
+                    pickupLocation,
+                  })
+                    .then(() => apiTicketGet(ticket.id))
+                    .then((fresh) => {
+                      onTicketUpdated(fresh);
+                      if (fresh.pickupDate) setPickupDate(fresh.pickupDate);
+                      if (fresh.courierName) setCourierName(fresh.courierName);
+                      if (fresh.lrNumber) setLrNumber(fresh.lrNumber);
+                      setLogisticsSavedMsg("Logistics updated.");
+                    })
+                    .catch((e) =>
+                      setLogisticsError(e instanceof Error ? e.message : "Failed to update logistics"),
+                    )
+                    .finally(() => setLogisticsSaving(false));
+                }}
+              >
+                {logisticsSaving ? "Saving..." : "Save"}
+              </button>
+            ) : null}
           </div>
           <div style={{ padding: "20px" }}>
+            {logisticsError ? (
+              <div className="form-error" style={{ marginBottom: 12, marginTop: -6 }}>
+                {logisticsError}
+              </div>
+            ) : null}
+            {logisticsSavedMsg ? (
+              <div style={{ marginBottom: 12, fontSize: 12, color: "var(--green)" }}>
+                {logisticsSavedMsg}
+              </div>
+            ) : null}
             <div className="detail-grid">
               <div className="detail-card">
                 <div className="detail-label">Pickup Date</div>
-                <div className="detail-value">2026-03-16</div>
+                <div className="detail-value">{ticket.pickupDate || "—"}</div>
               </div>
               <div className="detail-card">
                 <div className="detail-label">Courier</div>
-                <div className="detail-value">BlueDart Express</div>
+                <div className="detail-value">{ticket.courierName || "—"}</div>
               </div>
               <div className="detail-card">
                 <div className="detail-label">LR Number</div>
                 <div className="detail-value" style={{ fontFamily: "var(--mono)", color: "var(--accent)", fontSize: 12 }}>
-                  BD2026031600123
+                  {ticket.lrNumber || "—"}
                 </div>
               </div>
             </div>
+
+            {canEditLogistics ? (
+              <div style={{ marginTop: 18 }}>
+                <div className="form-grid">
+                  <div>
+                    <div className="form-label">Pickup date</div>
+                    <input
+                      className="form-input"
+                      type="date"
+                      value={pickupDate}
+                      onChange={(e) => setPickupDate(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <div className="form-label">Courier</div>
+                    <input
+                      className="form-input"
+                      value={courierName}
+                      onChange={(e) => setCourierName(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <div className="form-label">LR number</div>
+                    <input
+                      className="form-input"
+                      value={lrNumber}
+                      onChange={(e) => setLrNumber(e.target.value)}
+                    />
+                  </div>
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <div className="form-label">Pickup location</div>
+                    <input
+                      className="form-input"
+                      value={pickupLocation}
+                      onChange={(e) => setPickupLocation(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div style={{ marginTop: 10, fontSize: 12, color: "var(--text3)", lineHeight: 1.5 }}>
+                  Saving pickup will move the ticket status to{" "}
+                  <span className="tag">PICKUP SCHEDULED</span> (if it is currently{" "}
+                  <span className="tag">CREATED</span>).
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginTop: 16, fontSize: 12, color: "var(--text3)" }}>
+                You don&apos;t have permission to edit logistics.
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {activeTab === "sla" && (
         <div className="table-card">
-          <div className="table-header">
+          <div className="table-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div className="table-title">SLA Monitoring</div>
+            {canEditSla ? (
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowSlaSettings((v) => !v)}>
+                {showSlaSettings ? "Hide SLA Settings" : "Edit SLA Settings"}
+              </button>
+            ) : null}
           </div>
           <div style={{ padding: "20px" }}>
             <div style={{ marginBottom: 20 }}>
               <SlaBadge status={ticket.slaStatus} />
             </div>
+
+            {canEditSla && showSlaSettings ? (
+              <div className="table-card" style={{ marginBottom: 16 }}>
+                <div className="table-header">
+                  <div className="table-title">SLA Configuration</div>
+                </div>
+                <div style={{ padding: "16px 20px" }}>
+                  {slaError ? (
+                    <div className="form-error" style={{ marginBottom: 12, marginTop: -6 }}>
+                      {slaError}
+                    </div>
+                  ) : null}
+                  <div className="form-grid">
+                    {[
+                      { label: "Critical Priority SLA", value: critical, onChange: setCritical },
+                      { label: "High Priority SLA", value: high, onChange: setHigh },
+                      { label: "Normal Priority SLA", value: normal, onChange: setNormal },
+                    ].map((item) => (
+                      <div key={item.label}>
+                        <div className="form-label">{item.label}</div>
+                        <input
+                          className="form-input"
+                          value={item.value}
+                          onChange={(e) => item.onChange(e.target.value)}
+                          disabled={slaLoading || slaSaving}
+                          inputMode="numeric"
+                          style={{ fontFamily: "var(--mono)" }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
+                    <button
+                      className="btn btn-accent btn-sm"
+                      disabled={slaLoading || slaSaving || !parsedSla.ok}
+                      onClick={() => {
+                        if (!parsedSla.ok) {
+                          setSlaError("Please enter valid hours like 24h, 48h, 72h");
+                          return;
+                        }
+                        const payload = {
+                          criticalHours: parsedSla.criticalHours!,
+                          highHours: parsedSla.highHours!,
+                          normalHours: parsedSla.normalHours!,
+                        };
+                        setSlaSaving(true);
+                        setSlaError("");
+                        apiSlaSettingsUpdate(payload)
+                          .then((saved) => {
+                            setCritical(formatHours(saved.criticalHours));
+                            setHigh(formatHours(saved.highHours));
+                            setNormal(formatHours(saved.normalHours));
+                          })
+                          .catch((e) => setSlaError(e instanceof Error ? e.message : "Failed to save SLA settings"))
+                          .finally(() => setSlaSaving(false));
+                      }}
+                    >
+                      {slaSaving ? "Saving..." : "Save SLA Settings"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             {[
               { label: "Response Time", limit: "24h", taken: "6h", pct: 25, color: "#16a34a" },
               { label: "Pickup Time", limit: "48h", taken: "36h", pct: 75, color: "#d97706" },

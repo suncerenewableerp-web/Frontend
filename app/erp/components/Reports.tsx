@@ -19,8 +19,11 @@ export default function Reports({ tickets }: { tickets: Ticket[] }) {
 
   useEffect(() => {
     let mounted = true;
-    setLoading(true);
-    setError("");
+    queueMicrotask(() => {
+      if (!mounted) return;
+      setLoading(true);
+      setError("");
+    });
     apiReportsGet({ months: 6 })
       .then((d) => {
         if (!mounted) return;
