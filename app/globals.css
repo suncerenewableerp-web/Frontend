@@ -252,10 +252,18 @@ body {
 
 /* ── SIDEBAR ── */
 .sidebar {
-  width: 248px; min-width: 248px; background: var(--surface);
+  width: 248px; background: var(--surface);
   border-right: 1px solid var(--border); display: flex; flex-direction: column;
   box-shadow: var(--shadow-sm);
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 400;
+  transform: translateX(-105%);
+  transition: transform 0.18s ease;
 }
+.sidebar.open { transform: translateX(0); }
 .sidebar-header {
   padding: 22px 20px 18px; border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: 12px;
@@ -321,6 +329,13 @@ body {
   padding: 22px 20px; position: relative; overflow: hidden; box-shadow: var(--shadow-sm);
   transition: box-shadow 0.2s, transform 0.2s;
 }
+button.kpi-card {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+}
+button.kpi-card:focus-visible { outline: 2px solid var(--accent-mid); outline-offset: 2px; }
 .kpi-card:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
 .kpi-accent-bar { position: absolute; top: 0; left: 0; right: 0; height: 3px; }
 .kpi-icon { font-size: 22px; margin-bottom: 12px; }
@@ -436,8 +451,32 @@ tr:hover td { background: var(--surface2); }
 .page-header-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .page-header-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
-.sidebar-toggle { display: none; }
-.sidebar-backdrop { display: none; }
+.sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text2);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.sidebar-toggle:hover { background: var(--surface3); color: var(--text); }
+
+.sidebar-backdrop {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 350;
+  background: rgba(26,22,18,0.36);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+.sidebar-backdrop.open { opacity: 1; pointer-events: auto; }
 .page-header { margin-bottom: 24px; }
 .page-title { font-family: var(--font-display); font-size: 24px; font-weight: 700; color: var(--text); }
 .page-sub { font-size: 13px; color: var(--text2); margin-top: 3px; }

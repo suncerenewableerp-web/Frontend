@@ -9,10 +9,14 @@ export default function Dashboard({
   user,
   tickets,
   onNav,
+  onViewTicket,
+  onOpenTickets,
 }: {
   user: User;
   tickets: Ticket[];
   onNav: (p: string) => void;
+  onViewTicket: (t: Ticket) => void;
+  onOpenTickets: (preset?: { status?: string; priority?: string }) => void;
 }) {
   const open = tickets.filter((t) => t.status !== "CLOSED").length;
   const closed = tickets.filter((t) => t.status === "CLOSED").length;
@@ -31,7 +35,7 @@ export default function Dashboard({
     <div className="content">
       <div className="page-header">
         <div className="page-title">
-          Good morning, {user.name.split(" ")[0]} 👋
+          Good morning, {user.name.split(" ")[0]} 
         </div>
         <div className="page-sub">
           Here&apos;s what&apos;s happening with your service operations today
@@ -45,6 +49,7 @@ export default function Dashboard({
             sub: "Active service requests",
             color: "#6b3a1f",
             Icon: LuTicket,
+            onClick: () => onOpenTickets({ status: "OPEN" }),
           },
           {
             label: "High Priority",
@@ -52,6 +57,7 @@ export default function Dashboard({
             sub: "Needs immediate attention",
             color: "#d97706",
             Icon: LuTriangleAlert,
+            onClick: () => onOpenTickets({ status: "OPEN", priority: "HIGH" }),
           },
           {
             label: "SLA Breached",
@@ -59,6 +65,7 @@ export default function Dashboard({
             sub: "Exceeding deadline",
             color: "#c0392b",
             Icon: LuSiren,
+            onClick: () => onNav("sla"),
           },
           {
             label: "Resolved",
@@ -66,9 +73,16 @@ export default function Dashboard({
             sub: "Tickets closed this month",
             color: "#16a34a",
             Icon: LuCircleCheck,
+            onClick: () => onOpenTickets({ status: "CLOSED" }),
           },
         ].map((k) => (
-          <div key={k.label} className="kpi-card">
+          <button
+            key={k.label}
+            type="button"
+            className="kpi-card"
+            onClick={k.onClick}
+            title={`Go to ${k.label}`}
+          >
             <div className="kpi-accent-bar" style={{ background: k.color }} />
             <div className="kpi-icon" style={{ color: k.color }} aria-hidden>
               <k.Icon />
@@ -78,7 +92,7 @@ export default function Dashboard({
               {k.value}
             </div>
             <div className="kpi-sub">{k.sub}</div>
-          </div>
+          </button>
         ))}
       </div>
       <div className="two-col">
@@ -179,7 +193,14 @@ export default function Dashboard({
               {myTickets.slice(0, 5).map((t) => (
                 <tr key={t.id}>
                   <td>
-                    <span className="td-mono">{t.ticketId}</span>
+                    <button
+                      type="button"
+                      className="td-mono table-link"
+                      onClick={() => onViewTicket(t)}
+                      title="View ticket"
+                    >
+                      {t.ticketId}
+                    </button>
                   </td>
                   <td>{t.customer}</td>
                   <td>

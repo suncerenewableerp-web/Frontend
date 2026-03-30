@@ -11,18 +11,22 @@ export default function TicketsList({
   user,
   roles,
   tickets,
+  initialStatusFilter,
+  initialPriorityFilter,
   onView,
   onNew,
 }: {
   user: User;
   roles: RoleDefinition[];
   tickets: Ticket[];
+  initialStatusFilter?: string;
+  initialPriorityFilter?: string;
   onView: (t: Ticket) => void;
   onNew: () => void;
 }) {
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("ALL");
-  const [priorityFilter, setPriorityFilter] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState(initialStatusFilter || "ALL");
+  const [priorityFilter, setPriorityFilter] = useState(initialPriorityFilter || "ALL");
 
   const myTickets = tickets;
 
@@ -31,7 +35,12 @@ export default function TicketsList({
       t.ticketId.toLowerCase().includes(search.toLowerCase()) ||
       t.customer.toLowerCase().includes(search.toLowerCase()) ||
       t.faultDescription.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === "ALL" || t.status === statusFilter;
+    const matchStatus =
+      statusFilter === "ALL"
+        ? true
+        : statusFilter === "OPEN"
+          ? t.status !== "CLOSED"
+          : t.status === statusFilter;
     const matchPriority =
       priorityFilter === "ALL" || t.priority === priorityFilter;
     return matchSearch && matchStatus && matchPriority;
@@ -75,6 +84,7 @@ export default function TicketsList({
               onChange={(e) => setStatusFilter(e.target.value)}
             >
               <option value="ALL">All Status</option>
+              <option value="OPEN">Open (Not closed)</option>
               {STATUS_ORDER.map((s) => (
                 <option key={s} value={s}>
                   {s.replace(/_/g, " ")}

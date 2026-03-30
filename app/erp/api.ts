@@ -39,6 +39,7 @@ export type ReportsData = {
 
 const STORAGE_KEY = "sunce_erp_auth_v1";
 const DEFAULT_TIMEOUT_MS = 25_000;
+let memoryAuth: { user: User; tokens: Tokens } | null = null;
 
 function isAbortError(err: unknown): boolean {
   return Boolean(
@@ -89,7 +90,8 @@ function readAuthStorage():
     if (!parsed?.user || !parsed?.tokens?.accessToken || !parsed?.tokens?.refreshToken) {
       return null;
     }
-    return { user: parsed.user, tokens: parsed.tokens };
+    memoryAuth = { user: parsed.user, tokens: parsed.tokens };
+    return memoryAuth;
   } catch {
     return null;
   }
@@ -97,16 +99,18 @@ function readAuthStorage():
 
 function writeAuthStorage(user: User, tokens: Tokens) {
   if (typeof window === "undefined") return;
+  memoryAuth = { user, tokens };
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ user, tokens }));
 }
 
 export function clearAuthStorage() {
   if (typeof window === "undefined") return;
+  memoryAuth = null;
   localStorage.removeItem(STORAGE_KEY);
 }
 
 export function getStoredAuth() {
-  return readAuthStorage();
+  return memoryAuth || readAuthStorage();
 }
 
 async function parseJsonEnvelope<T>(res: Response): Promise<ApiEnvelope<T>> {
@@ -139,13 +143,21 @@ async function apiFetch<T>(
   path: string,
   init?: RequestInit & { auth?: Tokens | null },
 ): Promise<ApiEnvelope<T>> {
-  const auth = init?.auth ?? readAuthStorage()?.tokens ?? null;
+  const auth =
+    init && "auth" in init
+      ? (init.auth ?? null)
+      : memoryAuth?.tokens ?? readAuthStorage()?.tokens ?? null;
   const headers = new Headers(init?.headers);
   headers.set("Accept", "application/json");
   if (!headers.has("Content-Type") && init?.body) {
     headers.set("Content-Type", "application/json");
   }
-  if (auth?.accessToken) headers.set("Authorization", `Bearer ${auth.accessToken}`);
+  if (auth?.accessToken) {
+    const bearer = `Bearer ${auth.accessToken}`;
+    headers.set("Authorization", bearer);
+    // Some reverse proxies strip `Authorization` by default; keep a fallback header for our Next proxy.
+    headers.set("X-Authorization", bearer);
+  }
 
   let res: Response;
   try {
@@ -167,9 +179,11 @@ async function apiFetch<T>(
 
   const stored = readAuthStorage();
   if (stored) writeAuthStorage(stored.user, newTokens);
+  else if (memoryAuth) memoryAuth = { user: memoryAuth.user, tokens: newTokens };
 
   const retryHeaders = new Headers(headers);
   retryHeaders.set("Authorization", `Bearer ${newTokens.accessToken}`);
+  retryHeaders.set("X-Authorization", `Bearer ${newTokens.accessToken}`);
   try {
     const retryRes = await fetchWithTimeout(path, { ...init, headers: retryHeaders });
     return parseJsonEnvelope<T>(retryRes);
@@ -705,6 +719,48 @@ export async function apiUsersList(): Promise<User[]> {
   });
   if (!env.success) throw new Error(env.message || "Failed to fetch users");
   return env.data.users.map(toUser);
+}
+
+export async function apiUserCreate(input: {
+  name: string;
+  email: string;
+  password: string;
+  role: string;
+  phone?: string;
+  company?: string;
+}): Promise<User> {
+  const env = await apiFetch<{ user: BackendUser }>("/api/users", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  if (!env.success) {
+    throw new ApiRequestError(env.message || "Failed to create user", env.errors);
+  }
+  return toUser(env.data.user);
+}
+
+export async function apiUserChangePassword(
+  userId: string,
+  oldPassword: string,
+  newPassword: string,
+): Promise<void> {
+  const env = await apiFetch<{ message?: string }>(`/api/users/${encodeURIComponent(userId)}/password`, {
+    method: "PUT",
+    body: JSON.stringify({ oldPassword, password: newPassword }),
+  });
+  if (!env.success) {
+    throw new ApiRequestError(env.message || "Failed to update password", env.errors);
+  }
+}
+
+export async function apiUserResetPassword(userId: string, newPassword: string): Promise<void> {
+  const env = await apiFetch<{ message?: string }>(`/api/users/${encodeURIComponent(userId)}/password/reset`, {
+    method: "POST",
+    body: JSON.stringify({ password: newPassword }),
+  });
+  if (!env.success) {
+    throw new ApiRequestError(env.message || "Failed to reset password", env.errors);
+  }
 }
 
 export async function apiSlaSettingsGet(): Promise<SlaSettings> {

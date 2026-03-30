@@ -6,19 +6,16 @@ import { useEffect, useState } from "react";
 import type { IconType } from "react-icons";
 import {
   LuArrowRight,
-  LuBriefcase,
   LuChartBar,
   LuChartColumn,
   LuCircleCheck,
   LuClock,
-  LuCrown,
   LuHeadphones,
   LuMapPin,
   LuShieldCheck,
   LuSunMedium,
   LuTicket,
   LuTruck,
-  LuUser,
   LuWrench,
   LuZap,
 } from "react-icons/lu";
@@ -114,53 +111,6 @@ export default function HomePage() {
     },
   ];
 
-  const roles: {
-    color: string;
-    bg: string;
-    icon: IconType;
-    name: string;
-    tag: string;
-    desc: string;
-    perms: string[];
-  }[] = [
-    {
-      color: "#8B4513",
-      bg: "rgba(139,69,19,0.08)",
-      icon: LuCrown,
-      name: "Administrator",
-      tag: "Full Access",
-      desc: "Complete visibility and control over all modules, users, roles, and system settings.",
-      perms: ["All Modules", "Role Builder", "User Management", "System Config"],
-    },
-    {
-      color: "#B8860B",
-      bg: "rgba(184,134,11,0.08)",
-      icon: LuBriefcase,
-      name: "Sales / BD",
-      tag: "Customer-Facing",
-      desc: "Create service tickets, manage customers, and track logistics and SLA compliance.",
-      perms: ["Dashboard", "Tickets", "Logistics", "SLA Monitor"],
-    },
-    {
-      color: "#4682B4",
-      bg: "rgba(70,130,180,0.08)",
-      icon: LuWrench,
-      name: "Service Engineer",
-      tag: "Field",
-      desc: "Access assigned job cards and update repair status — a clean, focused workflow.",
-      perms: ["Job Cards", "Tickets (edit)", "Logistics view", "Dashboard"],
-    },
-    {
-      color: "#2E8B57",
-      bg: "rgba(46,139,87,0.08)",
-      icon: LuUser,
-      name: "Customer",
-      tag: "Self-Service",
-      desc: "Track service requests, shipment status, and SLA timelines in real time.",
-      perms: ["My Tickets", "Logistics", "SLA Status", "Dashboard"],
-    },
-  ];
-
   const stats: { num: string; label: string; icon: IconType }[] = [
     { num: "500+", label: "Tickets Resolved", icon: LuTicket },
     { num: "98%", label: "SLA Compliance", icon: LuCircleCheck },
@@ -234,7 +184,7 @@ export default function HomePage() {
 
         @media (max-width: 1024px) {
           .hp-nav { padding-left: 24px !important; padding-right: 24px !important; }
-          #features, #how-it-works, #roles, #why-us { padding-left: 24px !important; padding-right: 24px !important; }
+          #features, #how-it-works, #why-us { padding-left: 24px !important; padding-right: 24px !important; }
           .hp-band { padding-left: 24px !important; padding-right: 24px !important; }
           .hp-cta-wrap { margin-left: 24px !important; margin-right: 24px !important; }
           .hp-cta { padding: 56px 44px !important; flex-direction: column !important; align-items: flex-start !important; }
@@ -269,7 +219,7 @@ export default function HomePage() {
           .hp-hero-decor { display: none !important; }
           .hp-band { padding: 56px 16px !important; }
           .hp-band-cards { grid-template-columns: 1fr !important; }
-          #features, #how-it-works, #roles, #why-us { padding: 72px 16px !important; }
+          #features, #how-it-works, #why-us { padding: 72px 16px !important; }
           .hp-grid-3, .hp-grid-4 { grid-template-columns: 1fr !important; }
           .hp-steps-line { display: none !important; }
           .hp-cta-wrap { margin: 0 16px 72px !important; }
@@ -369,7 +319,6 @@ export default function HomePage() {
             {[
               ["#features", "Features"],
               ["#how-it-works", "How It Works"],
-              ["#roles", "Roles"],
               ["#why-us", "Why Us"],
             ].map(([href, label]) => (
               <a
@@ -451,7 +400,7 @@ export default function HomePage() {
                   "0 3px 12px rgba(107,58,31,.3)";
               }}
             >
-              {"Get Started\u00A0→"}
+              {"Raise a Ticket\u00A0→"}
             </Link>
           </div>
         </nav>
@@ -696,7 +645,7 @@ export default function HomePage() {
                     "0 6px 20px rgba(107,58,31,.35)";
                 }}
               >
-                Start for Free <LuArrowRight size={16} aria-hidden />
+                Raise a Ticket <LuArrowRight size={16} aria-hidden />
               </Link>
               <Link
                 href="/login"
@@ -1248,100 +1197,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ══════════════ ROLES ══════════════ */}
-        <section id="roles" style={{ padding: "100px 72px" }}>
-          <div className="hp-reveal" style={{ marginBottom: 60 }}>
-            <span
-              style={{
-                fontFamily: "'DM Mono',monospace",
-                fontSize: 10.5,
-                fontWeight: 600,
-                color: "#B8860B",
-                letterSpacing: "1.6px",
-                textTransform: "uppercase",
-                display: "block",
-                marginBottom: 14,
-              }}
-            >
-              Role-Based Access
-            </span>
-            <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 20 }}>
-              <h2
-                style={{
-                  fontFamily: "'Cormorant Garamond',serif",
-                  fontSize: "clamp(36px,3.8vw,58px)",
-                  fontWeight: 700,
-                  lineHeight: 1.08,
-                  color: "#1a1612",
-                }}
-              >
-                Right access for
-                <br />
-                every team member.
-              </h2>
-              <p style={{ fontSize: 15.5, color: "#5c5044", lineHeight: 1.75, maxWidth: 380, fontWeight: 300 }}>
-                Each role sees only what they need — no clutter, no confusion,
-                complete control at every level.
-              </p>
-            </div>
-          </div>
-
-          <div className="hp-grid hp-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 20 }}>
-            {roles.map((r, i) => {
-              const Icon = r.icon;
-              return (
-                <div key={r.name} className="hp-reveal hp-card-hover" style={{ transitionDelay: `${i * 0.08}s` }}>
-                  <div
-                    style={{
-                      background: "#fff",
-                      border: "1px solid #e8e2d8",
-                      borderTop: `4px solid ${r.color}`,
-                      borderRadius: 16,
-                      padding: "28px 24px",
-                      height: "100%",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
-                      <div
-                        style={{
-                          width: 46,
-                          height: 46,
-                          borderRadius: 12,
-                          background: r.bg,
-                          border: `1px solid ${r.color}20`,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          color: r.color,
-                        }}
-                      >
-                        <Icon size={20} aria-hidden />
-                      </div>
-                      <span className="hp-tag" style={{ background: r.bg, color: r.color, border: `1px solid ${r.color}20` }}>
-                        {r.tag}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: "#1a1612", marginBottom: 8 }}>
-                      {r.name}
-                    </div>
-                    <div style={{ fontSize: 12.5, color: "#5c5044", lineHeight: 1.65, marginBottom: 20 }}>
-                      {r.desc}
-                    </div>
-                    <div style={{ borderTop: "1px solid #f0ebe3", paddingTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-                      {r.perms.map((p) => (
-                        <div key={p} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#5c5044" }}>
-                          <LuCircleCheck size={13} color={r.color} aria-hidden />
-                          {p}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
         {/* ══════════════ WHY US ══════════════ */}
         <section id="why-us" style={{ padding: "100px 72px", background: "#f5f0e8" }}>
           <div className="hp-reveal" style={{ textAlign: "center", marginBottom: 64 }}>
@@ -1417,7 +1272,10 @@ export default function HomePage() {
               background:
                 "linear-gradient(135deg,#1a0e08 0%,#3d1e0a 35%,#6b3a1f 70%,#8B4513 100%)",
               borderRadius: 24,
-              padding: "80px 88px",
+              paddingTop: 80,
+              paddingBottom: 80,
+              paddingLeft: 88,
+              paddingRight: 360,
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
@@ -1459,7 +1317,7 @@ export default function HomePage() {
               className="hp-cta-decor"
               style={{
                 position: "absolute",
-                right: 88,
+                right: 96,
                 top: "50%",
                 transform: "translateY(-50%)",
                 width: 220,
@@ -1469,6 +1327,8 @@ export default function HomePage() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
+                pointerEvents: "none",
+                zIndex: 0,
               }}
             >
               <div
@@ -1577,7 +1437,7 @@ export default function HomePage() {
                   e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,0,0,.2)";
                 }}
               >
-                Create Free Account <LuArrowRight size={15} aria-hidden />
+                Create Account <LuArrowRight size={15} aria-hidden />
               </Link>
               <Link
                 href="/login"

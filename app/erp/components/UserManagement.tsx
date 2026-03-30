@@ -3,19 +3,25 @@
 import { useState } from "react";
 import { ALL_MODULES } from "../constants";
 import type { ModulePermission, RoleDefinition, User } from "../types";
-import { apiRoleCreate, apiRoleDelete, apiRoleUpdate } from "../api";
+import { apiRoleCreate, apiRoleDelete, apiRoleUpdate, apiUsersList } from "../api";
 import { LuKeyRound, LuTags, LuUsers } from "react-icons/lu";
 import { Badge } from "./Badges";
 import RoleBuilderModal from "./RoleBuilderModal";
+import UserProvisionModal from "./UserProvisionModal";
+import { canAccess } from "../utils";
 
 export default function UserManagement({
   roles,
   users,
   onRolesChange,
+  onUsersChange,
+  userRole,
 }: {
   roles: RoleDefinition[];
   users: User[];
   onRolesChange: (roles: RoleDefinition[]) => void;
+  onUsersChange: (users: User[]) => void;
+  userRole: string;
 }) {
   const [activeTab, setActiveTab] = useState<"users" | "roles" | "permissions">(
     "users",
@@ -27,6 +33,17 @@ export default function UserManagement({
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [savingRole, setSavingRole] = useState(false);
   const [roleError, setRoleError] = useState("");
+  const [showCreateUser, setShowCreateUser] = useState(false);
+  const [passwordForUser, setPasswordForUser] = useState<User | null>(null);
+
+  const reloadUsers = async () => {
+    try {
+      const list = await apiUsersList();
+      onUsersChange(list);
+    } catch (e) {
+      setRoleError(e instanceof Error ? e.message : "Failed to refresh users");
+    }
+  };
 
   const handleSaveRole = async (r: RoleDefinition) => {
     setSavingRole(true);
@@ -65,6 +82,11 @@ export default function UserManagement({
           <div className="page-sub">Manage users, roles, and access permissions</div>
         </div>
         <div className="page-header-actions">
+          {activeTab === "users" && canAccess(roles, userRole, "users", "create") && (
+            <button className="btn btn-accent" onClick={() => setShowCreateUser(true)}>
+              + Create User
+            </button>
+          )}
           {activeTab === "roles" && (
             <button
               className="btn btn-accent"
@@ -120,6 +142,7 @@ export default function UserManagement({
                   <th>Role</th>
                   <th>Type</th>
                   <th>Status</th>
+                  <th style={{ width: 160 }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -179,6 +202,18 @@ export default function UserManagement({
                       </td>
                       <td>
                         <Badge label="Active" color="#16a34a" />
+                      </td>
+                      <td>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          {canAccess(roles, userRole, "users", "edit") && (
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => setPasswordForUser(u)}
+                            >
+                              Set Password
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -437,6 +472,30 @@ export default function UserManagement({
             setEditingRole(undefined);
           }}
           onSave={handleSaveRole}
+        />
+      )}
+
+      {showCreateUser && (
+        <UserProvisionModal
+          mode="create"
+          roles={roles}
+          onClose={() => setShowCreateUser(false)}
+          onDone={() => {
+            void reloadUsers();
+          }}
+        />
+      )}
+
+      {passwordForUser && (
+        <UserProvisionModal
+          mode="password"
+          roles={roles}
+          user={passwordForUser}
+          allowReset={canAccess(roles, userRole, "users", "edit")}
+          onClose={() => setPasswordForUser(null)}
+          onDone={() => {
+            void reloadUsers();
+          }}
         />
       )}
 

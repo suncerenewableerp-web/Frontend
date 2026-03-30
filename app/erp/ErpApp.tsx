@@ -46,6 +46,10 @@ export default function ErpApp({
   const [roles, setRoles] = useState<RoleDefinition[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+  const [ticketsListPreset, setTicketsListPreset] = useState<{
+    status?: string;
+    priority?: string;
+  } | null>(null);
   const [ticketDetailTab, setTicketDetailTab] = useState<
     "overview" | "jobcard" | "logistics" | "sla"
   >("overview");
@@ -63,8 +67,13 @@ export default function ErpApp({
   };
 
   const loadUsers = async () => {
-    const list = await apiUsersList();
-    setUsers(list);
+    try {
+      const list = await apiUsersList();
+      setUsers(list);
+    } catch {
+      // Non-admin roles may not have `users:view`. Avoid unhandled rejections.
+      setUsers([]);
+    }
   };
 
   useEffect(() => {
@@ -288,13 +297,28 @@ export default function ErpApp({
             </div>
 
             {page === "dashboard" && (
-              <Dashboard user={user} tickets={tickets} onNav={setPage} />
+              <Dashboard
+                user={user}
+                tickets={tickets}
+                onNav={setPage}
+                onViewTicket={(t) => {
+                  setSelectedTicket(t);
+                  setTicketDetailTab("overview");
+                  setPage("ticket_detail");
+                }}
+                onOpenTickets={(preset) => {
+                  setTicketsListPreset(preset || null);
+                  setPage("tickets");
+                }}
+              />
             )}
             {page === "tickets" && (
               <TicketsList
                 user={user}
                 roles={roles}
                 tickets={tickets}
+                initialStatusFilter={ticketsListPreset?.status}
+                initialPriorityFilter={ticketsListPreset?.priority}
                 onView={(t) => {
                   setSelectedTicket(t);
                   setTicketDetailTab("overview");
@@ -343,10 +367,12 @@ export default function ErpApp({
               <UserManagement
                 roles={roles}
                 users={users}
+                userRole={user.role}
                 onRolesChange={(r) => {
                   setRoles(r);
                   notify("Role permissions updated!");
                 }}
+                onUsersChange={(u) => setUsers(u)}
               />
             )}
             {page === "settings" && <Settings onNotify={notify} />}

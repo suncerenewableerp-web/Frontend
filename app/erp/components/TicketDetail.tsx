@@ -123,7 +123,7 @@ export default function TicketDetail({
   const currentIdx = STATUS_ORDER.indexOf(ticket.status);
   const roleName = String(user.role || "").toUpperCase();
   const canUpdateStatus = useMemo(() => {
-    if (roleName !== "ADMIN" && roleName !== "ENGINEER") return false;
+    if (roleName !== "ADMIN" && roleName !== "ENGINEER" && roleName !== "SALES") return false;
     return canAccess(roles, user.role, "tickets", "edit") && ticket.status !== "CLOSED";
   }, [roles, user.role, ticket.status, roleName]);
   const canEditLogistics = useMemo(() => {
@@ -143,13 +143,13 @@ export default function TicketDetail({
     [roles, user.role],
   );
   const canEditTicketDetails = useMemo(() => {
-    if (roleName !== "ADMIN") return false;
+    if (roleName !== "ADMIN" && roleName !== "SALES") return false;
     return canAccess(roles, user.role, "tickets", "edit") && ticket.status !== "CLOSED";
   }, [roles, user.role, ticket.status, roleName]);
   const canEditFaultDescription = useMemo(() => {
-    if (roleName !== "SALES") return false;
+    if (roleName !== "SALES" || canEditTicketDetails) return false;
     return canAccess(roles, user.role, "tickets", "edit") && ticket.status !== "CLOSED";
-  }, [roles, user.role, ticket.status, roleName]);
+  }, [roles, user.role, ticket.status, roleName, canEditTicketDetails]);
 
   const [details, setDetails] = useState({
     customerName: ticket.customerName || "",

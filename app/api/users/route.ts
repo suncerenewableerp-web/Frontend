@@ -8,3 +8,6 @@ export async function GET(request: NextRequest) {
   });
 }
 
+export async function POST(request: NextRequest) {
+  return proxyToBackend(request, "/api/users", { requireAuth: true });
+}

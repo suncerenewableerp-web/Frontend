@@ -26,8 +26,9 @@ export default function SignupScreen({
   onFinish: (user: User) => void;
   onGoLogin: () => void;
 }) {
-  const [step, setStep] = useState<1 | 2>(1);
-  const [selectedRole, setSelectedRole] = useState<string>("");
+  const CUSTOMER_ROLE_ID = "CUSTOMER";
+  const [step, setStep] = useState<1 | 2>(2);
+  const [selectedRole, setSelectedRole] = useState<string>(CUSTOMER_ROLE_ID);
   const [form, setForm] = useState({
     fullName: "",
     email: "",
@@ -106,7 +107,7 @@ export default function SignupScreen({
       name: form.fullName.trim(),
       email: form.email.trim(),
       password: form.password,
-      role: selectedRole,
+      role: CUSTOMER_ROLE_ID,
       phone: form.phone.trim() || undefined,
       company: form.company.trim() || undefined,
     })
@@ -206,34 +207,17 @@ export default function SignupScreen({
             </div>
 
             {rolesReady
-              ? roles.slice(0, 4).map((r) => (
+              ? roles
+                  .filter((r) => r.id === CUSTOMER_ROLE_ID)
+                  .map((r) => (
                   <div
                     key={r.id}
                     className="signup-role-preview"
                     style={{
-                      cursor: "pointer",
-                      borderColor:
-                        selectedRole === r.id
-                          ? "rgba(255,255,255,0.4)"
-                          : "rgba(255,255,255,0.12)",
-                      background:
-                        selectedRole === r.id
-                          ? "rgba(255,255,255,0.14)"
-                          : "rgba(255,255,255,0.06)",
+                      cursor: "default",
+                      borderColor: "rgba(255,255,255,0.4)",
+                      background: "rgba(255,255,255,0.14)",
                       transition: "all 0.15s",
-                    }}
-                    onClick={() => {
-                      setSelectedRole(r.id);
-                      setErrors({});
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        setSelectedRole(r.id);
-                        setErrors({});
-                      }
                     }}
                   >
                     <div
@@ -246,20 +230,18 @@ export default function SignupScreen({
                         {ROLE_DESCRIPTIONS[r.id] || "Custom role access"}
                       </div>
                     </div>
-                    {selectedRole === r.id && (
-                      <div
-                        style={{
-                          marginLeft: "auto",
-                          color: "rgba(255,255,255,0.9)",
-                          fontSize: 16,
-                        }}
-                      >
-                        ✓
-                      </div>
-                    )}
+                    <div
+                      style={{
+                        marginLeft: "auto",
+                        color: "rgba(255,255,255,0.9)",
+                        fontSize: 16,
+                      }}
+                    >
+                      ✓
+                    </div>
                   </div>
                 ))
-              : Array.from({ length: 4 }).map((_, i) => (
+              : Array.from({ length: 1 }).map((_, i) => (
                   <div
                     key={i}
                     className="signup-role-preview"
@@ -306,29 +288,11 @@ export default function SignupScreen({
 
         <div className="signup-right">
           <div className="signup-right-header">
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                marginBottom: 16,
-              }}
-            >
-              <div className="step-indicator">
-                <div
-                  className={`step-dot ${step >= 1 ? (step > 1 ? "done" : "active") : ""}`}
-                />
-                <div className={`step-dot ${step >= 2 ? "active" : ""}`} />
-                <span className="step-label">Step {step} of 2</span>
-              </div>
-            </div>
             <div className="signup-right-title">
-              {step === 1 ? "Select your role" : "Personal details"}
+              Create Customer Account
             </div>
             <div className="signup-right-sub">
-              {step === 1
-                ? "Choose the role that matches your position in the organization"
-                : `Setting up your ${selectedRoleDef?.label || "account"} — fill in your details below`}
+              Fill in your details to create your customer login.
             </div>
           </div>
 
@@ -336,7 +300,9 @@ export default function SignupScreen({
             <>
               <div className="role-selector-grid">
                 {rolesReady
-                  ? roles.map((r) => (
+                  ? roles
+                      .filter((r) => r.id === CUSTOMER_ROLE_ID)
+                      .map((r) => (
                       <div
                         key={r.id}
                         className={`role-selector-item ${selectedRole === r.id ? "selected" : ""}`}
@@ -367,7 +333,7 @@ export default function SignupScreen({
                         <span className="role-selector-check">✓</span>
                       </div>
                     ))
-                  : Array.from({ length: 4 }).map((_, i) => (
+                  : Array.from({ length: 1 }).map((_, i) => (
                       <div
                         key={i}
                         className="role-selector-item"
@@ -490,16 +456,11 @@ export default function SignupScreen({
                   alignItems: "center",
                   gap: 8,
                   marginBottom: 22,
-                  cursor: "pointer",
                 }}
-                onClick={() => setStep(1)}
               >
-                <span style={{ fontSize: 12, color: "var(--text3)" }}>
-                  ← Change role
-                </span>
                 <Badge
-                  label={selectedRoleDef?.label || selectedRole}
-                  color={selectedRoleDef?.color || "#8B4513"}
+                  label={selectedRoleDef?.label || "Customer"}
+                  color={selectedRoleDef?.color || "#2E8B57"}
                 />
               </div>
 

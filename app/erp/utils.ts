@@ -7,6 +7,9 @@ export const canAccess = (
   module: string,
   action: keyof ModulePermission = "view",
 ): boolean => {
+  const roleNorm = String(userRole || "").toUpperCase();
+  if (roleNorm === "ADMIN") return true;
+  if (roleNorm === "SALES" && module === "tickets") return true;
   const roleDef = roles.find((r) => r.id === userRole);
   if (!roleDef) return false;
   return roleDef.permissions[module]?.[action] ?? false;
@@ -35,4 +38,3 @@ export function getPasswordStrength(pwd: string): {
     color: colors[score] || "#c0392b",
   };
 }
-

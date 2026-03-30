@@ -28,9 +28,6 @@ export default function AuthScreen({
   };
 
   const DEMO_CREDS: Record<string, { email: string; password: string }> = {
-    ADMIN: { email: "admin@sunce.in", password: "admin123" },
-    SALES: { email: "sales@sunce.in", password: "sales123" },
-    ENGINEER: { email: "engineer@sunce.in", password: "engineer123" },
     CUSTOMER: { email: "customer@example.com", password: "customer123" },
   };
 
