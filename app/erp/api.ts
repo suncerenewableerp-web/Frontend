@@ -38,6 +38,36 @@ export type ReportsData = {
 };
 
 const STORAGE_KEY = "sunce_erp_auth_v1";
+const DEFAULT_TIMEOUT_MS = 25_000;
+
+function isAbortError(err: unknown): boolean {
+  return Boolean(
+    err &&
+      typeof err === "object" &&
+      "name" in err &&
+      (err as { name?: unknown }).name === "AbortError",
+  );
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+): Promise<Response> {
+  // Older browsers (or very old embedded webviews) may not have AbortController.
+  // In that case, we fall back to a normal fetch (no timeout).
+  if (typeof AbortController === "undefined" || init.signal) {
+    return fetch(input, init);
+  }
+
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
 
 export class ApiRequestError extends Error {
   errors?: unknown;
@@ -90,11 +120,16 @@ async function parseJsonEnvelope<T>(res: Response): Promise<ApiEnvelope<T>> {
 }
 
 async function refreshToken(refreshToken: string): Promise<Tokens | null> {
-  const res = await fetch("/api/auth/refresh", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refreshToken }),
-  });
+  let res: Response;
+  try {
+    res = await fetchWithTimeout("/api/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    });
+  } catch {
+    return null;
+  }
   const env = await parseJsonEnvelope<{ accessToken: string; refreshToken: string }>(res);
   if (!env.success) return null;
   return { accessToken: env.data.accessToken, refreshToken: env.data.refreshToken };
@@ -112,7 +147,19 @@ async function apiFetch<T>(
   }
   if (auth?.accessToken) headers.set("Authorization", `Bearer ${auth.accessToken}`);
 
-  const res = await fetch(path, { ...init, headers });
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(path, { ...init, headers });
+  } catch (err) {
+    return {
+      success: false,
+      message: isAbortError(err)
+        ? "Request timed out. Please check your internet connection and try again."
+        : err instanceof Error
+          ? err.message
+          : "Network request failed",
+    };
+  }
   if (res.status !== 401 || !auth?.refreshToken) return parseJsonEnvelope<T>(res);
 
   const newTokens = await refreshToken(auth.refreshToken);
@@ -123,8 +170,19 @@ async function apiFetch<T>(
 
   const retryHeaders = new Headers(headers);
   retryHeaders.set("Authorization", `Bearer ${newTokens.accessToken}`);
-  const retryRes = await fetch(path, { ...init, headers: retryHeaders });
-  return parseJsonEnvelope<T>(retryRes);
+  try {
+    const retryRes = await fetchWithTimeout(path, { ...init, headers: retryHeaders });
+    return parseJsonEnvelope<T>(retryRes);
+  } catch (err) {
+    return {
+      success: false,
+      message: isAbortError(err)
+        ? "Request timed out. Please check your internet connection and try again."
+        : err instanceof Error
+          ? err.message
+          : "Network request failed",
+    };
+  }
 }
 
 type BackendRole = {
