@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { RoleDefinition } from "../types";
 import { LuSunMedium } from "react-icons/lu";
+import { useRouter } from "next/navigation";
 
 export default function AuthScreen({
   onLogin,
@@ -13,6 +14,7 @@ export default function AuthScreen({
   onGoSignup: () => void;
   roles: RoleDefinition[];
 }) {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -95,6 +97,27 @@ export default function AuthScreen({
             >
               {showPassword ? "Hide" : "Show"}
             </button>
+          </div>
+
+          <div
+            style={{
+              marginTop: -10,
+              marginBottom: 18,
+              display: "flex",
+              justifyContent: "flex-end",
+              fontSize: 12,
+            }}
+          >
+            <a
+              href="/forgot-password"
+              className="auth-link"
+              onClick={(e) => {
+                e.preventDefault();
+                router.push("/forgot-password");
+              }}
+            >
+              Forgot password?
+            </a>
           </div>
 
           {error && (

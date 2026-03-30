@@ -530,6 +530,26 @@ export async function apiSignup(input: {
   return { user, tokens };
 }
 
+export async function apiForgotPassword(email: string): Promise<void> {
+  const env = await apiFetch<{ message?: string }>("/api/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+  if (!env.success) {
+    throw new ApiRequestError(env.message || "Failed to send reset email", env.errors);
+  }
+}
+
+export async function apiResetPassword(token: string, password: string): Promise<void> {
+  const env = await apiFetch<{ message?: string }>("/api/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ token, password }),
+  });
+  if (!env.success) {
+    throw new ApiRequestError(env.message || "Failed to reset password", env.errors);
+  }
+}
+
 export async function apiTicketsList(params?: {
   status?: string;
   priority?: string;

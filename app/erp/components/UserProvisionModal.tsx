@@ -39,6 +39,9 @@ export default function UserProvisionModal({
     return internal.length ? internal : roles;
   }, [roles]);
 
+  const targetRole = useMemo(() => normalizeRoleId(user?.role || ""), [user?.role]);
+  const isCustomerTarget = targetRole === "CUSTOMER";
+
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [roleId, setRoleId] = useState(() => {
@@ -95,16 +98,31 @@ export default function UserProvisionModal({
     }
 
     if (!user?.id) return setError("User not found");
-    if (!oldPassword.trim()) return setError("Old password is required");
     if (password.length < 6) return setError("New password must be at least 6 characters");
 
     setLoading(true);
     try {
-      await apiUserChangePassword(user.id, oldPassword, password);
-      setSuccessMsg("Password updated.");
+      if (isCustomerTarget) {
+        if (!oldPassword.trim()) return setError("Old password is required");
+        await apiUserChangePassword(user.id, oldPassword, password);
+        setSuccessMsg("Password updated.");
+      } else {
+        if (!allowReset) {
+          setError("Only Super Admin can reset password for internal users.");
+          return;
+        }
+        await apiUserResetPassword(user.id, password);
+        setSuccessMsg("Password reset.");
+      }
       onDone();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to update password");
+      setError(
+        e instanceof Error
+          ? e.message
+          : isCustomerTarget
+            ? "Failed to update password"
+            : "Failed to reset password",
+      );
     } finally {
       setLoading(false);
     }
@@ -173,7 +191,7 @@ export default function UserProvisionModal({
 
           <div className="form-section">Password</div>
           <div className="form-grid">
-            {mode === "password" && (
+            {mode === "password" && isCustomerTarget && (
               <div className="form-group full">
                 <label className="form-label">Old password *</label>
                 <input
@@ -227,6 +245,11 @@ export default function UserProvisionModal({
                   Strength: <span style={{ color: pw.color, fontWeight: 700 }}>{pw.label}</span>
                 </div>
               )}
+              {mode === "password" && !isCustomerTarget && !allowReset ? (
+                <div style={{ marginTop: 10, fontSize: 12, color: "var(--text3)" }}>
+                  Internal user passwords can only be reset by Super Admin.
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -234,11 +257,14 @@ export default function UserProvisionModal({
           <button className="btn btn-ghost" onClick={onClose} disabled={loading}>
             Cancel
           </button>
-          {mode === "password" && allowReset && (
+          {mode === "password" && !isCustomerTarget ? (
             <button
               className="btn btn-danger"
               onClick={() => {
-                if (!user?.id) return;
+                if (!allowReset) {
+                  setError("Only Super Admin can reset password for internal users.");
+                  return;
+                }
                 if (password.length < 6) {
                   setError("New password must be at least 6 characters");
                   return;
@@ -247,28 +273,18 @@ export default function UserProvisionModal({
                   "Reset password without old password? This will immediately invalidate the user's current password.",
                 );
                 if (!ok) return;
-                setLoading(true);
-                setError("");
-                setSuccessMsg("");
-                apiUserResetPassword(user.id, password)
-                  .then(() => {
-                    setSuccessMsg("Password reset.");
-                    onDone();
-                  })
-                  .catch((e) =>
-                    setError(e instanceof Error ? e.message : "Failed to reset password"),
-                  )
-                  .finally(() => setLoading(false));
+                void handleSubmit();
               }}
-              disabled={loading}
-              title="Admin reset (no old password)"
+              disabled={loading || !allowReset}
+              title="Super Admin reset (no old password)"
             >
-              Reset Password
+              {loading ? "Saving..." : "Reset Password"}
+            </button>
+          ) : (
+            <button className="btn btn-accent" onClick={handleSubmit} disabled={loading}>
+              {loading ? "Saving..." : mode === "create" ? "Create User" : "Update Password"}
             </button>
           )}
-          <button className="btn btn-accent" onClick={handleSubmit} disabled={loading}>
-            {loading ? "Saving..." : mode === "create" ? "Create User" : "Update Password"}
-          </button>
         </div>
       </div>
     </div>
