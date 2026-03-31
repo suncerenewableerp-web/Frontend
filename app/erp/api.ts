@@ -250,6 +250,28 @@ type BackendTicket = {
   priority?: string;
 };
 
+export type BackendLogistics = {
+  _id?: string;
+  id?: string;
+  ticket?: string;
+  type?: string;
+  status?: string;
+  pickupDetails?: {
+    scheduledDate?: string | Date;
+    actualPickupDate?: string | Date;
+    pickupBy?: string;
+    pickupLocation?: string;
+  };
+  courierDetails?: {
+    courierName?: string;
+    trackingId?: string;
+    lrNumber?: string;
+    awbNumber?: string;
+  };
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+};
+
 type BackendJobCardServiceJob = {
   sn?: number;
   jobName?: string;
@@ -817,6 +839,36 @@ export async function apiSchedulePickup(input: {
     body: JSON.stringify(payload),
   });
   if (!env.success) throw new Error(env.message || "Failed to schedule pickup");
+}
+
+export async function apiScheduleDispatch(input: {
+  ticketId: string;
+  dispatchDate: string; // YYYY-MM-DD
+  courierName: string;
+  lrNumber: string;
+  dispatchLocation: string;
+}): Promise<void> {
+  const payload = {
+    ticketId: input.ticketId,
+    dispatchDate: `${input.dispatchDate}T00:00:00.000Z`,
+    courierName: input.courierName,
+    lrNumber: input.lrNumber,
+    dispatchLocation: input.dispatchLocation,
+  };
+  const env = await apiFetch<unknown>("/api/logistics/schedule-dispatch", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!env.success) throw new Error(env.message || "Failed to schedule dispatch");
+}
+
+export async function apiLogisticsByTicket(ticketId: string): Promise<BackendLogistics[]> {
+  const env = await apiFetch<BackendLogistics[]>(
+    `/api/logistics/ticket/${encodeURIComponent(ticketId)}`,
+    { method: "GET" },
+  );
+  if (!env.success) throw new Error(env.message || "Failed to fetch logistics");
+  return Array.isArray(env.data) ? env.data : [];
 }
 
 export async function apiReportsGet(params?: { months?: number }): Promise<ReportsData> {

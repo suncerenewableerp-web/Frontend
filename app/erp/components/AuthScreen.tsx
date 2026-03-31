@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { RoleDefinition } from "../types";
 import { LuSunMedium } from "react-icons/lu";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function AuthScreen({
   onLogin,
@@ -38,7 +39,7 @@ export default function AuthScreen({
   return (
     <div className="auth-screen">
       <div className="auth-card">
-        <div className="auth-logo">
+        <Link href="/" className="auth-logo" aria-label="Go to home">
           <div className="auth-logo-icon" aria-hidden>
             <LuSunMedium />
           </div>
@@ -48,7 +49,7 @@ export default function AuthScreen({
               Renewables · Service Platform
             </div>
           </div>
-        </div>
+        </Link>
         <div className="auth-divider" />
         <div className="auth-title">Welcome back</div>
         <div className="auth-sub">
@@ -101,8 +102,8 @@ export default function AuthScreen({
 
           <div
             style={{
-              marginTop: -10,
-              marginBottom: 18,
+              marginTop: 4,
+              marginBottom: 12,
               display: "flex",
               justifyContent: "flex-end",
               fontSize: 12,

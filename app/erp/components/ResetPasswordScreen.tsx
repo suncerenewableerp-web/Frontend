@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { LuSunMedium } from "react-icons/lu";
 import { apiResetPassword } from "../api";
 import { getPasswordStrength } from "../utils";
+import Link from "next/link";
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
@@ -38,7 +39,7 @@ export default function ResetPasswordScreen() {
   return (
     <div className="auth-screen">
       <div className="auth-card">
-        <div className="auth-logo">
+        <Link href="/" className="auth-logo" aria-label="Go to home">
           <div className="auth-logo-icon" aria-hidden>
             <LuSunMedium />
           </div>
@@ -46,7 +47,7 @@ export default function ResetPasswordScreen() {
             <div className="auth-logo-text">Sunce ERP</div>
             <div className="auth-logo-sub">Renewables · Service Platform</div>
           </div>
-        </div>
+        </Link>
         <div className="auth-divider" />
 
         <div className="auth-title">Reset password</div>
@@ -135,4 +136,3 @@ export default function ResetPasswordScreen() {
     </div>
   );
 }
-

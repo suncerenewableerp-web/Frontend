@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { Ticket } from "../types";
+import DatePicker from "./DatePicker";
 
 function toDateInputValue(date: Date) {
   const year = date.getFullYear();
@@ -111,11 +112,10 @@ export default function SchedulePickupModal({
           <div className="form-grid">
             <div className="form-group">
               <label className="form-label">Pickup date</label>
-              <input
-                className="form-input"
-                type="date"
+              <DatePicker
                 value={pickupDate}
-                onChange={(e) => setPickupDate(e.target.value)}
+                onChange={setPickupDate}
+                placeholder="Select pickup date"
               />
             </div>
             <div className="form-group">

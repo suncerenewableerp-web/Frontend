@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { TicketCreateInput } from "../api";
+import DatePicker from "./DatePicker";
 
 const INVERTER_BRANDS = ["ABB", "SMA", "Huawei", "Fronius", "Sungrow", "Delta"] as const;
 type InverterBrandOption = (typeof INVERTER_BRANDS)[number] | "OTHER" | "";
@@ -242,11 +243,10 @@ export default function NewTicketModal({
                 {form.warrantyStatus ? (
                   <div className="form-group">
                     <label className="form-label">Warranty End Date</label>
-                    <input
-                      className="form-input"
-                      type="date"
+                    <DatePicker
                       value={form.warrantyEndDate}
-                      onChange={(e) => set("warrantyEndDate", e.target.value)}
+                      onChange={(next) => set("warrantyEndDate", next)}
+                      placeholder="Select end date"
                     />
                   </div>
                 ) : null}

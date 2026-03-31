@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { LuSunMedium } from "react-icons/lu";
 import {
   apiCreateTicket,
   apiLogin,
   apiRolesPublic,
   apiSchedulePickup,
   apiSignup,
+  apiTicketGet,
   apiTicketsList,
   apiUpdateTicketStatus,
   apiUsersList,
@@ -53,6 +56,9 @@ export default function ErpApp({
   const [ticketDetailTab, setTicketDetailTab] = useState<
     "overview" | "jobcard" | "logistics" | "sla"
   >("overview");
+  const [ticketDetailLogisticsStage, setTicketDetailLogisticsStage] = useState<
+    "pickup" | "dispatch"
+  >("pickup");
   const [showNewTicket, setShowNewTicket] = useState(false);
   const [notification, setNotification] = useState("");
   const [bootError, setBootError] = useState("");
@@ -194,6 +200,15 @@ export default function ErpApp({
   }) => {
     await apiSchedulePickup(input);
     notify("Pickup scheduled!");
+    try {
+      const fresh = await apiTicketGet(input.ticketId);
+      setSelectedTicket(fresh);
+      setTicketDetailTab("logistics");
+      setTicketDetailLogisticsStage("pickup");
+      setPage("ticket_detail");
+    } catch {
+      // ignore navigation if fetch fails; list refresh still happens
+    }
     await loadTickets();
   };
 
@@ -265,6 +280,9 @@ export default function ErpApp({
                 >
                   ☰
                 </button>
+                <Link href="/" className="topbar-home" aria-label="Go to home">
+                  <LuSunMedium />
+                </Link>
                 <div className="topbar-title">{getPageTitle()}</div>
               </div>
               <div className="topbar-actions">
@@ -304,6 +322,9 @@ export default function ErpApp({
                 onViewTicket={(t) => {
                   setSelectedTicket(t);
                   setTicketDetailTab("overview");
+                  setTicketDetailLogisticsStage(
+                    t.status === "DISPATCHED" || t.status === "CLOSED" ? "dispatch" : "pickup",
+                  );
                   setPage("ticket_detail");
                 }}
                 onOpenTickets={(preset) => {
@@ -322,6 +343,9 @@ export default function ErpApp({
                 onView={(t) => {
                   setSelectedTicket(t);
                   setTicketDetailTab("overview");
+                  setTicketDetailLogisticsStage(
+                    t.status === "DISPATCHED" || t.status === "CLOSED" ? "dispatch" : "pickup",
+                  );
                   setPage("ticket_detail");
                 }}
                 onNew={() => setShowNewTicket(true)}
@@ -337,6 +361,7 @@ export default function ErpApp({
                 onUpdateStatus={handleUpdateSelectedTicketStatus}
                 onTicketUpdated={handleTicketUpdated}
                 initialTab={ticketDetailTab}
+                initialLogisticsStage={ticketDetailLogisticsStage}
               />
             )}
             {page === "jobcard" && (

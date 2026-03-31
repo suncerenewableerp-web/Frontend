@@ -3,6 +3,7 @@
 import type { RoleDefinition, User } from "../types";
 import { getNavItems } from "../utils";
 import { LuLogOut, LuSunMedium } from "react-icons/lu";
+import Link from "next/link";
 
 export default function Sidebar({
   user,
@@ -31,7 +32,7 @@ export default function Sidebar({
       role="navigation"
       aria-label="Primary"
     >
-      <div className="sidebar-header">
+      <Link href="/" className="sidebar-header" aria-label="Go to home">
         <div className="logo-icon" aria-hidden>
           <LuSunMedium />
         </div>
@@ -39,7 +40,7 @@ export default function Sidebar({
           <div className="logo-text">Sunce ERP</div>
           <div className="logo-sub">Service Platform</div>
         </div>
-      </div>
+      </Link>
       <div className="sidebar-user">
         <div
           className="user-avatar"

@@ -7,6 +7,7 @@ import { getPasswordStrength } from "../utils";
 import { Badge } from "./Badges";
 import { ApiRequestError } from "../api";
 import { LuSunMedium } from "react-icons/lu";
+import Link from "next/link";
 
 export default function SignupScreen({
   roles,
@@ -189,7 +190,7 @@ export default function SignupScreen({
       <div className="signup-card">
         <div className="signup-left">
           <div className="signup-left-content">
-            <div className="signup-left-logo">
+            <Link href="/" className="signup-left-logo" aria-label="Go to home">
               <div className="signup-left-icon" aria-hidden>
                 <LuSunMedium />
               </div>
@@ -197,7 +198,7 @@ export default function SignupScreen({
                 <div className="signup-left-brand">Sunce ERP</div>
                 <div className="signup-left-sub">Service Platform</div>
               </div>
-            </div>
+            </Link>
             <div className="signup-left-heading">
               Join the solar service network
             </div>

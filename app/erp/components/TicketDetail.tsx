@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { STATUS_ORDER } from "../constants";
 import {
+  apiLogisticsByTicket,
   apiSchedulePickup,
+  apiScheduleDispatch,
   apiSlaSettingsGet,
   apiSlaSettingsUpdate,
   apiTicketJobCardGet,
@@ -11,6 +13,7 @@ import {
   apiTicketGet,
   apiUpdateTicketDetails,
   apiUpdateTicketFaultDescription,
+  type BackendLogistics,
 } from "../api";
 import type {
   JobCard,
@@ -23,6 +26,7 @@ import type {
 } from "../types";
 import { canAccess } from "../utils";
 import { Badge, PriorityBadge, SlaBadge, StatusBadge } from "./Badges";
+import DatePicker from "./DatePicker";
 import TicketTimeline from "./TicketTimeline";
 
 const DEFAULT_FINAL_TESTING: Array<Pick<JobCardFinalTestingActivity, "sr" | "activity">> = [
@@ -86,6 +90,14 @@ function toDateInputValue(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+function toDateInputValueSafe(v: unknown): string {
+  if (!v) return "";
+  const d = v instanceof Date ? v : new Date(String(v));
+  const t = d.getTime();
+  if (Number.isNaN(t)) return "";
+  return d.toISOString().slice(0, 10);
+}
+
 function formatHours(v: number) {
   return `${v}h`;
 }
@@ -107,6 +119,7 @@ export default function TicketDetail({
   onUpdateStatus,
   onTicketUpdated,
   initialTab = "overview",
+  initialLogisticsStage,
 }: {
   ticket: Ticket;
   user: User;
@@ -115,11 +128,13 @@ export default function TicketDetail({
   onUpdateStatus: (status: TicketStatus) => Promise<void>;
   onTicketUpdated: (t: Ticket) => void;
   initialTab?: "overview" | "jobcard" | "logistics" | "sla";
+  initialLogisticsStage?: "pickup" | "dispatch";
 }) {
   const tabs = ["overview", "jobcard", "logistics", "sla"] as const;
-  const [activeTab, setActiveTab] = useState(initialTab);
+  const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>(initialTab);
   const [newStatus, setNewStatus] = useState(ticket.status);
   const [updating, setUpdating] = useState(false);
+  const [statusError, setStatusError] = useState("");
   const currentIdx = STATUS_ORDER.indexOf(ticket.status);
   const roleName = String(user.role || "").toUpperCase();
   const canUpdateStatus = useMemo(() => {
@@ -181,7 +196,25 @@ export default function TicketDetail({
   const [courierName, setCourierName] = useState(ticket.courierName || "BlueDart");
   const [lrNumber, setLrNumber] = useState(ticket.lrNumber || "");
   const [pickupLocation, setPickupLocation] = useState(ticket.customerAddress || "");
+  const [dispatchDate, setDispatchDate] = useState(() =>
+    toDateInputValue(new Date()),
+  );
+  const [dispatchCourierName, setDispatchCourierName] = useState("BlueDart");
+  const [dispatchLrNumber, setDispatchLrNumber] = useState("");
+  const [dispatchLocation, setDispatchLocation] = useState("");
+
+  const [logisticsStage, setLogisticsStage] = useState<"pickup" | "dispatch">(() => {
+    if (initialLogisticsStage) return initialLogisticsStage;
+    return ticket.status === "DISPATCHED" || ticket.status === "CLOSED"
+      ? "dispatch"
+      : "pickup";
+  });
+
+  const [, setPickupLogistics] = useState<BackendLogistics | null>(null);
+  const [, setDispatchLogistics] = useState<BackendLogistics | null>(null);
+  const [logisticsLoading, setLogisticsLoading] = useState(false);
   const [logisticsSaving, setLogisticsSaving] = useState(false);
+  const [logisticsAdvancing, setLogisticsAdvancing] = useState(false);
   const [logisticsError, setLogisticsError] = useState("");
   const [logisticsSavedMsg, setLogisticsSavedMsg] = useState("");
 
@@ -228,8 +261,66 @@ export default function TicketDetail({
   }, [activeTab, ticket.id]);
 
   useEffect(() => {
+    if (activeTab !== "logistics") return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setLogisticsLoading(true);
+      setLogisticsError("");
+      setLogisticsSavedMsg("");
+    });
+    apiLogisticsByTicket(ticket.id)
+      .then((rows) => {
+        if (cancelled) return;
+        const pickup =
+          rows.find((r) => String(r?.type || "").toUpperCase() === "PICKUP") || null;
+        const dispatch =
+          rows.find((r) => String(r?.type || "").toUpperCase() === "DELIVERY") ||
+          null;
+
+        setPickupLogistics(pickup);
+        setDispatchLogistics(dispatch);
+
+        const pickupDateFromApi = toDateInputValueSafe(pickup?.pickupDetails?.scheduledDate);
+        setPickupDate(
+          pickupDateFromApi || toDateInputValue(new Date(Date.now() + 86400000)),
+        );
+        setCourierName(String(pickup?.courierDetails?.courierName || "BlueDart"));
+        setLrNumber(String(pickup?.courierDetails?.lrNumber || ""));
+        setPickupLocation(
+          String(pickup?.pickupDetails?.pickupLocation || ticket.customerAddress || ""),
+        );
+
+        const dispatchDateFromApi = toDateInputValueSafe(dispatch?.pickupDetails?.scheduledDate);
+        setDispatchDate(dispatchDateFromApi || toDateInputValue(new Date()));
+        setDispatchCourierName(String(dispatch?.courierDetails?.courierName || "BlueDart"));
+        setDispatchLrNumber(String(dispatch?.courierDetails?.lrNumber || ""));
+        setDispatchLocation(
+          String(dispatch?.pickupDetails?.pickupLocation || ""),
+        );
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setLogisticsError(e instanceof Error ? e.message : "Failed to load logistics");
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLogisticsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, ticket.id, ticket.customerAddress]);
+
+  useEffect(() => {
     queueMicrotask(() => setNewStatus(ticket.status));
   }, [ticket.status]);
+
+  useEffect(() => {
+    queueMicrotask(() => setActiveTab(initialTab));
+    queueMicrotask(() => setLogisticsStage(initialLogisticsStage || "pickup"));
+  }, [ticket.id, initialTab, initialLogisticsStage]);
 
   useEffect(() => {
     if (!showSlaSettings || !canEditSla) return;
@@ -526,11 +617,10 @@ export default function TicketDetail({
                   {details.warrantyStatus ? (
                     <div>
                       <div className="form-label">Warranty End Date</div>
-                      <input
-                        className="form-input"
-                        type="date"
+                      <DatePicker
                         value={details.warrantyEndDate}
-                        onChange={(e) => setDetails((p) => ({ ...p, warrantyEndDate: e.target.value }))}
+                        onChange={(next) => setDetails((p) => ({ ...p, warrantyEndDate: next }))}
+                        placeholder="Select end date"
                       />
                     </div>
                   ) : null}
@@ -591,14 +681,20 @@ export default function TicketDetail({
                 <select
                   className="form-select"
                   value={newStatus}
-                  onChange={(e) => setNewStatus(e.target.value as TicketStatus)}
+                  onChange={(e) => {
+                    setNewStatus(e.target.value as TicketStatus);
+                    setStatusError("");
+                  }}
                   style={{ flex: 1 }}
                 >
                   {STATUS_ORDER.map((s) => (
                     <option
                       key={s}
                       value={s}
-                      disabled={STATUS_ORDER.indexOf(s) < currentIdx}
+                      disabled={
+                        STATUS_ORDER.indexOf(s) < currentIdx ||
+                        STATUS_ORDER.indexOf(s) > currentIdx + 1
+                      }
                     >
                       {s.replace(/_/g, " ")}
                     </option>
@@ -609,7 +705,49 @@ export default function TicketDetail({
                   disabled={updating}
                   onClick={() => {
                     setUpdating(true);
-                    onUpdateStatus(newStatus)
+                    setStatusError("");
+
+                    const nextIdx = STATUS_ORDER.indexOf(newStatus);
+                    if (nextIdx > currentIdx + 1) {
+                      setStatusError("Please follow the workflow step-by-step. Skipping steps is not allowed.");
+                      setUpdating(false);
+                      return;
+                    }
+
+                    const openLogistics = (stage: "pickup" | "dispatch", msg?: string) => {
+                      setActiveTab("logistics");
+                      setLogisticsStage(stage);
+                      if (msg) setLogisticsError(msg);
+                    };
+
+                    (async () => {
+                      if (newStatus === "PICKUP_SCHEDULED") {
+                        openLogistics(
+                          "pickup",
+                          "Please schedule pickup from Logistics (fill pickup details and click Save Pickup).",
+                        );
+                        return;
+                      }
+
+                      if (newStatus === "DISPATCHED") {
+                        openLogistics(
+                          "dispatch",
+                          "Please open Logistics and save dispatch details first (Save Dispatch).",
+                        );
+                        return;
+                      }
+
+                      if (newStatus === "IN_TRANSIT") {
+                        openLogistics(
+                          "pickup",
+                          "Please open Logistics first, then move the ticket to IN TRANSIT from there.",
+                        );
+                        return;
+                      }
+
+                      await onUpdateStatus(newStatus);
+
+                    })()
                       .catch(() => {})
                       .finally(() => setUpdating(false));
                   }}
@@ -617,6 +755,11 @@ export default function TicketDetail({
                   {updating ? "Updating..." : "Update Status"}
                 </button>
               </div>
+              {statusError ? (
+                <div className="form-error" style={{ marginTop: 10 }}>
+                  {statusError}
+                </div>
+              ) : null}
             </div>
           )}
         </>
@@ -1023,42 +1166,96 @@ export default function TicketDetail({
 
       {activeTab === "logistics" && (
         <div className="table-card">
-          <div className="table-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div className="table-title">Logistics & Pickup</div>
+          <div
+            className="table-header"
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            <div className="table-title">Logistics</div>
             {canEditLogistics ? (
               <button
                 className="btn btn-accent btn-sm"
-                disabled={logisticsSaving || !pickupDate.trim()}
+                disabled={
+                  logisticsSaving ||
+                  (logisticsStage === "pickup"
+                    ? !pickupDate.trim()
+                    : !dispatchDate.trim())
+                }
                 onClick={() => {
                   setLogisticsSaving(true);
                   setLogisticsError("");
                   setLogisticsSavedMsg("");
-                  apiSchedulePickup({
-                    ticketId: ticket.id,
-                    pickupDate,
-                    courierName,
-                    lrNumber,
-                    pickupLocation,
-                  })
-                    .then(() => apiTicketGet(ticket.id))
-                    .then((fresh) => {
+
+                  const save =
+                    logisticsStage === "pickup"
+                      ? apiSchedulePickup({
+                          ticketId: ticket.id,
+                          pickupDate,
+                          courierName,
+                          lrNumber,
+                          pickupLocation,
+                        })
+                      : apiScheduleDispatch({
+                          ticketId: ticket.id,
+                          dispatchDate,
+                          courierName: dispatchCourierName,
+                          lrNumber: dispatchLrNumber,
+                          dispatchLocation,
+                        });
+
+                  Promise.resolve(save)
+                    .then(() => Promise.all([apiTicketGet(ticket.id), apiLogisticsByTicket(ticket.id)]))
+                    .then(([fresh, rows]) => {
                       onTicketUpdated(fresh);
-                      if (fresh.pickupDate) setPickupDate(fresh.pickupDate);
-                      if (fresh.courierName) setCourierName(fresh.courierName);
-                      if (fresh.lrNumber) setLrNumber(fresh.lrNumber);
-                      setLogisticsSavedMsg("Logistics updated.");
+                      const pickup =
+                        rows.find((r) => String(r?.type || "").toUpperCase() === "PICKUP") || null;
+                      const dispatch =
+                        rows.find((r) => String(r?.type || "").toUpperCase() === "DELIVERY") || null;
+                      setPickupLogistics(pickup);
+                      setDispatchLogistics(dispatch);
+                      setLogisticsSavedMsg(
+                        logisticsStage === "pickup" ? "Pickup saved." : "Dispatch saved.",
+                      );
                     })
                     .catch((e) =>
-                      setLogisticsError(e instanceof Error ? e.message : "Failed to update logistics"),
+                      setLogisticsError(
+                        e instanceof Error ? e.message : "Failed to update logistics",
+                      ),
                     )
                     .finally(() => setLogisticsSaving(false));
                 }}
               >
-                {logisticsSaving ? "Saving..." : "Save"}
+                {logisticsSaving ? "Saving..." : logisticsStage === "pickup" ? "Save Pickup" : "Save Dispatch"}
               </button>
             ) : null}
           </div>
+
           <div style={{ padding: "20px" }}>
+            <div className="tabs" style={{ marginBottom: 14 }}>
+              <div
+                className={`tab ${logisticsStage === "pickup" ? "active" : ""}`}
+                onClick={() => setLogisticsStage("pickup")}
+              >
+                Pickup Scheduled
+              </div>
+              <div
+                className={`tab ${logisticsStage === "dispatch" ? "active" : ""}`}
+                onClick={() => setLogisticsStage("dispatch")}
+              >
+                Dispatch
+              </div>
+            </div>
+
+            {logisticsLoading ? (
+              <div style={{ marginBottom: 12, fontSize: 12, color: "var(--text3)" }}>
+                Loading logistics…
+              </div>
+            ) : null}
+
             {logisticsError ? (
               <div className="form-error" style={{ marginBottom: 12, marginTop: -6 }}>
                 {logisticsError}
@@ -1069,70 +1266,175 @@ export default function TicketDetail({
                 {logisticsSavedMsg}
               </div>
             ) : null}
-            <div className="detail-grid">
-              <div className="detail-card">
-                <div className="detail-label">Pickup Date</div>
-                <div className="detail-value">{ticket.pickupDate || "—"}</div>
-              </div>
-              <div className="detail-card">
-                <div className="detail-label">Courier</div>
-                <div className="detail-value">{ticket.courierName || "—"}</div>
-              </div>
-              <div className="detail-card">
-                <div className="detail-label">LR Number</div>
-                <div className="detail-value" style={{ fontFamily: "var(--mono)", color: "var(--accent)", fontSize: 12 }}>
-                  {ticket.lrNumber || "—"}
-                </div>
-              </div>
-            </div>
 
-            {canEditLogistics ? (
-              <div style={{ marginTop: 18 }}>
-                <div className="form-grid">
-                  <div>
-                    <div className="form-label">Pickup date</div>
-                    <input
-                      className="form-input"
-                      type="date"
+            {logisticsStage === "pickup" ? (
+              <>
+                <div className="detail-grid">
+                  <div className="detail-card">
+                    <div className="detail-label">Pickup Date</div>
+                    <DatePicker
                       value={pickupDate}
-                      onChange={(e) => setPickupDate(e.target.value)}
+                      onChange={setPickupDate}
+                      disabled={!canEditLogistics}
+                      placeholder="Select pickup date"
                     />
                   </div>
-                  <div>
-                    <div className="form-label">Courier</div>
-                    <input
-                      className="form-input"
-                      value={courierName}
-                      onChange={(e) => setCourierName(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <div className="form-label">LR number</div>
-                    <input
-                      className="form-input"
-                      value={lrNumber}
-                      onChange={(e) => setLrNumber(e.target.value)}
-                    />
-                  </div>
-                  <div style={{ gridColumn: "1 / -1" }}>
-                    <div className="form-label">Pickup location</div>
+                  <div className="detail-card">
+                    <div className="detail-label">Pickup Location</div>
                     <input
                       className="form-input"
                       value={pickupLocation}
                       onChange={(e) => setPickupLocation(e.target.value)}
+                      disabled={!canEditLogistics}
+                      placeholder="Customer site / warehouse"
+                    />
+                  </div>
+                  <div className="detail-card">
+                    <div className="detail-label">Courier</div>
+                    <input
+                      className="form-input"
+                      value={courierName}
+                      onChange={(e) => setCourierName(e.target.value)}
+                      disabled={!canEditLogistics}
+                      placeholder="e.g. BlueDart"
+                    />
+                  </div>
+                  <div className="detail-card">
+                    <div className="detail-label">LR Number</div>
+                    <input
+                      className="form-input"
+                      value={lrNumber}
+                      onChange={(e) => setLrNumber(e.target.value)}
+                      disabled={!canEditLogistics}
+                      placeholder="e.g. BD2026..."
+                      style={{ fontFamily: "var(--mono)" }}
                     />
                   </div>
                 </div>
-                <div style={{ marginTop: 10, fontSize: 12, color: "var(--text3)", lineHeight: 1.5 }}>
-                  Saving pickup will move the ticket status to{" "}
-                  <span className="tag">PICKUP SCHEDULED</span> (if it is currently{" "}
-                  <span className="tag">CREATED</span>).
-                </div>
-              </div>
+
+                {canEditLogistics ? (
+                  <div style={{ marginTop: 18 }}>
+                    <div
+                      style={{
+                        marginTop: 0,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5 }}>
+                        After saving pickup, you can move the ticket to{" "}
+                        <span className="tag">IN TRANSIT</span>.
+                      </div>
+                      <button
+                        className="btn btn-accent btn-sm"
+                        disabled={
+                          logisticsAdvancing ||
+                          ticket.status !== "PICKUP_SCHEDULED"
+                        }
+                        onClick={() => {
+                          setLogisticsAdvancing(true);
+                          onUpdateStatus("IN_TRANSIT")
+                            .catch(() => {})
+                            .finally(() => setLogisticsAdvancing(false));
+                        }}
+                      >
+                        {logisticsAdvancing ? "Updating..." : "Next → In Transit"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 16, fontSize: 12, color: "var(--text3)" }}>
+                    You don&apos;t have permission to edit logistics.
+                  </div>
+                )}
+              </>
             ) : (
-              <div style={{ marginTop: 16, fontSize: 12, color: "var(--text3)" }}>
-                You don&apos;t have permission to edit logistics.
-              </div>
+              <>
+                <div className="detail-grid">
+                  <div className="detail-card">
+                    <div className="detail-label">Dispatch Date</div>
+                    <DatePicker
+                      value={dispatchDate}
+                      onChange={setDispatchDate}
+                      disabled={!canEditLogistics}
+                      placeholder="Select dispatch date"
+                    />
+                  </div>
+                  <div className="detail-card">
+                    <div className="detail-label">Dispatch Location</div>
+                    <input
+                      className="form-input"
+                      value={dispatchLocation}
+                      onChange={(e) => setDispatchLocation(e.target.value)}
+                      disabled={!canEditLogistics}
+                      placeholder="Warehouse / service center"
+                    />
+                  </div>
+                  <div className="detail-card">
+                    <div className="detail-label">Courier</div>
+                    <input
+                      className="form-input"
+                      value={dispatchCourierName}
+                      onChange={(e) => setDispatchCourierName(e.target.value)}
+                      disabled={!canEditLogistics}
+                      placeholder="e.g. BlueDart"
+                    />
+                  </div>
+                  <div className="detail-card">
+                    <div className="detail-label">LR Number</div>
+                    <input
+                      className="form-input"
+                      value={dispatchLrNumber}
+                      onChange={(e) => setDispatchLrNumber(e.target.value)}
+                      disabled={!canEditLogistics}
+                      placeholder="e.g. BD2026..."
+                      style={{ fontFamily: "var(--mono)" }}
+                    />
+                  </div>
+                </div>
+
+                {canEditLogistics ? (
+                  <div style={{ marginTop: 18 }}>
+                    <div
+                      style={{
+                        marginTop: 0,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5 }}>
+                        After saving dispatch, you can move the ticket to{" "}
+                        <span className="tag">CLOSED</span>.
+                      </div>
+                      <button
+                        className="btn btn-accent btn-sm"
+                        disabled={
+                          logisticsAdvancing ||
+                          ticket.status !== "DISPATCHED"
+                        }
+                        onClick={() => {
+                          setLogisticsAdvancing(true);
+                          onUpdateStatus("CLOSED")
+                            .catch(() => {})
+                            .finally(() => setLogisticsAdvancing(false));
+                        }}
+                      >
+                        {logisticsAdvancing ? "Updating..." : "Next → Closed"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 16, fontSize: 12, color: "var(--text3)" }}>
+                    You don&apos;t have permission to edit logistics.
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
