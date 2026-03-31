@@ -110,14 +110,14 @@ export async function proxyToBackend(
   }
 
   const hasBody = !["GET", "HEAD"].includes(request.method);
-  const body = hasBody ? await request.text() : undefined;
+  const body = hasBody ? await request.arrayBuffer() : undefined;
 
   let res: Response;
   try {
     res = await fetchWithTimeout(url, {
       method: request.method,
       headers,
-      body: body && body.length ? body : undefined,
+      body: body && body.byteLength ? body : undefined,
       cache: "no-store",
     });
   } catch (err) {
@@ -148,6 +148,67 @@ export async function proxyToBackend(
   });
 }
 
+export async function proxyFileToBackend(
+  request: NextRequest,
+  backendPath: string,
+  opts?: { requireAuth?: boolean },
+) {
+  const baseUrl = getBaseUrl();
+  if (!baseUrl) {
+    return NextResponse.json(
+      { success: false, message: MISSING_MAIN_URL_MESSAGE },
+      { status: 500, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+  const url = `${baseUrl}${backendPath}`;
+
+  const headers: Record<string, string> = {};
+
+  const authHeader = getAuthHeaderFromRequest(request);
+  if (authHeader) headers.Authorization = authHeader;
+
+  if (opts?.requireAuth && !headers.Authorization) {
+    return NextResponse.json(
+      { success: false, message: "Missing Authorization header" },
+      { status: 401, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(url, {
+      method: request.method,
+      headers,
+      cache: "no-store",
+    });
+  } catch (err) {
+    if (isAbortError(err)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Backend request timed out. Please try again or check MAIN_URL connectivity.",
+        },
+        { status: 504, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    return NextResponse.json(
+      { success: false, message: "Backend is unreachable. Is it running on MAIN_URL?" },
+      { status: 502, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  const buf = await res.arrayBuffer();
+  const outHeaders: Record<string, string> = {
+    "Cache-Control": "no-store",
+  };
+  const contentType = res.headers.get("content-type");
+  if (contentType) outHeaders["Content-Type"] = contentType;
+  const contentDisposition = res.headers.get("content-disposition");
+  if (contentDisposition) outHeaders["Content-Disposition"] = contentDisposition;
+
+  return new NextResponse(buf, { status: res.status, headers: outHeaders });
+}
+
 export async function proxyToBackendAndSetAuthCookies(
   request: NextRequest,
   backendPath: string,
@@ -169,14 +230,14 @@ export async function proxyToBackendAndSetAuthCookies(
   if (contentType) headers["Content-Type"] = contentType;
 
   const hasBody = !["GET", "HEAD"].includes(request.method);
-  const body = hasBody ? await request.text() : undefined;
+  const body = hasBody ? await request.arrayBuffer() : undefined;
 
   let res: Response;
   try {
     res = await fetchWithTimeout(url, {
       method: request.method,
       headers,
-      body: body && body.length ? body : undefined,
+      body: body && body.byteLength ? body : undefined,
       cache: "no-store",
     });
   } catch (err) {

@@ -243,9 +243,8 @@ export default function SLAMonitor({
                 <th>Ticket</th>
                 <th>Customer</th>
                 <th>Priority</th>
-                <th>Status</th>
+                <th>Status / SLA</th>
                 <th>Created</th>
-                <th>SLA</th>
               </tr>
             </thead>
             <tbody>
@@ -259,13 +258,13 @@ export default function SLAMonitor({
                     <PriorityBadge priority={t.priority} />
                   </td>
                   <td>
-                    <StatusBadge status={t.status} />
+                    <div className="status-sla">
+                      <StatusBadge status={t.status} />
+                      <SlaBadge status={t.slaStatus} />
+                    </div>
                   </td>
                   <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text3)" }}>
                     {t.createdAt}
-                  </td>
-                  <td>
-                    <SlaBadge status={t.slaStatus} />
                   </td>
                 </tr>
               ))}

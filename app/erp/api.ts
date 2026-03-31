@@ -150,7 +150,14 @@ async function apiFetch<T>(
   const headers = new Headers(init?.headers);
   headers.set("Accept", "application/json");
   if (!headers.has("Content-Type") && init?.body) {
-    headers.set("Content-Type", "application/json");
+    const body = init.body;
+    const isFormData =
+      typeof FormData !== "undefined" && body instanceof FormData;
+    const isUrlEncoded =
+      typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams;
+    if (!isFormData && !isUrlEncoded) {
+      headers.set("Content-Type", "application/json");
+    }
   }
   if (auth?.accessToken) {
     const bearer = `Bearer ${auth.accessToken}`;
@@ -268,6 +275,7 @@ export type BackendLogistics = {
     lrNumber?: string;
     awbNumber?: string;
   };
+  documents?: string[];
   createdAt?: string | Date;
   updatedAt?: string | Date;
 };
@@ -860,6 +868,63 @@ export async function apiScheduleDispatch(input: {
     body: JSON.stringify(payload),
   });
   if (!env.success) throw new Error(env.message || "Failed to schedule dispatch");
+}
+
+export async function apiTicketPickupDetailsGet(ticketId: string): Promise<{
+  pickupDate: string; // YYYY-MM-DD or ""
+  pickupLocation: string;
+  documents: string[];
+}> {
+  const env = await apiFetch<{
+    pickupDate: string | Date | null;
+    pickupLocation: string;
+    documents?: unknown;
+  }>(
+    `/api/tickets/${encodeURIComponent(ticketId)}/pickup-details`,
+    { method: "GET" },
+  );
+  if (!env.success) throw new Error(env.message || "Failed to fetch pickup details");
+  return {
+    pickupDate: toDateInput(env.data?.pickupDate),
+    pickupLocation: String(env.data?.pickupLocation || ""),
+    documents: Array.isArray(env.data?.documents)
+      ? (env.data.documents as unknown[]).map((x) => String(x || "")).filter(Boolean)
+      : [],
+  };
+}
+
+export async function apiTicketPickupDetailsSave(
+  ticketId: string,
+  input: { pickupDate: string; pickupLocation: string },
+): Promise<void> {
+  const payload = {
+    pickupDate: `${input.pickupDate}T00:00:00.000Z`,
+    pickupLocation: input.pickupLocation,
+  };
+  const env = await apiFetch<unknown>(
+    `/api/tickets/${encodeURIComponent(ticketId)}/pickup-details`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+  if (!env.success) throw new Error(env.message || "Failed to save pickup details");
+}
+
+export async function apiTicketPickupDocumentUpload(
+  ticketId: string,
+  file: File,
+): Promise<{ url: string; documents: string[] }> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const env = await apiFetch<{ url?: unknown; documents?: unknown }>(
+    `/api/tickets/${encodeURIComponent(ticketId)}/pickup-documents`,
+    { method: "POST", body: fd },
+  );
+  if (!env.success) throw new Error(env.message || "Failed to upload document");
+  return {
+    url: String(env.data?.url || ""),
+    documents: Array.isArray(env.data?.documents)
+      ? (env.data.documents as unknown[]).map((x) => String(x || "")).filter(Boolean)
+      : [],
+  };
 }
 
 export async function apiLogisticsByTicket(ticketId: string): Promise<BackendLogistics[]> {

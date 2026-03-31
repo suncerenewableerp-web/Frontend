@@ -10,6 +10,9 @@ import {
   apiSlaSettingsUpdate,
   apiTicketJobCardGet,
   apiTicketJobCardUpdate,
+  apiTicketPickupDetailsGet,
+  apiTicketPickupDetailsSave,
+  apiTicketPickupDocumentUpload,
   apiTicketGet,
   apiUpdateTicketDetails,
   apiUpdateTicketFaultDescription,
@@ -111,6 +114,9 @@ function parseHours(input: string): number | null {
   return n;
 }
 
+const ALL_TABS = ["overview", "jobcard", "logistics", "sla"] as const;
+type TicketTab = (typeof ALL_TABS)[number];
+
 export default function TicketDetail({
   ticket,
   user,
@@ -127,20 +133,29 @@ export default function TicketDetail({
   onBack: () => void;
   onUpdateStatus: (status: TicketStatus) => Promise<void>;
   onTicketUpdated: (t: Ticket) => void;
-  initialTab?: "overview" | "jobcard" | "logistics" | "sla";
+  initialTab?: TicketTab;
   initialLogisticsStage?: "pickup" | "dispatch";
 }) {
-  const tabs = ["overview", "jobcard", "logistics", "sla"] as const;
-  const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>(initialTab);
+  const roleName = String(user.role || "").toUpperCase();
+  const canShowWarranty = roleName !== "CUSTOMER";
+  const canUploadPickupDocs = roleName === "CUSTOMER" || roleName === "ADMIN" || roleName === "SALES";
+  const tabs = useMemo(() => {
+    if (roleName === "CUSTOMER") return ["overview"] as TicketTab[];
+    return [...ALL_TABS] as TicketTab[];
+  }, [roleName]);
+  const [activeTab, setActiveTab] = useState<TicketTab>(() => {
+    const desired = (initialTab || "overview") as TicketTab;
+    return tabs.includes(desired) ? desired : "overview";
+  });
   const [newStatus, setNewStatus] = useState(ticket.status);
   const [updating, setUpdating] = useState(false);
   const [statusError, setStatusError] = useState("");
   const currentIdx = STATUS_ORDER.indexOf(ticket.status);
-  const roleName = String(user.role || "").toUpperCase();
-  const canUpdateStatus = useMemo(() => {
+  const canSeeStatusUpdate = useMemo(() => {
     if (roleName !== "ADMIN" && roleName !== "ENGINEER" && roleName !== "SALES") return false;
-    return canAccess(roles, user.role, "tickets", "edit") && ticket.status !== "CLOSED";
-  }, [roles, user.role, ticket.status, roleName]);
+    return canAccess(roles, user.role, "tickets", "edit");
+  }, [roles, user.role, roleName]);
+  const statusUpdatesLocked = ticket.status === "CLOSED";
   const canEditLogistics = useMemo(() => {
     if (roleName !== "ADMIN" && roleName !== "SALES") return false;
     return (
@@ -218,6 +233,30 @@ export default function TicketDetail({
   const [logisticsError, setLogisticsError] = useState("");
   const [logisticsSavedMsg, setLogisticsSavedMsg] = useState("");
 
+  const [pickupBaseline, setPickupBaseline] = useState<null | {
+    pickupDate: string;
+    courierName: string;
+    lrNumber: string;
+    pickupLocation: string;
+  }>(null);
+  const [pickupAdvanceState, setPickupAdvanceState] = useState<{ ticketId: string; unlocked: boolean }>(() => ({
+    ticketId: ticket.id,
+    unlocked: false,
+  }));
+  const pickupAdvanceUnlocked =
+    pickupAdvanceState.ticketId === ticket.id ? pickupAdvanceState.unlocked : false;
+  const setPickupAdvanceUnlocked = (unlocked: boolean) =>
+    setPickupAdvanceState({ ticketId: ticket.id, unlocked });
+
+  const [customerPickupLoading, setCustomerPickupLoading] = useState(false);
+  const [customerPickupSaving, setCustomerPickupSaving] = useState(false);
+  const [customerPickupError, setCustomerPickupError] = useState("");
+  const [customerPickupSavedMsg, setCustomerPickupSavedMsg] = useState("");
+  const [pickupDocuments, setPickupDocuments] = useState<string[]>([]);
+  const [pickupDocFile, setPickupDocFile] = useState<File | null>(null);
+  const [pickupDocUploading, setPickupDocUploading] = useState(false);
+  const [pickupDocError, setPickupDocError] = useState("");
+
   const [showSlaSettings, setShowSlaSettings] = useState(false);
   const [slaLoading, setSlaLoading] = useState(false);
   const [slaSaving, setSlaSaving] = useState(false);
@@ -282,13 +321,32 @@ export default function TicketDetail({
         setDispatchLogistics(dispatch);
 
         const pickupDateFromApi = toDateInputValueSafe(pickup?.pickupDetails?.scheduledDate);
-        setPickupDate(
-          pickupDateFromApi || toDateInputValue(new Date(Date.now() + 86400000)),
+        const nextPickupDate =
+          pickupDateFromApi || toDateInputValue(new Date(Date.now() + 86400000));
+        const nextCourier = String(pickup?.courierDetails?.courierName || "BlueDart");
+        const nextLr = String(pickup?.courierDetails?.lrNumber || "");
+        const nextPickupLocation = String(
+          pickup?.pickupDetails?.pickupLocation || ticket.customerAddress || "",
         );
-        setCourierName(String(pickup?.courierDetails?.courierName || "BlueDart"));
-        setLrNumber(String(pickup?.courierDetails?.lrNumber || ""));
-        setPickupLocation(
-          String(pickup?.pickupDetails?.pickupLocation || ticket.customerAddress || ""),
+
+        setPickupDate(nextPickupDate);
+        setCourierName(nextCourier);
+        setLrNumber(nextLr);
+        setPickupLocation(nextPickupLocation);
+        setPickupDocuments(
+          Array.isArray(pickup?.documents)
+            ? pickup.documents.map((x) => String(x || "")).filter(Boolean)
+            : [],
+        );
+        setPickupBaseline(
+          pickup
+            ? {
+                pickupDate: nextPickupDate,
+                courierName: nextCourier,
+                lrNumber: nextLr,
+                pickupLocation: nextPickupLocation,
+              }
+            : null,
         );
 
         const dispatchDateFromApi = toDateInputValueSafe(dispatch?.pickupDetails?.scheduledDate);
@@ -318,9 +376,60 @@ export default function TicketDetail({
   }, [ticket.status]);
 
   useEffect(() => {
-    queueMicrotask(() => setActiveTab(initialTab));
+    queueMicrotask(() => {
+      const desired = (initialTab || "overview") as TicketTab;
+      setActiveTab(tabs.includes(desired) ? desired : "overview");
+    });
     queueMicrotask(() => setLogisticsStage(initialLogisticsStage || "pickup"));
-  }, [ticket.id, initialTab, initialLogisticsStage]);
+  }, [ticket.id, initialTab, initialLogisticsStage, tabs]);
+
+  useEffect(() => {
+    if (roleName !== "CUSTOMER") return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setCustomerPickupLoading(true);
+      setCustomerPickupError("");
+      setCustomerPickupSavedMsg("");
+    });
+    apiTicketPickupDetailsGet(ticket.id)
+      .then((data) => {
+        if (cancelled) return;
+        setPickupDate(data.pickupDate || toDateInputValue(new Date(Date.now() + 86400000)));
+        setPickupLocation(String(data.pickupLocation || ticket.customerAddress || ""));
+        setPickupDocuments(data.documents || []);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setCustomerPickupError(
+          e instanceof Error ? e.message : "Failed to load pickup details",
+        );
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setCustomerPickupLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [roleName, ticket.id, ticket.customerAddress]);
+
+  const pickupDirty = useMemo(() => {
+    if (!pickupBaseline) return true;
+    return (
+      pickupBaseline.pickupDate !== pickupDate ||
+      pickupBaseline.courierName !== courierName ||
+      pickupBaseline.lrNumber !== lrNumber ||
+      pickupBaseline.pickupLocation !== pickupLocation
+    );
+  }, [pickupBaseline, pickupDate, courierName, lrNumber, pickupLocation]);
+
+  const canAdvanceToInTransit =
+    canEditLogistics &&
+    ticket.status === "PICKUP_SCHEDULED" &&
+    Boolean(pickupBaseline) &&
+    pickupAdvanceUnlocked &&
+    !pickupDirty;
 
   useEffect(() => {
     if (!showSlaSettings || !canEditSla) return;
@@ -381,6 +490,103 @@ export default function TicketDetail({
 
       <TicketTimeline currentStatus={ticket.status} />
 
+      {canSeeStatusUpdate && (
+        <div className="table-card" style={{ marginBottom: 16 }}>
+          <div className="table-header">
+            <div className="table-title">Update Status</div>
+          </div>
+          {statusUpdatesLocked ? (
+            <div style={{ padding: "0 20px", marginTop: 12, fontSize: 12, color: "var(--text3)" }}>
+              Ticket is closed. Status updates are locked.
+            </div>
+          ) : null}
+          <div style={{ padding: "16px 20px", display: "flex", gap: 10, alignItems: "center" }}>
+            <select
+              className="form-select"
+              value={newStatus}
+              onChange={(e) => {
+                setNewStatus(e.target.value as TicketStatus);
+                setStatusError("");
+              }}
+              disabled={statusUpdatesLocked || updating}
+              style={{ flex: 1 }}
+            >
+              {STATUS_ORDER.map((s) => (
+                <option
+                  key={s}
+                  value={s}
+                  disabled={
+                    STATUS_ORDER.indexOf(s) < currentIdx ||
+                    STATUS_ORDER.indexOf(s) > currentIdx + 1
+                  }
+                >
+                  {s.replace(/_/g, " ")}
+                </option>
+              ))}
+            </select>
+            <button
+              className="btn btn-accent"
+              disabled={updating || statusUpdatesLocked}
+              onClick={() => {
+                if (statusUpdatesLocked) return;
+                setUpdating(true);
+                setStatusError("");
+
+                const nextIdx = STATUS_ORDER.indexOf(newStatus);
+                if (nextIdx > currentIdx + 1) {
+                  setStatusError("Please follow the workflow step-by-step. Skipping steps is not allowed.");
+                  setUpdating(false);
+                  return;
+                }
+
+                const openLogistics = (stage: "pickup" | "dispatch", msg?: string) => {
+                  setActiveTab("logistics");
+                  setLogisticsStage(stage);
+                  if (msg) setLogisticsError(msg);
+                };
+
+                (async () => {
+                  if (newStatus === "PICKUP_SCHEDULED") {
+                    openLogistics(
+                      "pickup",
+                      "Please schedule pickup from Logistics (fill pickup details and click Save Pickup).",
+                    );
+                    return;
+                  }
+
+                  if (newStatus === "DISPATCHED") {
+                    openLogistics(
+                      "dispatch",
+                      "Please open Logistics and save dispatch details first (Save Dispatch).",
+                    );
+                    return;
+                  }
+
+                  if (newStatus === "IN_TRANSIT") {
+                    openLogistics(
+                      "pickup",
+                      "Please open Logistics first, then move the ticket to IN TRANSIT from there.",
+                    );
+                    return;
+                  }
+
+                  await onUpdateStatus(newStatus);
+                })()
+                  .catch(() => {})
+                  .finally(() => setUpdating(false));
+              }}
+            >
+              {updating ? "Updating..." : "Update Status"}
+            </button>
+          </div>
+          {statusError ? (
+            <div className="form-error" style={{ marginTop: 10 }}>
+              {statusError}
+            </div>
+          ) : null}
+        </div>
+      )}
+
       <div className="tabs">
         {tabs.map((tab) => (
           <div
@@ -408,15 +614,17 @@ export default function TicketDetail({
                 <div className="detail-value">{val}</div>
               </div>
             ))}
-            <div className="detail-card">
-              <div className="detail-label">Warranty</div>
-              <div className="detail-value">
-                <Badge
-                  label={ticket.warrantyStatus ? "In Warranty" : "Out of Warranty"}
-                  color={ticket.warrantyStatus ? "#16a34a" : "#c0392b"}
-                />
+            {canShowWarranty ? (
+              <div className="detail-card">
+                <div className="detail-label">Warranty</div>
+                <div className="detail-value">
+                  <Badge
+                    label={ticket.warrantyStatus ? "In Warranty" : "Out of Warranty"}
+                    color={ticket.warrantyStatus ? "#16a34a" : "#c0392b"}
+                  />
+                </div>
               </div>
-            </div>
+            ) : null}
           </div>
 
           <div className="table-card" style={{ marginBottom: 16 }}>
@@ -427,6 +635,148 @@ export default function TicketDetail({
               {ticket.faultDescription}
             </div>
           </div>
+
+          {roleName === "CUSTOMER" && (
+            <div className="table-card" style={{ marginBottom: 16 }}>
+              <div className="table-header">
+                <div className="table-title">Pickup Details</div>
+              </div>
+              <div style={{ padding: "16px 20px" }}>
+                {customerPickupError ? (
+                  <div className="form-error" style={{ marginBottom: 12 }}>
+                    {customerPickupError}
+                  </div>
+                ) : null}
+                {customerPickupSavedMsg ? (
+                  <div style={{ marginBottom: 12, fontSize: 13, color: "#16a34a" }}>
+                    {customerPickupSavedMsg}
+                  </div>
+                ) : null}
+
+                {customerPickupLoading ? (
+                  <div style={{ fontSize: 13, color: "var(--text3)" }}>Loading pickup details…</div>
+                ) : (
+                  <>
+                    <div className="form-grid">
+                      <div>
+                        <div className="form-label">Pickup Date</div>
+                        <DatePicker
+                          value={pickupDate}
+                          onChange={(next) => setPickupDate(next)}
+                          placeholder="Select pickup date"
+                        />
+                      </div>
+                      <div>
+                        <div className="form-label">Pickup Location</div>
+                        <input
+                          className="form-input"
+                          value={pickupLocation}
+                          onChange={(e) => setPickupLocation(e.target.value)}
+                          placeholder="Enter pickup address/location"
+                        />
+                      </div>
+                    </div>
+
+                    {canUploadPickupDocs ? (
+                      <div style={{ marginTop: 14 }}>
+                        <div className="form-label">Pickup Document (PDF/Image)</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                          <input
+                            className="form-input"
+                            type="file"
+                            accept="application/pdf,image/*"
+                            disabled={pickupDocUploading}
+                            onChange={(e) => {
+                              setPickupDocError("");
+                              const f = e.target.files?.[0] || null;
+                              setPickupDocFile(f);
+                            }}
+                          />
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            type="button"
+                            disabled={!pickupDocFile || pickupDocUploading}
+                            onClick={() => {
+                              if (!pickupDocFile) return;
+                              setPickupDocUploading(true);
+                              setPickupDocError("");
+                              apiTicketPickupDocumentUpload(ticket.id, pickupDocFile)
+                                .then((r) => {
+                                  setPickupDocuments(r.documents || []);
+                                  setPickupDocFile(null);
+                                  setCustomerPickupSavedMsg("Document uploaded.");
+                                })
+                                .catch((e) =>
+                                  setPickupDocError(
+                                    e instanceof Error ? e.message : "Upload failed",
+                                  ),
+                                )
+                                .finally(() => setPickupDocUploading(false));
+                            }}
+                          >
+                            {pickupDocUploading ? "Uploading..." : "Upload"}
+                          </button>
+                        </div>
+                        {pickupDocError ? (
+                          <div className="form-error" style={{ marginTop: 10 }}>
+                            {pickupDocError}
+                          </div>
+                        ) : null}
+                        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                          {pickupDocuments.length ? (
+                            pickupDocuments.map((u) => (
+                              <a
+                                key={u}
+                                href={u}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{ color: "var(--blue)", fontSize: 12 }}
+                              >
+                                {u.split("/").slice(-1)[0]}
+                              </a>
+                            ))
+                          ) : (
+                            <div style={{ fontSize: 12, color: "var(--text3)" }}>
+                              No documents uploaded yet.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
+                      <button
+                        className="btn btn-accent"
+                        disabled={customerPickupSaving || !pickupDate.trim() || !pickupLocation.trim()}
+                        onClick={() => {
+                          setCustomerPickupSaving(true);
+                          setCustomerPickupError("");
+                          setCustomerPickupSavedMsg("");
+                          apiTicketPickupDetailsSave(ticket.id, {
+                            pickupDate,
+                            pickupLocation: pickupLocation.trim(),
+                          })
+                            .then(() => apiTicketGet(ticket.id))
+                            .then((updated) => {
+                              onTicketUpdated(updated);
+                              setCustomerPickupSavedMsg("Pickup details saved.");
+                            })
+                            .catch((e) =>
+                              setCustomerPickupError(
+                                e instanceof Error ? e.message : "Failed to save pickup details",
+                              ),
+                            )
+                            .finally(() => setCustomerPickupSaving(false));
+                        }}
+                      >
+                        {customerPickupSaving ? "Saving..." : "Save Pickup Details"}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
 
           {canEditFaultDescription && (
             <div className="table-card" style={{ marginBottom: 16 }}>
@@ -596,33 +946,37 @@ export default function TicketDetail({
                     </select>
                   </div>
 
-                  <div>
-                    <div className="form-label">Warranty</div>
-                    <select
-                      className="form-select"
-                      value={details.warrantyStatus ? "true" : "false"}
-                      onChange={(e) => {
-                        const under = e.target.value === "true";
-                        setDetails((p) => ({
-                          ...p,
-                          warrantyStatus: under,
-                          warrantyEndDate: under ? p.warrantyEndDate : "",
-                        }));
-                      }}
-                    >
-                      <option value="true">Under Warranty</option>
-                      <option value="false">Out of Warranty</option>
-                    </select>
-                  </div>
-                  {details.warrantyStatus ? (
-                    <div>
-                      <div className="form-label">Warranty End Date</div>
-                      <DatePicker
-                        value={details.warrantyEndDate}
-                        onChange={(next) => setDetails((p) => ({ ...p, warrantyEndDate: next }))}
-                        placeholder="Select end date"
-                      />
-                    </div>
+                  {canShowWarranty ? (
+                    <>
+                      <div>
+                        <div className="form-label">Warranty</div>
+                        <select
+                          className="form-select"
+                          value={details.warrantyStatus ? "true" : "false"}
+                          onChange={(e) => {
+                            const under = e.target.value === "true";
+                            setDetails((p) => ({
+                              ...p,
+                              warrantyStatus: under,
+                              warrantyEndDate: under ? p.warrantyEndDate : "",
+                            }));
+                          }}
+                        >
+                          <option value="true">Under Warranty</option>
+                          <option value="false">Out of Warranty</option>
+                        </select>
+                      </div>
+                      {details.warrantyStatus ? (
+                        <div>
+                          <div className="form-label">Warranty End Date</div>
+                          <DatePicker
+                            value={details.warrantyEndDate}
+                            onChange={(next) => setDetails((p) => ({ ...p, warrantyEndDate: next }))}
+                            placeholder="Select end date"
+                          />
+                        </div>
+                      ) : null}
+                    </>
                   ) : null}
                 </div>
 
@@ -633,7 +987,7 @@ export default function TicketDetail({
                       detailsSaving ||
                       !details.capacity.trim() ||
                       !details.faultDescription.trim() ||
-                      (details.warrantyStatus && !details.warrantyEndDate.trim())
+                      (canShowWarranty && details.warrantyStatus && !details.warrantyEndDate.trim())
                     }
                     onClick={() => {
                       setDetailsSaving(true);
@@ -672,96 +1026,6 @@ export default function TicketDetail({
             </div>
           )}
 
-          {canUpdateStatus && (
-            <div className="table-card">
-              <div className="table-header">
-                <div className="table-title">Update Status</div>
-              </div>
-              <div style={{ padding: "16px 20px", display: "flex", gap: 10, alignItems: "center" }}>
-                <select
-                  className="form-select"
-                  value={newStatus}
-                  onChange={(e) => {
-                    setNewStatus(e.target.value as TicketStatus);
-                    setStatusError("");
-                  }}
-                  style={{ flex: 1 }}
-                >
-                  {STATUS_ORDER.map((s) => (
-                    <option
-                      key={s}
-                      value={s}
-                      disabled={
-                        STATUS_ORDER.indexOf(s) < currentIdx ||
-                        STATUS_ORDER.indexOf(s) > currentIdx + 1
-                      }
-                    >
-                      {s.replace(/_/g, " ")}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  className="btn btn-accent"
-                  disabled={updating}
-                  onClick={() => {
-                    setUpdating(true);
-                    setStatusError("");
-
-                    const nextIdx = STATUS_ORDER.indexOf(newStatus);
-                    if (nextIdx > currentIdx + 1) {
-                      setStatusError("Please follow the workflow step-by-step. Skipping steps is not allowed.");
-                      setUpdating(false);
-                      return;
-                    }
-
-                    const openLogistics = (stage: "pickup" | "dispatch", msg?: string) => {
-                      setActiveTab("logistics");
-                      setLogisticsStage(stage);
-                      if (msg) setLogisticsError(msg);
-                    };
-
-                    (async () => {
-                      if (newStatus === "PICKUP_SCHEDULED") {
-                        openLogistics(
-                          "pickup",
-                          "Please schedule pickup from Logistics (fill pickup details and click Save Pickup).",
-                        );
-                        return;
-                      }
-
-                      if (newStatus === "DISPATCHED") {
-                        openLogistics(
-                          "dispatch",
-                          "Please open Logistics and save dispatch details first (Save Dispatch).",
-                        );
-                        return;
-                      }
-
-                      if (newStatus === "IN_TRANSIT") {
-                        openLogistics(
-                          "pickup",
-                          "Please open Logistics first, then move the ticket to IN TRANSIT from there.",
-                        );
-                        return;
-                      }
-
-                      await onUpdateStatus(newStatus);
-
-                    })()
-                      .catch(() => {})
-                      .finally(() => setUpdating(false));
-                  }}
-                >
-                  {updating ? "Updating..." : "Update Status"}
-                </button>
-              </div>
-              {statusError ? (
-                <div className="form-error" style={{ marginTop: 10 }}>
-                  {statusError}
-                </div>
-              ) : null}
-            </div>
-          )}
         </>
       )}
 
@@ -1217,6 +1481,31 @@ export default function TicketDetail({
                         rows.find((r) => String(r?.type || "").toUpperCase() === "DELIVERY") || null;
                       setPickupLogistics(pickup);
                       setDispatchLogistics(dispatch);
+                      setPickupDocuments(
+                        Array.isArray(pickup?.documents)
+                          ? pickup.documents.map((x) => String(x || "")).filter(Boolean)
+                          : [],
+                      );
+
+                      if (logisticsStage === "pickup") {
+                        const pickupDateSaved =
+                          toDateInputValueSafe(pickup?.pickupDetails?.scheduledDate) || pickupDate;
+                        const courierSaved = String(pickup?.courierDetails?.courierName || courierName);
+                        const lrSaved = String(pickup?.courierDetails?.lrNumber || lrNumber);
+                        const pickupLocSaved = String(pickup?.pickupDetails?.pickupLocation || pickupLocation);
+                        setPickupDate(pickupDateSaved);
+                        setCourierName(courierSaved);
+                        setLrNumber(lrSaved);
+                        setPickupLocation(pickupLocSaved);
+                        setPickupBaseline({
+                          pickupDate: pickupDateSaved,
+                          courierName: courierSaved,
+                          lrNumber: lrSaved,
+                          pickupLocation: pickupLocSaved,
+                        });
+                        setPickupAdvanceUnlocked(true);
+                      }
+
                       setLogisticsSavedMsg(
                         logisticsStage === "pickup" ? "Pickup saved." : "Dispatch saved.",
                       );
@@ -1312,6 +1601,75 @@ export default function TicketDetail({
                   </div>
                 </div>
 
+                {canUploadPickupDocs ? (
+                  <div className="table-card" style={{ marginTop: 14 }}>
+                    <div className="table-header">
+                      <div className="table-title">Pickup Documents</div>
+                    </div>
+                    <div style={{ padding: "14px 16px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        <input
+                          className="form-input"
+                          type="file"
+                          accept="application/pdf,image/*"
+                          disabled={pickupDocUploading}
+                          onChange={(e) => {
+                            setPickupDocError("");
+                            const f = e.target.files?.[0] || null;
+                            setPickupDocFile(f);
+                          }}
+                        />
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          type="button"
+                          disabled={!pickupDocFile || pickupDocUploading}
+                          onClick={() => {
+                            if (!pickupDocFile) return;
+                            setPickupDocUploading(true);
+                            setPickupDocError("");
+                            apiTicketPickupDocumentUpload(ticket.id, pickupDocFile)
+                              .then((r) => {
+                                setPickupDocuments(r.documents || []);
+                                setPickupDocFile(null);
+                                setLogisticsSavedMsg("Document uploaded.");
+                              })
+                              .catch((e) =>
+                                setPickupDocError(
+                                  e instanceof Error ? e.message : "Upload failed",
+                                ),
+                              )
+                              .finally(() => setPickupDocUploading(false));
+                          }}
+                        >
+                          {pickupDocUploading ? "Uploading..." : "Upload"}
+                        </button>
+                      </div>
+                      {pickupDocError ? (
+                        <div className="form-error" style={{ marginTop: 10 }}>
+                          {pickupDocError}
+                        </div>
+                      ) : null}
+                      <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                        {pickupDocuments.length ? (
+                          pickupDocuments.map((u) => (
+                            <a
+                              key={u}
+                              href={u}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ color: "var(--blue)", fontSize: 12 }}
+                            >
+                              {u.split("/").slice(-1)[0]}
+                            </a>
+                          ))
+                        ) : (
+                          <div style={{ fontSize: 12, color: "var(--text3)" }}>No documents uploaded yet.</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
                 {canEditLogistics ? (
                   <div style={{ marginTop: 18 }}>
                     <div
@@ -1325,24 +1683,31 @@ export default function TicketDetail({
                       }}
                     >
                       <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5 }}>
-                        After saving pickup, you can move the ticket to{" "}
-                        <span className="tag">IN TRANSIT</span>.
+                        {canAdvanceToInTransit ? (
+                          <>
+                            You can move the ticket to <span className="tag">IN TRANSIT</span>.
+                          </>
+                        ) : (
+                          <>Save details to go to next step.</>
+                        )}
                       </div>
-                      <button
-                        className="btn btn-accent btn-sm"
-                        disabled={
-                          logisticsAdvancing ||
-                          ticket.status !== "PICKUP_SCHEDULED"
-                        }
-                        onClick={() => {
-                          setLogisticsAdvancing(true);
-                          onUpdateStatus("IN_TRANSIT")
-                            .catch(() => {})
-                            .finally(() => setLogisticsAdvancing(false));
-                        }}
-                      >
-                        {logisticsAdvancing ? "Updating..." : "Next → In Transit"}
-                      </button>
+                      {pickupAdvanceUnlocked ? (
+                        <button
+                          className="btn btn-accent btn-sm"
+                          disabled={logisticsAdvancing || !canAdvanceToInTransit}
+                          onClick={() => {
+                            setLogisticsAdvancing(true);
+                            onUpdateStatus("IN_TRANSIT")
+                              .then(() => {
+                                setActiveTab("overview");
+                              })
+                              .catch(() => {})
+                              .finally(() => setLogisticsAdvancing(false));
+                          }}
+                        >
+                          {logisticsAdvancing ? "Updating..." : "Next → In Transit"}
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                 ) : (

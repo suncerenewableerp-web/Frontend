@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { Ticket } from "../types";
 import DatePicker from "./DatePicker";
+import { apiTicketPickupDocumentUpload } from "../api";
 
 function toDateInputValue(date: Date) {
   const year = date.getFullYear();
@@ -38,6 +39,7 @@ export default function SchedulePickupModal({
   const [courierName, setCourierName] = useState("BlueDart");
   const [lrNumber, setLrNumber] = useState("");
   const [pickupLocation, setPickupLocation] = useState("");
+  const [pickupDocFile, setPickupDocFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -59,7 +61,17 @@ export default function SchedulePickupModal({
       lrNumber,
       pickupLocation,
     })
-      .then(() => onClose())
+      .then(async () => {
+        if (pickupDocFile) {
+          try {
+            await apiTicketPickupDocumentUpload(selectedTicketId, pickupDocFile);
+          } catch (e) {
+            setError(e instanceof Error ? e.message : "Pickup scheduled, but document upload failed.");
+            return;
+          }
+        }
+        onClose();
+      })
       .catch((e) =>
         setError(e instanceof Error ? e.message : "Failed to schedule pickup"),
       )
@@ -143,6 +155,19 @@ export default function SchedulePickupModal({
                 placeholder="Customer site / warehouse"
                 value={pickupLocation}
                 onChange={(e) => setPickupLocation(e.target.value)}
+              />
+            </div>
+            <div className="form-group full">
+              <label className="form-label">Pickup document (PDF/Image)</label>
+              <input
+                className="form-input"
+                type="file"
+                accept="application/pdf,image/*"
+                onChange={(e) => {
+                  setError("");
+                  const f = e.target.files?.[0] || null;
+                  setPickupDocFile(f);
+                }}
               />
             </div>
           </div>

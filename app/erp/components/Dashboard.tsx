@@ -185,8 +185,7 @@ export default function Dashboard({
                 <th>Customer</th>
                 <th>Inverter</th>
                 <th>Priority</th>
-                <th>Status</th>
-                <th>SLA</th>
+                <th>Status / SLA</th>
               </tr>
             </thead>
             <tbody>
@@ -212,10 +211,10 @@ export default function Dashboard({
                     <PriorityBadge priority={t.priority} />
                   </td>
                   <td>
-                    <StatusBadge status={t.status} />
-                  </td>
-                  <td>
-                    <SlaBadge status={t.slaStatus} />
+                    <div className="status-sla">
+                      <StatusBadge status={t.status} />
+                      <SlaBadge status={t.slaStatus} />
+                    </div>
                   </td>
                 </tr>
               ))}

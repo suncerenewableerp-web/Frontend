@@ -10,6 +10,7 @@ export const canAccess = (
   const roleNorm = String(userRole || "").toUpperCase();
   if (roleNorm === "ADMIN") return true;
   if (roleNorm === "SALES" && module === "tickets") return true;
+  if (roleNorm === "SALES" && module === "logistics" && action !== "delete") return true;
   const roleDef = roles.find((r) => r.id === userRole);
   if (!roleDef) return false;
   return roleDef.permissions[module]?.[action] ?? false;

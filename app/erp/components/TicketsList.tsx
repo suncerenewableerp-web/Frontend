@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { STATUS_ORDER } from "../constants";
 import type { RoleDefinition, Ticket, User } from "../types";
 import { canAccess } from "../utils";
@@ -24,27 +24,59 @@ export default function TicketsList({
   onView: (t: Ticket) => void;
   onNew: () => void;
 }) {
+  const normalizedInitialStatus = String(initialStatusFilter || "").toUpperCase().trim();
+  const initialTab: "open" | "closed" =
+    normalizedInitialStatus === "CLOSED" ? "closed" : "open";
+  const safeInitialStatusFilter =
+    normalizedInitialStatus &&
+    normalizedInitialStatus !== "OPEN" &&
+    normalizedInitialStatus !== "CLOSED"
+      ? normalizedInitialStatus
+      : "ALL";
+
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState(initialStatusFilter || "ALL");
+  const [ticketsTab, setTicketsTab] = useState<"open" | "closed">(initialTab);
+  const [statusFilter, setStatusFilter] = useState(safeInitialStatusFilter);
   const [priorityFilter, setPriorityFilter] = useState(initialPriorityFilter || "ALL");
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 8;
 
-  const myTickets = tickets;
+  const openCount = useMemo(
+    () => tickets.filter((t) => t.status !== "CLOSED").length,
+    [tickets],
+  );
+  const closedCount = useMemo(
+    () => tickets.filter((t) => t.status === "CLOSED").length,
+    [tickets],
+  );
 
-  const filtered = myTickets.filter((t) => {
-    const matchSearch =
-      t.ticketId.toLowerCase().includes(search.toLowerCase()) ||
-      t.customer.toLowerCase().includes(search.toLowerCase()) ||
-      t.faultDescription.toLowerCase().includes(search.toLowerCase());
-    const matchStatus =
-      statusFilter === "ALL"
-        ? true
-        : statusFilter === "OPEN"
-          ? t.status !== "CLOSED"
-          : t.status === statusFilter;
-    const matchPriority =
-      priorityFilter === "ALL" || t.priority === priorityFilter;
-    return matchSearch && matchStatus && matchPriority;
-  });
+  const myTickets = useMemo(() => {
+    return ticketsTab === "closed"
+      ? tickets.filter((t) => t.status === "CLOSED")
+      : tickets.filter((t) => t.status !== "CLOSED");
+  }, [tickets, ticketsTab]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return myTickets.filter((t) => {
+      const matchSearch =
+        !q ||
+        t.ticketId.toLowerCase().includes(q) ||
+        t.customer.toLowerCase().includes(q) ||
+        t.faultDescription.toLowerCase().includes(q);
+      const matchStatus = statusFilter === "ALL" ? true : t.status === statusFilter;
+      const matchPriority = priorityFilter === "ALL" || t.priority === priorityFilter;
+      return matchSearch && matchStatus && matchPriority;
+    });
+  }, [myTickets, search, statusFilter, priorityFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+
+  const startIndex = (currentPage - 1) * PAGE_SIZE;
+  const pageRows = filtered.slice(startIndex, startIndex + PAGE_SIZE);
+  const showingFrom = filtered.length ? startIndex + 1 : 0;
+  const showingTo = Math.min(startIndex + PAGE_SIZE, filtered.length);
 
   return (
     <div className="content">
@@ -65,6 +97,28 @@ export default function TicketsList({
         </div>
       </div>
       <div className="table-card">
+        <div className="tabs" style={{ marginBottom: 0 }}>
+          <div
+            className={`tab ${ticketsTab === "open" ? "active" : ""}`}
+            onClick={() => {
+              setTicketsTab("open");
+              setStatusFilter("ALL");
+              setPage(1);
+            }}
+          >
+            Open Tickets ({openCount})
+          </div>
+          <div
+            className={`tab ${ticketsTab === "closed" ? "active" : ""}`}
+            onClick={() => {
+              setTicketsTab("closed");
+              setStatusFilter("ALL");
+              setPage(1);
+            }}
+          >
+            Closed Tickets ({closedCount})
+          </div>
+        </div>
         <div className="table-header">
           <div className="table-actions">
             <div className="search-wrap">
@@ -75,26 +129,36 @@ export default function TicketsList({
                 className="search-input"
                 placeholder="Search tickets..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
               />
             </div>
-            <select
-              className="select-filter"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <option value="ALL">All Status</option>
-              <option value="OPEN">Open (Not closed)</option>
-              {STATUS_ORDER.map((s) => (
-                <option key={s} value={s}>
-                  {s.replace(/_/g, " ")}
-                </option>
-              ))}
-            </select>
+            {ticketsTab === "open" ? (
+              <select
+                className="select-filter"
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="ALL">All Open Status</option>
+                {STATUS_ORDER.filter((s) => s !== "CLOSED").map((s) => (
+                  <option key={s} value={s}>
+                    {s.replace(/_/g, " ")}
+                  </option>
+                ))}
+              </select>
+            ) : null}
             <select
               className="select-filter"
               value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value)}
+              onChange={(e) => {
+                setPriorityFilter(e.target.value);
+                setPage(1);
+              }}
             >
               <option value="ALL">All Priority</option>
               <option value="HIGH">HIGH</option>
@@ -107,13 +171,13 @@ export default function TicketsList({
           <table>
             <thead>
               <tr>
+                <th style={{ width: 70 }}>Sr No.</th>
                 <th>Ticket ID</th>
                 <th>Customer</th>
                 <th>Inverter</th>
                 <th>Fault</th>
                 <th>Priority</th>
-                <th>Status</th>
-                <th>SLA</th>
+                <th>Status / SLA</th>
                 <th>Created</th>
               </tr>
             </thead>
@@ -130,8 +194,17 @@ export default function TicketsList({
                   </td>
                 </tr>
               ) : (
-                filtered.map((t) => (
+                pageRows.map((t, idx) => (
                   <tr key={t.id}>
+                    <td
+                      style={{
+                        fontSize: 12,
+                        color: "var(--text3)",
+                        fontFamily: "var(--mono)",
+                      }}
+                    >
+                      {startIndex + idx + 1}
+                    </td>
                     <td>
                       <button
                         type="button"
@@ -164,10 +237,10 @@ export default function TicketsList({
                       <PriorityBadge priority={t.priority} />
                     </td>
                     <td>
-                      <StatusBadge status={t.status} />
-                    </td>
-                    <td>
-                      <SlaBadge status={t.slaStatus} />
+                      <div className="status-sla">
+                        <StatusBadge status={t.status} />
+                        <SlaBadge status={t.slaStatus} />
+                      </div>
                     </td>
                     <td
                       style={{
@@ -184,6 +257,42 @@ export default function TicketsList({
             </tbody>
           </table>
         </div>
+
+        {filtered.length > PAGE_SIZE ? (
+          <div
+            style={{
+              padding: "12px 20px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+              borderTop: "1px solid var(--border2)",
+            }}
+          >
+            <div style={{ fontSize: 12, color: "var(--text3)" }}>
+              Showing {showingFrom}-{showingTo} of {filtered.length}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={currentPage <= 1}
+                onClick={() => setPage((p) => Math.max(1, Math.min(totalPages, p - 1)))}
+              >
+                Prev
+              </button>
+              <div style={{ fontSize: 12, color: "var(--text3)", fontFamily: "var(--mono)" }}>
+                Page {currentPage}/{totalPages}
+              </div>
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={currentPage >= totalPages}
+                onClick={() => setPage((p) => Math.max(1, Math.min(totalPages, p + 1)))}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
