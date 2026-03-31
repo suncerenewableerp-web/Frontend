@@ -11,7 +11,6 @@ import {
   apiTicketJobCardGet,
   apiTicketJobCardUpdate,
   apiTicketPickupDetailsGet,
-  apiTicketPickupDetailsSave,
   apiTicketPickupDocumentUpload,
   apiTicketGet,
   apiUpdateTicketDetails,
@@ -138,7 +137,7 @@ export default function TicketDetail({
 }) {
   const roleName = String(user.role || "").toUpperCase();
   const canShowWarranty = roleName !== "CUSTOMER";
-  const canUploadPickupDocs = roleName === "CUSTOMER" || roleName === "ADMIN" || roleName === "SALES";
+  const canUploadPickupDocs = roleName === "ADMIN" || roleName === "SALES";
   const tabs = useMemo(() => {
     if (roleName === "CUSTOMER") return ["overview"] as TicketTab[];
     return [...ALL_TABS] as TicketTab[];
@@ -657,120 +656,40 @@ export default function TicketDetail({
                   <div style={{ fontSize: 13, color: "var(--text3)" }}>Loading pickup details…</div>
                 ) : (
                   <>
-                    <div className="form-grid">
-                      <div>
-                        <div className="form-label">Pickup Date</div>
-                        <DatePicker
-                          value={pickupDate}
-                          onChange={(next) => setPickupDate(next)}
-                          placeholder="Select pickup date"
-                        />
+                    <div className="detail-grid" style={{ marginBottom: 10 }}>
+                      <div className="detail-card">
+                        <div className="detail-label">Pickup Date</div>
+                        <div className="detail-value" style={{ fontFamily: "var(--mono)" }}>
+                          {pickupDate || "—"}
+                        </div>
                       </div>
-                      <div>
-                        <div className="form-label">Pickup Location</div>
-                        <input
-                          className="form-input"
-                          value={pickupLocation}
-                          onChange={(e) => setPickupLocation(e.target.value)}
-                          placeholder="Enter pickup address/location"
-                        />
+                      <div className="detail-card">
+                        <div className="detail-label">Pickup Location</div>
+                        <div className="detail-value">{pickupLocation || "—"}</div>
                       </div>
                     </div>
 
-                    {canUploadPickupDocs ? (
-                      <div style={{ marginTop: 14 }}>
-                        <div className="form-label">Pickup Document (PDF/Image)</div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                          <input
-                            className="form-input"
-                            type="file"
-                            accept="application/pdf,image/*"
-                            disabled={pickupDocUploading}
-                            onChange={(e) => {
-                              setPickupDocError("");
-                              const f = e.target.files?.[0] || null;
-                              setPickupDocFile(f);
-                            }}
-                          />
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            type="button"
-                            disabled={!pickupDocFile || pickupDocUploading}
-                            onClick={() => {
-                              if (!pickupDocFile) return;
-                              setPickupDocUploading(true);
-                              setPickupDocError("");
-                              apiTicketPickupDocumentUpload(ticket.id, pickupDocFile)
-                                .then((r) => {
-                                  setPickupDocuments(r.documents || []);
-                                  setPickupDocFile(null);
-                                  setCustomerPickupSavedMsg("Document uploaded.");
-                                })
-                                .catch((e) =>
-                                  setPickupDocError(
-                                    e instanceof Error ? e.message : "Upload failed",
-                                  ),
-                                )
-                                .finally(() => setPickupDocUploading(false));
-                            }}
-                          >
-                            {pickupDocUploading ? "Uploading..." : "Upload"}
-                          </button>
-                        </div>
-                        {pickupDocError ? (
-                          <div className="form-error" style={{ marginTop: 10 }}>
-                            {pickupDocError}
+                    <div style={{ marginTop: 6 }}>
+                      <div className="detail-label">Documents</div>
+                      <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                        {pickupDocuments.length ? (
+                          pickupDocuments.map((u) => (
+                            <a
+                              key={u}
+                              href={u}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ color: "var(--blue)", fontSize: 12 }}
+                            >
+                              {u.split("/").slice(-1)[0]}
+                            </a>
+                          ))
+                        ) : (
+                          <div style={{ fontSize: 12, color: "var(--text3)" }}>
+                            No documents uploaded yet.
                           </div>
-                        ) : null}
-                        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-                          {pickupDocuments.length ? (
-                            pickupDocuments.map((u) => (
-                              <a
-                                key={u}
-                                href={u}
-                                target="_blank"
-                                rel="noreferrer"
-                                style={{ color: "var(--blue)", fontSize: 12 }}
-                              >
-                                {u.split("/").slice(-1)[0]}
-                              </a>
-                            ))
-                          ) : (
-                            <div style={{ fontSize: 12, color: "var(--text3)" }}>
-                              No documents uploaded yet.
-                            </div>
-                          )}
-                        </div>
+                        )}
                       </div>
-                    ) : null}
-
-                    <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
-                      <button
-                        className="btn btn-accent"
-                        disabled={customerPickupSaving || !pickupDate.trim() || !pickupLocation.trim()}
-                        onClick={() => {
-                          setCustomerPickupSaving(true);
-                          setCustomerPickupError("");
-                          setCustomerPickupSavedMsg("");
-                          apiTicketPickupDetailsSave(ticket.id, {
-                            pickupDate,
-                            pickupLocation: pickupLocation.trim(),
-                          })
-                            .then(() => apiTicketGet(ticket.id))
-                            .then((updated) => {
-                              onTicketUpdated(updated);
-                              setCustomerPickupSavedMsg("Pickup details saved.");
-                            })
-                            .catch((e) =>
-                              setCustomerPickupError(
-                                e instanceof Error ? e.message : "Failed to save pickup details",
-                              ),
-                            )
-                            .finally(() => setCustomerPickupSaving(false));
-                        }}
-                      >
-                        {customerPickupSaving ? "Saving..." : "Save Pickup Details"}
-                      </button>
                     </div>
                   </>
                 )}

@@ -74,7 +74,7 @@ export default function AuthScreen({
               setEmail(e.target.value);
               setError("");
             }}
-            placeholder="Enter your username"
+            placeholder="Enter your email address"
             aria-invalid={!!error}
           />
 
