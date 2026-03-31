@@ -284,6 +284,7 @@ type BackendJobCardServiceJob = {
   sn?: number;
   jobName?: string;
   specification?: string;
+  componentsUsed?: unknown;
   qty?: number;
   reason?: string;
   date?: string | Date;
@@ -301,6 +302,10 @@ type BackendJobCard = {
   _id?: string;
   id?: string;
   ticket?: string | { _id?: string; id?: string };
+  diagnosis?: string;
+  repairActionsByName?: string;
+  repairNotes?: string;
+  testResults?: string;
   jobNo?: string;
   item?: string;
   itemAndSiteDetails?: string;
@@ -390,10 +395,14 @@ function toYesNo(v: unknown): "YES" | "NO" | "" {
 }
 
 function toServiceJob(j: BackendJobCardServiceJob, idx: number): JobCardServiceJob {
+  const componentsUsed = Array.isArray(j?.componentsUsed)
+    ? (j.componentsUsed as unknown[]).map((x) => String(x || "").trim()).filter(Boolean)
+    : undefined;
   return {
     sn: typeof j?.sn === "number" ? j.sn : idx + 1,
     jobName: String(j?.jobName || ""),
     specification: String(j?.specification || ""),
+    ...(componentsUsed ? { componentsUsed } : {}),
     qty: typeof j?.qty === "number" ? j.qty : "",
     reason: String(j?.reason || ""),
     date: toDateInput(j?.date),
@@ -417,6 +426,10 @@ function toJobCard(jc: BackendJobCard, ticketId: string): JobCard {
   return {
     id: String(jc?._id || jc?.id || ""),
     ticketId,
+    diagnosis: String(jc?.diagnosis || ""),
+    repairActionsByName: String(jc?.repairActionsByName || ""),
+    repairNotes: String(jc?.repairNotes || ""),
+    testResults: String(jc?.testResults || ""),
     jobNo: String(jc?.jobNo || ""),
     item: String(jc?.item || ""),
     itemAndSiteDetails: String(jc?.itemAndSiteDetails || ""),
@@ -1001,6 +1014,7 @@ export type JobCardUpdateInput = Partial<{
     sn?: number;
     jobName?: string;
     specification?: string;
+    componentsUsed?: string[];
     qty?: number | null;
     reason?: string;
     date?: string;
@@ -1018,6 +1032,7 @@ export type JobCardUpdateInput = Partial<{
   finalCheckedByDate: string;
   // Legacy fields (optional)
   diagnosis: string;
+  repairActionsByName: string;
   repairNotes: string;
   testResults: string;
   warrantyGiven: number;

@@ -85,7 +85,7 @@ export default function TicketsList({
           <div className="page-title">Service Tickets</div>
           <div className="page-sub">
             {filtered.length} tickets{" "}
-            {user.role === "ENGINEER" ? "assigned to you" : "found"}
+            {user.role === "ENGINEER" ? "assigned to you or in Under Repaired" : "found"}
           </div>
         </div>
         <div className="page-header-actions">

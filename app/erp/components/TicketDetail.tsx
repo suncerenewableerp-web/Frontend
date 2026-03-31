@@ -50,6 +50,7 @@ function emptyServiceJob(sn: number): JobCardServiceJob {
     sn,
     jobName: "",
     specification: "",
+    componentsUsed: [],
     qty: "",
     reason: "",
     date: "",
@@ -58,7 +59,26 @@ function emptyServiceJob(sn: number): JobCardServiceJob {
 }
 
 function normalizeServiceJobs(jobs: JobCardServiceJob[], minRows = 5): JobCardServiceJob[] {
-  const next = (jobs || []).map((j, idx) => ({ ...emptyServiceJob(idx + 1), ...j, sn: idx + 1 }));
+  const next: JobCardServiceJob[] = (jobs || []).map((j, idx) => {
+    const base = { ...emptyServiceJob(idx + 1), ...j, sn: idx + 1 };
+    // Backward compatibility: older job cards stored components in `specification` string only.
+    // For engineer workflow we prefer `componentsUsed[]` so we can show multiple inputs.
+    const componentsUsed =
+      Array.isArray(base.componentsUsed) && base.componentsUsed.length
+        ? base.componentsUsed.map((x) => String(x || "").trim()).filter(Boolean)
+        : base.specification
+          ? base.specification
+              .split(/[\n,]+/g)
+              .map((x) => x.trim())
+              .filter(Boolean)
+          : [];
+    return {
+      ...base,
+      componentsUsed: componentsUsed.length ? componentsUsed : base.componentsUsed || [],
+      // Keep legacy string in a normalized form so other views/exports remain consistent.
+      specification: componentsUsed.length ? componentsUsed.join(", ") : base.specification,
+    };
+  });
   while (next.length < minRows) next.push(emptyServiceJob(next.length + 1));
   return next;
 }
@@ -140,11 +160,12 @@ export default function TicketDetail({
   const canUploadPickupDocs = roleName === "ADMIN" || roleName === "SALES";
   const tabs = useMemo(() => {
     if (roleName === "CUSTOMER") return ["overview"] as TicketTab[];
+    if (roleName === "ENGINEER") return ["jobcard"] as TicketTab[];
     return [...ALL_TABS] as TicketTab[];
   }, [roleName]);
   const [activeTab, setActiveTab] = useState<TicketTab>(() => {
     const desired = (initialTab || "overview") as TicketTab;
-    return tabs.includes(desired) ? desired : "overview";
+    return tabs.includes(desired) ? desired : tabs[0];
   });
   const [newStatus, setNewStatus] = useState(ticket.status);
   const [updating, setUpdating] = useState(false);
@@ -204,9 +225,8 @@ export default function TicketDetail({
   const [faultError, setFaultError] = useState("");
   const [faultSavedMsg, setFaultSavedMsg] = useState("");
 
-  const [pickupDate, setPickupDate] = useState(() =>
-    ticket.pickupDate || toDateInputValue(new Date(Date.now() + 86400000)),
-  );
+  // Keep pickup date blank unless it is explicitly scheduled (sales/admin can still pick a date).
+  const [pickupDate, setPickupDate] = useState(() => ticket.pickupDate || "");
   const [courierName, setCourierName] = useState(ticket.courierName || "BlueDart");
   const [lrNumber, setLrNumber] = useState(ticket.lrNumber || "");
   const [pickupLocation, setPickupLocation] = useState(ticket.customerAddress || "");
@@ -248,7 +268,6 @@ export default function TicketDetail({
     setPickupAdvanceState({ ticketId: ticket.id, unlocked });
 
   const [customerPickupLoading, setCustomerPickupLoading] = useState(false);
-  const [customerPickupSaving, setCustomerPickupSaving] = useState(false);
   const [customerPickupError, setCustomerPickupError] = useState("");
   const [customerPickupSavedMsg, setCustomerPickupSavedMsg] = useState("");
   const [pickupDocuments, setPickupDocuments] = useState<string[]>([]);
@@ -282,9 +301,10 @@ export default function TicketDetail({
     apiTicketJobCardGet(ticket.id)
       .then((jc) => {
         if (cancelled) return;
+        const minRows = roleName === "ENGINEER" ? 1 : 5;
         setJobCard({
           ...jc,
-          serviceJobs: normalizeServiceJobs(jc.serviceJobs || []),
+          serviceJobs: normalizeServiceJobs(jc.serviceJobs || [], minRows),
           finalTestingActivities: normalizeFinalTesting(jc.finalTestingActivities),
         });
       })
@@ -296,7 +316,36 @@ export default function TicketDetail({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, ticket.id]);
+  }, [activeTab, ticket.id, roleName]);
+
+  useEffect(() => {
+    if (roleName !== "ENGINEER") return;
+    if (!jobCard) return;
+    const checkedByName = String(jobCard.checkedByName || "").trim();
+    const checkedByDate = String(jobCard.checkedByDate || "").trim();
+    const currentStatus = String(jobCard.currentStatus || "").trim();
+    if (checkedByName && checkedByDate && currentStatus) return;
+
+    // Defer setState to avoid cascading-renders lint rule.
+    queueMicrotask(() => {
+      setJobCard((p) => {
+        if (!p) return p;
+        const name = String(p.checkedByName || "").trim();
+        const date = String(p.checkedByDate || "").trim();
+        const status = String(p.currentStatus || "").trim();
+        return {
+          ...p,
+          checkedByName: name || user.name,
+          checkedByDate: date || toDateInputValue(new Date()),
+          currentStatus: status || "REPAIRABLE",
+        };
+      });
+    });
+  }, [
+    roleName,
+    user.name,
+    jobCard,
+  ]);
 
   useEffect(() => {
     if (activeTab !== "logistics") return;
@@ -321,7 +370,8 @@ export default function TicketDetail({
 
         const pickupDateFromApi = toDateInputValueSafe(pickup?.pickupDetails?.scheduledDate);
         const nextPickupDate =
-          pickupDateFromApi || toDateInputValue(new Date(Date.now() + 86400000));
+          pickupDateFromApi ||
+          (canEditLogistics ? toDateInputValue(new Date(Date.now() + 86400000)) : "");
         const nextCourier = String(pickup?.courierDetails?.courierName || "BlueDart");
         const nextLr = String(pickup?.courierDetails?.lrNumber || "");
         const nextPickupLocation = String(
@@ -368,7 +418,7 @@ export default function TicketDetail({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, ticket.id, ticket.customerAddress]);
+  }, [activeTab, ticket.id, ticket.customerAddress, canEditLogistics]);
 
   useEffect(() => {
     queueMicrotask(() => setNewStatus(ticket.status));
@@ -377,7 +427,7 @@ export default function TicketDetail({
   useEffect(() => {
     queueMicrotask(() => {
       const desired = (initialTab || "overview") as TicketTab;
-      setActiveTab(tabs.includes(desired) ? desired : "overview");
+      setActiveTab(tabs.includes(desired) ? desired : tabs[0]);
     });
     queueMicrotask(() => setLogisticsStage(initialLogisticsStage || "pickup"));
   }, [ticket.id, initialTab, initialLogisticsStage, tabs]);
@@ -394,7 +444,7 @@ export default function TicketDetail({
     apiTicketPickupDetailsGet(ticket.id)
       .then((data) => {
         if (cancelled) return;
-        setPickupDate(data.pickupDate || toDateInputValue(new Date(Date.now() + 86400000)));
+        setPickupDate(data.pickupDate || "");
         setPickupLocation(String(data.pickupLocation || ticket.customerAddress || ""));
         setPickupDocuments(data.documents || []);
       })
@@ -465,6 +515,78 @@ export default function TicketDetail({
     const ok = criticalHours !== null && highHours !== null && normalHours !== null;
     return { ok, criticalHours, highHours, normalHours };
   }, [critical, high, normal]);
+
+  const saveJobCard = () => {
+    if (!jobCard) return;
+    setJobSaving(true);
+    setJobError("");
+    setJobSavedMsg("");
+
+    const cleanedService = jobCard.serviceJobs
+      .map((r, idx) => ({
+        ...r,
+        sn: idx + 1,
+        jobName: r.jobName.trim(),
+        specification: r.specification.trim(),
+        componentsUsed: Array.isArray(r.componentsUsed)
+          ? r.componentsUsed.map((x) => String(x || "").trim()).filter(Boolean)
+          : undefined,
+        reason: r.reason.trim(),
+        doneBy: r.doneBy.trim(),
+      }))
+      .filter((r) => {
+        const hasText = r.jobName || r.specification || r.reason || r.doneBy || r.date;
+        const hasQty = r.qty !== "" && Number.isFinite(Number(r.qty));
+        const hasComponents = Array.isArray(r.componentsUsed) && r.componentsUsed.length > 0;
+        return Boolean(hasText || hasQty || hasComponents);
+      })
+      .map((r, idx) => ({
+        ...r,
+        sn: idx + 1,
+        qty: r.qty === "" ? null : Number(r.qty),
+        date: r.date || undefined,
+      }));
+
+    const cleanedFinal = jobCard.finalTestingActivities.map((r, idx) => ({
+      sr: r.sr || idx + 1,
+      activity: r.activity,
+      result: r.result,
+      remarks: r.remarks,
+    }));
+
+    const { id: _id, ticketId: _ticketId, ...rest } = jobCard;
+    void _id;
+    void _ticketId;
+
+    apiTicketJobCardUpdate(ticket.id, {
+      ...rest,
+      serviceJobs: cleanedService,
+      finalTestingActivities: cleanedFinal,
+    })
+      .then(async (saved) => {
+        setJobCard({
+          ...saved,
+          serviceJobs: normalizeServiceJobs(
+            saved.serviceJobs || [],
+            roleName === "ENGINEER" ? 1 : 5,
+          ),
+          finalTestingActivities: normalizeFinalTesting(saved.finalTestingActivities),
+        });
+        setJobSavedMsg("Saved!");
+
+        // If the engineer marked the unit as NOT_REPAIRABLE, backend may close the ticket.
+        if (String(saved.currentStatus || "").toUpperCase() === "NOT_REPAIRABLE") {
+          try {
+            const fresh = await apiTicketGet(ticket.id);
+            onTicketUpdated(fresh);
+          } catch {
+            // Ignore ticket refresh failures; jobcard save already succeeded.
+          }
+        }
+      })
+      .catch((e) => setJobError(e instanceof Error ? e.message : "Failed to save job card"))
+      .finally(() => setJobSaving(false));
+  };
 
   return (
     <div className="content">
@@ -557,14 +679,6 @@ export default function TicketDetail({
                     openLogistics(
                       "dispatch",
                       "Please open Logistics and save dispatch details first (Save Dispatch).",
-                    );
-                    return;
-                  }
-
-                  if (newStatus === "IN_TRANSIT") {
-                    openLogistics(
-                      "pickup",
-                      "Please open Logistics first, then move the ticket to IN TRANSIT from there.",
                     );
                     return;
                   }
@@ -964,7 +1078,394 @@ export default function TicketDetail({
             ) : !jobCard ? (
               <div style={{ fontSize: 13, color: "var(--text3)" }}>No job card data.</div>
             ) : (
-              <>
+              roleName === "ENGINEER" ? (
+                <>
+                  <div className="form-section">Ticket Details</div>
+                  <div className="detail-grid" style={{ marginBottom: 16 }}>
+                    {[
+                      ["Customer", ticket.customer],
+                      ["Phone", ticket.customerPhone || "—"],
+                      ["Address", ticket.customerAddress || "—"],
+                      ["Brand", ticket.inverterMake || "—"],
+                      ["Model", ticket.inverterModel || "—"],
+                      ["Capacity", ticket.capacity || "—"],
+                      ["Serial No.", ticket.serialNumber || "—"],
+                      ["Error Code", ticket.errorCode || "—"],
+                    ].map(([label, val]) => (
+                      <div key={label} className="detail-card">
+                        <div className="detail-label">{label}</div>
+                        <div className="detail-value" style={{ fontSize: 13, fontWeight: 600 }}>
+                          {val}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="form-section">Job Assign To</div>
+                  <div className="form-grid">
+                    <div className="form-group full">
+                      <label className="form-label">Engineer Name</label>
+                      <input
+                        className="form-input"
+                        value={jobCard.checkedByName || ""}
+                        disabled={!canEditJobCard}
+                        onChange={(e) =>
+                          setJobCard((p) => (p ? { ...p, checkedByName: e.target.value } : p))
+                        }
+                        placeholder="Enter engineer name"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-section">Diagnosis</div>
+                  <textarea
+                    className="form-textarea"
+                    rows={4}
+                    value={jobCard.diagnosis || ""}
+                    disabled={!canEditJobCard}
+                    onChange={(e) =>
+                      setJobCard((p) => (p ? { ...p, diagnosis: e.target.value } : p))
+                    }
+                    placeholder="Write diagnosis..."
+                  />
+
+                  <div className="form-section">Repairing Status</div>
+                  <div style={{ display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                      <input
+                        type="radio"
+                        name="repairability"
+                        disabled={!canEditJobCard}
+                        checked={String(jobCard.currentStatus || "").toUpperCase() === "REPAIRABLE"}
+                        onChange={() =>
+                          setJobCard((p) => (p ? { ...p, currentStatus: "REPAIRABLE" } : p))
+                        }
+                      />
+                      Repairable
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                      <input
+                        type="radio"
+                        name="repairability"
+                        disabled={!canEditJobCard}
+                        checked={
+                          String(jobCard.currentStatus || "").toUpperCase() === "NOT_REPAIRABLE"
+                        }
+                        onChange={() =>
+                          setJobCard((p) => (p ? { ...p, currentStatus: "NOT_REPAIRABLE" } : p))
+                        }
+                      />
+                      Not Repairable
+                    </label>
+                    {!jobCard.currentStatus.trim() ? (
+                      <div style={{ fontSize: 12, color: "var(--text3)" }}>
+                        Select repairing status to continue.
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {String(jobCard.currentStatus || "").toUpperCase() === "NOT_REPAIRABLE" ? (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: "1px solid rgba(217,119,6,0.25)",
+                        background: "rgba(217,119,6,0.08)",
+                        fontSize: 12,
+                        color: "var(--text2)",
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      Selecting <b>Not Repairable</b> will close this ticket after saving and notify the sales team.
+                    </div>
+                  ) : null}
+
+                  {String(jobCard.currentStatus || "").toUpperCase() === "REPAIRABLE" ? (
+                    <>
+                      <div className="form-section">Card Repair Actions Carried Out By</div>
+                      <div className="form-grid" style={{ marginBottom: 10 }}>
+                        <div className="form-group full">
+                          <label className="form-label">Name</label>
+                          <input
+                            className="form-input"
+                            value={jobCard.repairActionsByName || ""}
+                            disabled={!canEditJobCard}
+                            onChange={(e) =>
+                              setJobCard((p) =>
+                                p ? { ...p, repairActionsByName: e.target.value } : p,
+                              )
+                            }
+                            placeholder="e.g. QA Team / Sub engineer name"
+                          />
+                        </div>
+                      </div>
+                      <div className="scroll-x">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th style={{ width: 70 }}>Sr No.</th>
+                              <th>Faulty Card Detail</th>
+                              <th>Spare / Component Used</th>
+                              <th>Remarks</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {jobCard.serviceJobs.map((row, idx) => (
+                              <tr key={idx}>
+                                <td style={{ fontFamily: "var(--mono)", color: "var(--text3)" }}>
+                                  {idx + 1}
+                                </td>
+                                <td>
+                                  <input
+                                    className="form-input"
+                                    value={row.jobName}
+                                    disabled={!canEditJobCard}
+                                    onChange={(e) =>
+                                      setJobCard((p) =>
+                                        !p
+                                          ? p
+                                          : {
+                                              ...p,
+                                              serviceJobs: p.serviceJobs.map((r, i) =>
+                                                i === idx ? { ...r, jobName: e.target.value } : r,
+                                              ),
+                                            },
+                                      )
+                                    }
+                                    placeholder="e.g. Control card, power card..."
+                                  />
+                                </td>
+                                <td>
+                                  <div
+                                    style={{
+                                      display: "grid",
+                                      gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                                      gap: 8,
+                                      alignItems: "start",
+                                    }}
+                                  >
+                                    {(
+                                      (row.componentsUsed && row.componentsUsed.length
+                                        ? row.componentsUsed
+                                        : row.specification
+                                          ? row.specification
+                                              .split(/[\n,]+/g)
+                                              .map((x) => x.trim())
+                                              .filter(Boolean)
+                                          : [""]) as string[]
+                                    ).map((c, cIdx) => (
+                                      <div
+                                        key={cIdx}
+                                        style={{
+                                          display: "flex",
+                                          gap: 8,
+                                          alignItems: "center",
+                                          minWidth: 0,
+                                        }}
+                                      >
+                                        <input
+                                          className="form-input"
+                                          style={{ flex: 1, minWidth: 0 }}
+                                          value={c}
+                                          disabled={!canEditJobCard}
+                                          onChange={(e) => {
+                                            const v = e.target.value;
+                                            setJobCard((p) => {
+                                              if (!p) return p;
+                                              const next = p.serviceJobs.map((r, i) => {
+                                                if (i !== idx) return r;
+                                                const base =
+                                                  r.componentsUsed && r.componentsUsed.length
+                                                    ? r.componentsUsed
+                                                    : r.specification
+                                                      ? r.specification
+                                                          .split(/[\n,]+/g)
+                                                          .map((x) => x.trim())
+                                                          .filter(Boolean)
+                                                      : [""];
+                                                const arr = [...base];
+                                                while (arr.length <= cIdx) arr.push("");
+                                                arr[cIdx] = v;
+                                                const cleaned = arr.map((x) => String(x || "").trim());
+                                                const kept = cleaned.filter((x) => x);
+                                                return {
+                                                  ...r,
+                                                  componentsUsed: cleaned,
+                                                  // Keep legacy string in sync for old views/exports.
+                                                  specification: kept.join(", "),
+                                                };
+                                              });
+                                              return { ...p, serviceJobs: next };
+                                            });
+                                          }}
+                                          placeholder={`Component ${cIdx + 1}`}
+                                        />
+                                        {canEditJobCard ? (
+                                          <button
+                                            type="button"
+                                            className="btn btn-ghost btn-sm"
+                                            disabled={
+                                              !canEditJobCard ||
+                                              ((row.componentsUsed && row.componentsUsed.length
+                                                ? row.componentsUsed
+                                                : row.specification
+                                                  ? row.specification
+                                                      .split(/[\n,]+/g)
+                                                      .map((x) => x.trim())
+                                                      .filter(Boolean)
+                                                  : [""]) as string[]).length <= 1
+                                            }
+                                            onClick={() => {
+                                              setJobCard((p) => {
+                                                if (!p) return p;
+                                                const next = p.serviceJobs.map((r, i) => {
+                                                  if (i !== idx) return r;
+                                                  const base =
+                                                    r.componentsUsed && r.componentsUsed.length
+                                                      ? r.componentsUsed
+                                                      : r.specification
+                                                        ? r.specification
+                                                            .split(/[\n,]+/g)
+                                                            .map((x) => x.trim())
+                                                            .filter(Boolean)
+                                                        : [""];
+                                                  const arr = [...base];
+                                                  if (arr.length <= 1) return r;
+                                                  arr.splice(cIdx, 1);
+                                                  const cleaned = arr.map((x) => String(x || "").trim());
+                                                  const kept = cleaned.filter((x) => x);
+                                                  return {
+                                                    ...r,
+                                                    componentsUsed: cleaned,
+                                                    specification: kept.join(", "),
+                                                  };
+                                                });
+                                                return { ...p, serviceJobs: next };
+                                              });
+                                            }}
+                                            title="Remove component"
+                                          >
+                                            Remove
+                                          </button>
+                                        ) : null}
+                                      </div>
+                                    ))}
+                                    {canEditJobCard ? (
+                                      <button
+                                        type="button"
+                                        className="btn btn-ghost btn-sm"
+                                        style={{ gridColumn: "1 / -1", justifySelf: "start" }}
+                                        onClick={() => {
+                                          setJobCard((p) => {
+                                            if (!p) return p;
+                                            const next = p.serviceJobs.map((r, i) => {
+                                              if (i !== idx) return r;
+                                              const base =
+                                                r.componentsUsed && r.componentsUsed.length
+                                                  ? r.componentsUsed
+                                                  : r.specification
+                                                    ? r.specification
+                                                        .split(/[\n,]+/g)
+                                                        .map((x) => x.trim())
+                                                        .filter(Boolean)
+                                                    : [""];
+                                              const arr = [...base, ""];
+                                              return { ...r, componentsUsed: arr };
+                                            });
+                                            return { ...p, serviceJobs: next };
+                                          });
+                                        }}
+                                      >
+                                        + Add Component
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                </td>
+                                <td>
+                                  <textarea
+                                    className="form-textarea"
+                                    rows={2}
+                                    value={row.reason}
+                                    disabled={!canEditJobCard}
+                                    onChange={(e) =>
+                                      setJobCard((p) =>
+                                        !p
+                                          ? p
+                                          : {
+                                              ...p,
+                                              serviceJobs: p.serviceJobs.map((r, i) =>
+                                                i === idx ? { ...r, reason: e.target.value } : r,
+                                              ),
+                                            },
+                                      )
+                                    }
+                                    placeholder="Any remarks..."
+                                  />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {canEditJobCard && (
+                        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={() =>
+                              setJobCard((p) =>
+                                !p
+                                  ? p
+                                  : {
+                                      ...p,
+                                      serviceJobs: normalizeServiceJobs(
+                                        [...p.serviceJobs, emptyServiceJob(p.serviceJobs.length + 1)],
+                                        p.serviceJobs.length + 1,
+                                      ),
+                                    },
+                              )
+                            }
+                          >
+                            + Add Row
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  ) : null}
+
+                  <div className="form-section">Testing</div>
+                  <textarea
+                    className="form-textarea"
+                    rows={4}
+                    value={jobCard.testResults || ""}
+                    disabled={!canEditJobCard}
+                    onChange={(e) =>
+                      setJobCard((p) => (p ? { ...p, testResults: e.target.value } : p))
+                    }
+                    placeholder="Write testing details..."
+                  />
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
+                    <button
+                      className="btn btn-accent"
+                      disabled={!canEditJobCard || jobSaving}
+                      onClick={saveJobCard}
+                    >
+                      {jobSaving ? "Saving..." : "Save Job Card"}
+                    </button>
+                    {!canEditJobCard && (
+                      <div style={{ fontSize: 12, color: "var(--text3)" }}>
+                        You don&apos;t have permission to edit job cards.
+                      </div>
+                    )}
+                    {jobSavedMsg && (
+                      <div style={{ fontSize: 12, color: "var(--green)" }}>{jobSavedMsg}</div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
                 <div className="form-section">Service Job History</div>
                 <div className="scroll-x">
                   <table>
@@ -1269,66 +1770,7 @@ export default function TicketDetail({
                   <button
                     className="btn btn-accent"
                     disabled={!canEditJobCard || jobSaving}
-                    onClick={() => {
-                      if (!jobCard) return;
-                      setJobSaving(true);
-                      setJobError("");
-                      setJobSavedMsg("");
-
-                      const cleanedService = jobCard.serviceJobs
-                        .map((r, idx) => ({
-                          ...r,
-                          sn: idx + 1,
-                          jobName: r.jobName.trim(),
-                          specification: r.specification.trim(),
-                          reason: r.reason.trim(),
-                          doneBy: r.doneBy.trim(),
-                        }))
-                        .filter((r) => {
-                          const hasText =
-                            r.jobName ||
-                            r.specification ||
-                            r.reason ||
-                            r.doneBy ||
-                            r.date;
-                          const hasQty = r.qty !== "" && Number.isFinite(Number(r.qty));
-                          return Boolean(hasText || hasQty);
-                        })
-                        .map((r, idx) => ({
-                          ...r,
-                          sn: idx + 1,
-                          qty: r.qty === "" ? null : Number(r.qty),
-                          date: r.date || undefined,
-                        }));
-
-                      const cleanedFinal = jobCard.finalTestingActivities.map((r, idx) => ({
-                        sr: r.sr || idx + 1,
-                        activity: r.activity,
-                        result: r.result,
-                        remarks: r.remarks,
-                      }));
-
-                      const { id: _id, ticketId: _ticketId, ...rest } = jobCard;
-                      void _id;
-                      void _ticketId;
-                      apiTicketJobCardUpdate(ticket.id, {
-                        ...rest,
-                        serviceJobs: cleanedService,
-                        finalTestingActivities: cleanedFinal,
-                      })
-                        .then((saved) => {
-                          setJobCard({
-                            ...saved,
-                            serviceJobs: normalizeServiceJobs(saved.serviceJobs || []),
-                            finalTestingActivities: normalizeFinalTesting(saved.finalTestingActivities),
-                          });
-                          setJobSavedMsg("Saved!");
-                        })
-                        .catch((e) =>
-                          setJobError(e instanceof Error ? e.message : "Failed to save job card"),
-                        )
-                        .finally(() => setJobSaving(false));
-                    }}
+                    onClick={saveJobCard}
                   >
                     {jobSaving ? "Saving..." : "Save Job Card"}
                   </button>
@@ -1342,6 +1784,7 @@ export default function TicketDetail({
                   )}
                 </div>
               </>
+              )
             )}
           </div>
         </div>

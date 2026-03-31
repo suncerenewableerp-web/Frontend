@@ -321,7 +321,7 @@ export default function ErpApp({
                 onNav={setPage}
                 onViewTicket={(t) => {
                   setSelectedTicket(t);
-                  setTicketDetailTab("overview");
+                  setTicketDetailTab(user.role === "ENGINEER" ? "jobcard" : "overview");
                   setTicketDetailLogisticsStage(
                     t.status === "DISPATCHED" || t.status === "CLOSED" ? "dispatch" : "pickup",
                   );
@@ -342,7 +342,7 @@ export default function ErpApp({
                 initialPriorityFilter={ticketsListPreset?.priority}
                 onView={(t) => {
                   setSelectedTicket(t);
-                  setTicketDetailTab("overview");
+                  setTicketDetailTab(user.role === "ENGINEER" ? "jobcard" : "overview");
                   setTicketDetailLogisticsStage(
                     t.status === "DISPATCHED" || t.status === "CLOSED" ? "dispatch" : "pickup",
                   );

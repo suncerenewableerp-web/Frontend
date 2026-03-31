@@ -41,13 +41,12 @@ export default function JobCards({
                 <th>Customer</th>
                 <th>Stage</th>
                 <th>Engineer</th>
-                <th />
               </tr>
             </thead>
             <tbody>
               {myTickets.length === 0 ? (
                 <tr>
-                  <td colSpan={6}>
+                  <td colSpan={5}>
                     <div className="empty-state">
                       <div className="empty-icon" aria-hidden>
                         <LuWrench />
@@ -60,9 +59,18 @@ export default function JobCards({
                 myTickets.map((t) => (
                   <tr key={t.id}>
                     <td>
-                      <span className="td-mono">
-                        JC-{t.ticketId.replace("SR-", "")}
-                      </span>
+                      {onOpenTicket ? (
+                        <button
+                          type="button"
+                          className="td-mono table-link"
+                          onClick={() => onOpenTicket(t)}
+                          title="Open job card"
+                        >
+                          JC-{t.ticketId.replace("SR-", "")}
+                        </button>
+                      ) : (
+                        <span className="td-mono">JC-{t.ticketId.replace("SR-", "")}</span>
+                      )}
                     </td>
                     <td>
                       <span className="td-mono">{t.ticketId}</span>
@@ -72,15 +80,6 @@ export default function JobCards({
                       <StatusBadge status={t.status} />
                     </td>
                     <td>{t.assignedEngineer}</td>
-                    <td style={{ textAlign: "right" }}>
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        disabled={!onOpenTicket}
-                        onClick={() => onOpenTicket?.(t)}
-                      >
-                        Open
-                      </button>
-                    </td>
                   </tr>
                 ))
               )}

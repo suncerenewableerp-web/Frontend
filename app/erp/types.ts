@@ -30,6 +30,7 @@ export interface JobCardServiceJob {
   sn: number;
   jobName: string;
   specification: string;
+  componentsUsed?: string[]; // Spare/components used (multi)
   qty: number | "";
   reason: string;
   date: string; // YYYY-MM-DD
@@ -46,6 +47,11 @@ export interface JobCardFinalTestingActivity {
 export interface JobCard {
   id: string;
   ticketId: string;
+  // Engineer workflow (legacy backend fields)
+  diagnosis?: string;
+  testResults?: string;
+  repairNotes?: string;
+  repairActionsByName?: string;
   jobNo: string;
   item: string;
   itemAndSiteDetails: string;
