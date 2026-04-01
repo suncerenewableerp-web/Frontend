@@ -359,9 +359,10 @@ export default function ErpApp({
                 tickets={tickets}
                 initialStatusFilter={ticketsListPreset?.status}
                 initialPriorityFilter={ticketsListPreset?.priority}
-                onView={(t) => {
+                onView={(t, opts) => {
                   setSelectedTicket(t);
-                  setTicketDetailTab(user.role === "ENGINEER" ? "jobcard" : "overview");
+                  const nextTab = opts?.tab || (user.role === "ENGINEER" ? "jobcard" : "overview");
+                  setTicketDetailTab(nextTab);
                   setTicketDetailLogisticsStage(
                     t.status === "DISPATCHED" || t.status === "CLOSED" ? "dispatch" : "pickup",
                   );

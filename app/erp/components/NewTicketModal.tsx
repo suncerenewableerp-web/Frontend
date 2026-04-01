@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { TicketCreateInput } from "../api";
+import { apiInverterBrandsList, type TicketCreateInput } from "../api";
 import DatePicker from "./DatePicker";
 import { LuSearch } from "react-icons/lu";
 
@@ -53,7 +53,6 @@ const INVERTER_BRANDS = [
 ] as const;
 
 const OTHER_BRAND_VALUE = "OTHER";
-const OTHER_MODEL_VALUE = "OTHER_MODEL";
 
 const INVERTER_MODELS_RAW = `PVS50KWTL
 PVS100KWTL
@@ -346,19 +345,13 @@ export default function NewTicketModal({
   const [brandOption, setBrandOption] = useState<string>("");
   const [brandSearch, setBrandSearch] = useState("");
   const [brandOpen, setBrandOpen] = useState(false);
-
-  const [modelOption, setModelOption] = useState<string>("");
-  const [modelSearch, setModelSearch] = useState("");
-  const [modelOpen, setModelOpen] = useState(false);
+  const [brands, setBrands] = useState<string[]>(() => [...INVERTER_BRANDS]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const capacityRef = useRef<HTMLInputElement | null>(null);
   const faultRef = useRef<HTMLTextAreaElement | null>(null);
   const brandSearchRef = useRef<HTMLInputElement | null>(null);
   const brandWrapRef = useRef<HTMLDivElement | null>(null);
-
-  const modelSearchRef = useRef<HTMLInputElement | null>(null);
-  const modelWrapRef = useRef<HTMLDivElement | null>(null);
 
   const canSetPriorityAndWarranty =
     String(userRole || "").toUpperCase() === "ADMIN" ||
@@ -369,29 +362,25 @@ export default function NewTicketModal({
 
   const filteredBrands = useMemo(() => {
     const q = brandSearch.trim().toLowerCase();
-    if (!q) return [...INVERTER_BRANDS];
-    return INVERTER_BRANDS.filter((b) => String(b).toLowerCase().includes(q));
-  }, [brandSearch]);
+    const src = (brands || []).map((b) => String(b || "")).filter(Boolean);
+    if (!q) return src;
+    return src.filter((b) => String(b).toLowerCase().includes(q));
+  }, [brandSearch, brands]);
 
-  const uniqueModels = useMemo(() => {
-    // Deduplicate while keeping first occurrence order.
-    const out: string[] = [];
-    const seen = new Set<string>();
-    for (const raw of INVERTER_MODELS) {
-      const v = String(raw || "").trim();
-      if (!v) continue;
-      if (seen.has(v)) continue;
-      seen.add(v);
-      out.push(v);
-    }
-    return out;
+  useEffect(() => {
+    let cancelled = false;
+    apiInverterBrandsList()
+      .then((rows) => {
+        if (cancelled) return;
+        if (Array.isArray(rows) && rows.length) setBrands(rows);
+      })
+      .catch(() => {
+        // Keep static fallback list if API fails.
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
-
-  const filteredModels = useMemo(() => {
-    const q = modelSearch.trim().toLowerCase();
-    if (!q) return uniqueModels;
-    return uniqueModels.filter((m) => m.toLowerCase().includes(q));
-  }, [modelSearch, uniqueModels]);
 
   useEffect(() => {
     if (!brandOpen) return;
@@ -419,42 +408,17 @@ export default function NewTicketModal({
     };
   }, [brandOpen]);
 
-  useEffect(() => {
-    if (!modelOpen) return;
-    queueMicrotask(() => modelSearchRef.current?.focus());
-
-    const onKeyDown = (ev: KeyboardEvent) => {
-      if (ev.key === "Escape") setModelOpen(false);
-    };
-
-    const onPointerDown = (ev: MouseEvent | TouchEvent) => {
-      const el = modelWrapRef.current;
-      if (!el) return;
-      const target = ev.target as Node | null;
-      if (target && !el.contains(target)) setModelOpen(false);
-    };
-
-    document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("touchstart", onPointerDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("touchstart", onPointerDown);
-    };
-  }, [modelOpen]);
-
   const brandLabel = useMemo(() => {
     if (!brandOption) return "";
     if (brandOption === OTHER_BRAND_VALUE) return "Others";
     return brandOption;
   }, [brandOption]);
 
-  const modelLabel = useMemo(() => {
-    if (!modelOption) return "";
-    if (modelOption === OTHER_MODEL_VALUE) return "Others";
-    return modelOption;
-  }, [modelOption]);
+  const modelPlaceholder = useMemo(() => {
+    // Suggest an example model (no dropdown; user types freely)
+    const example = String(INVERTER_MODELS[0] || "").trim();
+    return example ? `e.g. ${example}` : "Enter model number";
+  }, []);
 
   const handleSubmit = () => {
     const capacity = form.capacity.trim();
@@ -544,7 +508,6 @@ export default function NewTicketModal({
                   aria-expanded={brandOpen}
                   disabled={loading}
                   onClick={() => {
-                    setModelOpen(false);
                     setBrandOpen((v) => !v);
                   }}
                   style={{
@@ -686,153 +649,13 @@ export default function NewTicketModal({
             </div>
             <div className="form-group">
               <label className="form-label">Model</label>
-              <div ref={modelWrapRef} style={{ position: "relative" }}>
-                <button
-                  type="button"
-                  className="form-select"
-                  aria-haspopup="listbox"
-                  aria-expanded={modelOpen}
-                  disabled={loading}
-                  onClick={() => {
-                    setBrandOpen(false);
-                    setModelOpen((v) => !v);
-                  }}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 10,
-                  }}
-                >
-                  <span style={{ color: modelLabel ? "var(--text)" : "var(--text3)" }}>
-                    {modelLabel || "Select model (optional)"}
-                  </span>
-                  <span aria-hidden style={{ color: "var(--text3)" }}>▾</span>
-                </button>
-
-                {modelOpen ? (
-                  <div
-                    role="listbox"
-                    aria-label="Model options"
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      right: 0,
-                      top: "calc(100% + 6px)",
-                      background: "var(--surface)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 10,
-                      boxShadow: "var(--shadow)",
-                      zIndex: 50,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div style={{ padding: 10, borderBottom: "1px solid var(--border)" }}>
-                      <div className="search-wrap">
-                        <span className="search-icon" aria-hidden>
-                          <LuSearch />
-                        </span>
-                        <input
-                          ref={modelSearchRef}
-                          className="form-input"
-                          placeholder="Search model..."
-                          value={modelSearch}
-                          onChange={(e) => setModelSearch(e.target.value)}
-                          style={{ paddingLeft: 32 }}
-                        />
-                      </div>
-                      {modelSearch.trim() ? (
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm"
-                          onClick={() => {
-                            setModelSearch("");
-                            modelSearchRef.current?.focus();
-                          }}
-                          style={{ marginTop: 8 }}
-                        >
-                          Clear search
-                        </button>
-                      ) : null}
-                    </div>
-
-                    <div style={{ maxHeight: 240, overflowY: "auto" }}>
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={!modelOption}
-                        className="table-link"
-                        onClick={() => {
-                          setModelOption("");
-                          set("inverterModel", "");
-                          setModelSearch("");
-                          setModelOpen(false);
-                        }}
-                        style={{
-                          width: "100%",
-                          padding: "10px 12px",
-                          textAlign: "left",
-                          color: !modelOption ? "var(--accent)" : "var(--text)",
-                        }}
-                      >
-                        Select model (optional)
-                      </button>
-
-                      {filteredModels.map((m) => {
-                        const selected = modelOption === m;
-                        return (
-                          <button
-                            key={m}
-                            type="button"
-                            role="option"
-                            aria-selected={selected}
-                            className="table-link"
-                            onClick={() => {
-                              setModelOption(m);
-                              set("inverterModel", m);
-                              setModelSearch("");
-                              setModelOpen(false);
-                            }}
-                            style={{
-                              width: "100%",
-                              padding: "10px 12px",
-                              textAlign: "left",
-                              color: selected ? "var(--accent)" : "var(--text)",
-                            }}
-                          >
-                            {m}
-                          </button>
-                        );
-                      })}
-
-                      <div style={{ height: 1, background: "var(--border)" }} />
-
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={modelOption === OTHER_MODEL_VALUE}
-                        className="table-link"
-                        onClick={() => {
-                          setModelOption(OTHER_MODEL_VALUE);
-                          set("inverterModel", "");
-                          setModelSearch("");
-                          setModelOpen(false);
-                        }}
-                        style={{
-                          width: "100%",
-                          padding: "10px 12px",
-                          textAlign: "left",
-                          color: modelOption === OTHER_MODEL_VALUE ? "var(--accent)" : "var(--text)",
-                        }}
-                      >
-                        Others
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+              <input
+                className="form-input"
+                placeholder={modelPlaceholder}
+                value={form.inverterModel}
+                onChange={(e) => set("inverterModel", e.target.value)}
+                disabled={loading}
+              />
             </div>
             {brandOption === OTHER_BRAND_VALUE ? (
               <div className="form-group full">
@@ -842,17 +665,6 @@ export default function NewTicketModal({
                   placeholder="Enter brand name"
                   value={form.inverterMake}
                   onChange={(e) => set("inverterMake", e.target.value)}
-                />
-              </div>
-            ) : null}
-            {modelOption === OTHER_MODEL_VALUE ? (
-              <div className="form-group full">
-                <label className="form-label">Other Model</label>
-                <input
-                  className="form-input"
-                  placeholder="Enter model number"
-                  value={form.inverterModel}
-                  onChange={(e) => set("inverterModel", e.target.value)}
                 />
               </div>
             ) : null}

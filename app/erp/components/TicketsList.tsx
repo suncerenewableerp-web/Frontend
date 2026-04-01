@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { STATUS_ORDER } from "../constants";
 import type { RoleDefinition, Ticket, User } from "../types";
 import { canAccess } from "../utils";
 import { PriorityBadge, SlaBadge, StatusBadge } from "./Badges";
 import { LuSearch, LuTicket } from "react-icons/lu";
+import { apiJobCardsList, type JobCardListRow } from "../api";
 
 export default function TicketsList({
   user,
@@ -21,11 +22,11 @@ export default function TicketsList({
   tickets: Ticket[];
   initialStatusFilter?: string;
   initialPriorityFilter?: string;
-  onView: (t: Ticket) => void;
+  onView: (t: Ticket, opts?: { tab?: "overview" | "jobcard" | "logistics" | "sla" }) => void;
   onNew: () => void;
 }) {
   const normalizedInitialStatus = String(initialStatusFilter || "").toUpperCase().trim();
-  const initialTab: "open" | "closed" =
+  const initialTab: "open" | "updates" | "closed" =
     normalizedInitialStatus === "CLOSED" ? "closed" : "open";
   const safeInitialStatusFilter =
     normalizedInitialStatus &&
@@ -35,26 +36,138 @@ export default function TicketsList({
       : "ALL";
 
   const [search, setSearch] = useState("");
-  const [ticketsTab, setTicketsTab] = useState<"open" | "closed">(initialTab);
+  const roleNorm = String(user.role || "").toUpperCase();
+  const canSeeUpdatesTab = roleNorm === "SALES" || roleNorm === "ADMIN";
+  const [ticketsTab, setTicketsTab] = useState<"open" | "updates" | "closed">(initialTab);
+  const [updatesTab, setUpdatesTab] = useState<"repairable" | "not_repairable">("repairable");
   const [statusFilter, setStatusFilter] = useState(safeInitialStatusFilter);
   const [priorityFilter, setPriorityFilter] = useState(initialPriorityFilter || "ALL");
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 8;
 
+  const [jobCards, setJobCards] = useState<JobCardListRow[]>([]);
+  const [jobCardsError, setJobCardsError] = useState("");
+
+  useEffect(() => {
+    if (!canSeeUpdatesTab) return;
+    let cancelled = false;
+    const fetchRows = () => {
+      if (cancelled) return;
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      apiJobCardsList()
+        .then((rows) => {
+          if (cancelled) return;
+          setJobCards(rows);
+          setJobCardsError("");
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          setJobCards([]);
+          setJobCardsError(e instanceof Error ? e.message : "Failed to load repaired tickets");
+        });
+    };
+    fetchRows();
+    const interval = setInterval(fetchRows, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [canSeeUpdatesTab]);
+
+  const engineerUpdateRows = useMemo(() => {
+    if (!canSeeUpdatesTab) return [];
+    const latestByTicket = new Map<string, JobCardListRow>();
+    (jobCards || []).forEach((r) => {
+      const t = r?.ticket;
+      const ticketId = String(t?.id || "");
+      if (!ticketId) return;
+      const prev = latestByTicket.get(ticketId);
+      if (!prev || (r.updatedAtMs || 0) >= (prev.updatedAtMs || 0)) latestByTicket.set(ticketId, r);
+    });
+    return Array.from(latestByTicket.values());
+  }, [canSeeUpdatesTab, jobCards]);
+
+  const repairableRows = useMemo(() => {
+    return engineerUpdateRows.filter((r) => {
+      const st = String(r?.ticket?.status || "").toUpperCase();
+      const job = String(r?.jobStatus || "").toUpperCase();
+      // Ticket should come from UNDER_REPAIRED, then after engineer marks REPAIRABLE it shows here.
+      return st === "UNDER_REPAIRED" && job === "REPAIRABLE";
+    });
+  }, [engineerUpdateRows]);
+
+  const notRepairableRows = useMemo(() => {
+    return engineerUpdateRows.filter((r) => String(r?.jobStatus || "").toUpperCase() === "NOT_REPAIRABLE");
+  }, [engineerUpdateRows]);
+
+  const repairableTickets = useMemo(() => repairableRows.map((r) => r.ticket), [repairableRows]);
+  const notRepairableTickets = useMemo(
+    () => notRepairableRows.map((r) => r.ticket),
+    [notRepairableRows],
+  );
+  const updatesTicketIds = useMemo(
+    () => new Set([...repairableTickets, ...notRepairableTickets].map((t) => t.id)),
+    [repairableTickets, notRepairableTickets],
+  );
+
   const openCount = useMemo(
-    () => tickets.filter((t) => t.status !== "CLOSED").length,
-    [tickets],
+    () =>
+      tickets.filter((t) => {
+        if (t.status === "CLOSED") return false;
+        if (canSeeUpdatesTab && updatesTicketIds.has(t.id)) return false;
+        return true;
+      }).length,
+    [tickets, canSeeUpdatesTab, updatesTicketIds],
   );
   const closedCount = useMemo(
-    () => tickets.filter((t) => t.status === "CLOSED").length,
-    [tickets],
+    () =>
+      tickets.filter((t) => {
+        if (t.status !== "CLOSED") return false;
+        if (canSeeUpdatesTab && updatesTicketIds.has(t.id)) return false;
+        return true;
+      }).length,
+    [tickets, canSeeUpdatesTab, updatesTicketIds],
+  );
+  const updatesCount = useMemo(
+    () => repairableTickets.length + notRepairableTickets.length,
+    [repairableTickets, notRepairableTickets],
   );
 
   const myTickets = useMemo(() => {
-    return ticketsTab === "closed"
-      ? tickets.filter((t) => t.status === "CLOSED")
-      : tickets.filter((t) => t.status !== "CLOSED");
-  }, [tickets, ticketsTab]);
+    if (ticketsTab === "closed") return tickets.filter((t) => t.status === "CLOSED");
+    if (ticketsTab === "updates") return [];
+    return tickets.filter((t) => {
+      if (t.status === "CLOSED") return false;
+      if (canSeeUpdatesTab && updatesTicketIds.has(t.id)) return false;
+      return true;
+    });
+  }, [tickets, ticketsTab, canSeeUpdatesTab, updatesTicketIds]);
+
+  const filteredRepairable = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return repairableTickets.filter((t) => {
+      const matchSearch =
+        !q ||
+        t.ticketId.toLowerCase().includes(q) ||
+        t.customer.toLowerCase().includes(q) ||
+        t.faultDescription.toLowerCase().includes(q);
+      const matchPriority = priorityFilter === "ALL" || t.priority === priorityFilter;
+      return matchSearch && matchPriority;
+    });
+  }, [repairableTickets, search, priorityFilter]);
+
+  const filteredNotRepairable = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return notRepairableTickets.filter((t) => {
+      const matchSearch =
+        !q ||
+        t.ticketId.toLowerCase().includes(q) ||
+        t.customer.toLowerCase().includes(q) ||
+        t.faultDescription.toLowerCase().includes(q);
+      const matchPriority = priorityFilter === "ALL" || t.priority === priorityFilter;
+      return matchSearch && matchPriority;
+    });
+  }, [notRepairableTickets, search, priorityFilter]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -78,13 +191,18 @@ export default function TicketsList({
   const showingFrom = filtered.length ? startIndex + 1 : 0;
   const showingTo = Math.min(startIndex + PAGE_SIZE, filtered.length);
 
+  const foundCount =
+    ticketsTab === "updates"
+      ? filteredRepairable.length + filteredNotRepairable.length
+      : filtered.length;
+
   return (
     <div className="content">
       <div className="page-header page-header-row">
         <div>
           <div className="page-title">Service Tickets</div>
           <div className="page-sub">
-            {filtered.length} tickets{" "}
+            {foundCount} tickets{" "}
             {user.role === "ENGINEER" ? "assigned to you or in Under Repaired" : "found"}
           </div>
         </div>
@@ -108,6 +226,19 @@ export default function TicketsList({
           >
             Open Tickets ({openCount})
           </div>
+          {canSeeUpdatesTab ? (
+            <div
+              className={`tab ${ticketsTab === "updates" ? "active" : ""}`}
+              onClick={() => {
+                setTicketsTab("updates");
+                setStatusFilter("ALL");
+                setPage(1);
+                setUpdatesTab("repairable");
+              }}
+            >
+              Engineer Updates ({updatesCount})
+            </div>
+          ) : null}
           <div
             className={`tab ${ticketsTab === "closed" ? "active" : ""}`}
             onClick={() => {
@@ -167,98 +298,226 @@ export default function TicketsList({
             </select>
           </div>
         </div>
-        <div className="scroll-x">
-          <table>
-            <thead>
-              <tr>
-                <th style={{ width: 70 }}>Sr No.</th>
-                <th>Ticket ID</th>
-                <th>Customer</th>
-                <th>Inverter</th>
-                <th>Fault</th>
-                <th>Priority</th>
-                <th>Status / SLA</th>
-                <th>Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
+        {ticketsTab === "updates" ? (
+          <div style={{ padding: "16px 20px" }}>
+            {jobCardsError ? (
+              <div className="empty-state" style={{ marginTop: 10 }}>
+                <div className="empty-icon" aria-hidden>
+                  <LuTicket />
+                </div>
+                <div className="empty-text">{jobCardsError}</div>
+              </div>
+            ) : (
+              <>
+                <div className="tabs" style={{ marginBottom: 14 }}>
+                  <div
+                    className={`tab ${updatesTab === "repairable" ? "active" : ""}`}
+                    onClick={() => setUpdatesTab("repairable")}
+                  >
+                    Repairable ({filteredRepairable.length})
+                  </div>
+                  <div
+                    className={`tab ${updatesTab === "not_repairable" ? "active" : ""}`}
+                    onClick={() => setUpdatesTab("not_repairable")}
+                  >
+                    Not Repairable ({filteredNotRepairable.length})
+                  </div>
+                </div>
+                <div className="scroll-x">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th style={{ width: 70 }}>Sr No.</th>
+                        <th>Ticket ID</th>
+                        <th>Customer</th>
+                        <th>Inverter</th>
+                        <th>Fault</th>
+                        <th>Priority</th>
+                        <th>Status / SLA</th>
+                        <th>Created</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(
+                        updatesTab === "repairable" ? filteredRepairable : filteredNotRepairable
+                      ).length === 0 ? (
+                        <tr>
+                          <td colSpan={8}>
+                            <div className="empty-state">
+                              <div className="empty-icon" aria-hidden>
+                                <LuTicket />
+                              </div>
+                              <div className="empty-text">
+                                {updatesTab === "repairable"
+                                  ? "No repairable tickets found"
+                                  : "No not-repairable tickets found"}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        (updatesTab === "repairable" ? filteredRepairable : filteredNotRepairable).map(
+                          (t, idx) => (
+                            <tr key={t.id}>
+                              <td
+                                style={{
+                                  fontSize: 12,
+                                  color: "var(--text3)",
+                                  fontFamily: "var(--mono)",
+                                }}
+                              >
+                                {idx + 1}
+                              </td>
+                              <td>
+                                <button
+                                  type="button"
+                                  className="td-mono table-link"
+                                  onClick={() => onView(t, { tab: "jobcard" })}
+                                  title="View job card"
+                                >
+                                  {t.ticketId}
+                                </button>
+                              </td>
+                              <td style={{ fontWeight: 500 }}>{t.customer}</td>
+                              <td>
+                                <span className="tag">
+                                  {t.inverterMake} {t.inverterModel}
+                                </span>
+                              </td>
+                              <td
+                                style={{
+                                  maxWidth: 180,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  color: "var(--text2)",
+                                  fontSize: 12,
+                                }}
+                              >
+                                {t.faultDescription}
+                              </td>
+                              <td>
+                                <PriorityBadge priority={t.priority} />
+                              </td>
+                              <td>
+                                <div className="status-sla">
+                                  <StatusBadge status={t.status} />
+                                  <SlaBadge status={t.slaStatus} />
+                                </div>
+                              </td>
+                              <td
+                                style={{
+                                  fontSize: 12,
+                                  color: "var(--text3)",
+                                  fontFamily: "var(--mono)",
+                                }}
+                              >
+                                {t.createdAt}
+                              </td>
+                            </tr>
+                          ),
+                        )
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="scroll-x">
+            <table>
+              <thead>
                 <tr>
-                  <td colSpan={8}>
-                    <div className="empty-state">
-                      <div className="empty-icon" aria-hidden>
-                        <LuTicket />
-                      </div>
-                      <div className="empty-text">No tickets found</div>
-                    </div>
-                  </td>
+                  <th style={{ width: 70 }}>Sr No.</th>
+                  <th>Ticket ID</th>
+                  <th>Customer</th>
+                  <th>Inverter</th>
+                  <th>Fault</th>
+                  <th>Priority</th>
+                  <th>Status / SLA</th>
+                  <th>Created</th>
                 </tr>
-              ) : (
-                pageRows.map((t, idx) => (
-                  <tr key={t.id}>
-                    <td
-                      style={{
-                        fontSize: 12,
-                        color: "var(--text3)",
-                        fontFamily: "var(--mono)",
-                      }}
-                    >
-                      {startIndex + idx + 1}
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="td-mono table-link"
-                        onClick={() => onView(t)}
-                        title="View ticket"
-                      >
-                        {t.ticketId}
-                      </button>
-                    </td>
-                    <td style={{ fontWeight: 500 }}>{t.customer}</td>
-                    <td>
-                      <span className="tag">
-                        {t.inverterMake} {t.inverterModel}
-                      </span>
-                    </td>
-                    <td
-                      style={{
-                        maxWidth: 180,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        color: "var(--text2)",
-                        fontSize: 12,
-                      }}
-                    >
-                      {t.faultDescription}
-                    </td>
-                    <td>
-                      <PriorityBadge priority={t.priority} />
-                    </td>
-                    <td>
-                      <div className="status-sla">
-                        <StatusBadge status={t.status} />
-                        <SlaBadge status={t.slaStatus} />
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={8}>
+                      <div className="empty-state">
+                        <div className="empty-icon" aria-hidden>
+                          <LuTicket />
+                        </div>
+                        <div className="empty-text">No tickets found</div>
                       </div>
-                    </td>
-                    <td
-                      style={{
-                        fontSize: 12,
-                        color: "var(--text3)",
-                        fontFamily: "var(--mono)",
-                      }}
-                    >
-                      {t.createdAt}
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : (
+                  pageRows.map((t, idx) => (
+                    <tr key={t.id}>
+                      <td
+                        style={{
+                          fontSize: 12,
+                          color: "var(--text3)",
+                          fontFamily: "var(--mono)",
+                        }}
+                      >
+                        {startIndex + idx + 1}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="td-mono table-link"
+                          onClick={() => onView(t)}
+                          title="View ticket"
+                        >
+                          {t.ticketId}
+                        </button>
+                      </td>
+                      <td style={{ fontWeight: 500 }}>{t.customer}</td>
+                      <td>
+                        <span className="tag">
+                          {t.inverterMake} {t.inverterModel}
+                        </span>
+                      </td>
+                      <td
+                        style={{
+                          maxWidth: 180,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          color: "var(--text2)",
+                          fontSize: 12,
+                        }}
+                      >
+                        {t.faultDescription}
+                      </td>
+                      <td>
+                        <PriorityBadge priority={t.priority} />
+                      </td>
+                      <td>
+                        <div className="status-sla">
+                          <StatusBadge status={t.status} />
+                          <SlaBadge status={t.slaStatus} />
+                        </div>
+                      </td>
+                      <td
+                        style={{
+                          fontSize: 12,
+                          color: "var(--text3)",
+                          fontFamily: "var(--mono)",
+                        }}
+                      >
+                        {t.createdAt}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-        {filtered.length > PAGE_SIZE ? (
+        {ticketsTab !== "updates" && filtered.length > PAGE_SIZE ? (
           <div
             style={{
               padding: "12px 20px",

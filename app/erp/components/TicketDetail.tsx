@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { STATUS_ORDER } from "../constants";
 import {
+  apiInverterBrandAdd,
+  apiInverterBrandsList,
   apiLogisticsByTicket,
   apiSchedulePickup,
   apiScheduleDispatch,
@@ -243,6 +245,13 @@ export default function TicketDetail({
     () => canAccess(roles, user.role, "jobcard", "edit"),
     [roles, user.role],
   );
+
+  const canManageBrandList =
+    roleName === "ADMIN" || roleName === "SALES";
+  const [knownBrands, setKnownBrands] = useState<string[]>([]);
+  const [brandAddMsg, setBrandAddMsg] = useState("");
+  const [brandAddError, setBrandAddError] = useState("");
+  const [brandAdding, setBrandAdding] = useState(false);
   const canEditTicketDetails = useMemo(() => {
     if (roleName !== "ADMIN" && roleName !== "SALES") return false;
     return canAccess(roles, user.role, "tickets", "edit") && ticket.status !== "CLOSED";
@@ -267,6 +276,37 @@ export default function TicketDetail({
     warrantyStatus: Boolean(ticket.warrantyStatus),
     warrantyEndDate: ticket.warrantyEndDate || "",
   });
+
+  useEffect(() => {
+    if (!canManageBrandList) return;
+    let cancelled = false;
+    apiInverterBrandsList()
+      .then((rows) => {
+        if (cancelled) return;
+        setKnownBrands(rows || []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setKnownBrands([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canManageBrandList, ticket.id]);
+
+  const knownBrandKeys = useMemo(() => {
+    const set = new Set<string>();
+    (knownBrands || []).forEach((b) => {
+      const k = String(b || "").trim().toLowerCase();
+      if (k) set.add(k);
+    });
+    return set;
+  }, [knownBrands]);
+
+  const canAddBrandToDropdown =
+    canManageBrandList &&
+    Boolean(details.inverterMake.trim()) &&
+    !knownBrandKeys.has(details.inverterMake.trim().toLowerCase());
   const [detailsSaving, setDetailsSaving] = useState(false);
   const [detailsError, setDetailsError] = useState("");
   const [detailsSavedMsg, setDetailsSavedMsg] = useState("");
@@ -287,6 +327,8 @@ export default function TicketDetail({
   const [dispatchCourierName, setDispatchCourierName] = useState("BlueDart");
   const [dispatchLrNumber, setDispatchLrNumber] = useState("");
   const [dispatchLocation, setDispatchLocation] = useState("");
+  const [dispatchInvoiceGenerated, setDispatchInvoiceGenerated] = useState(false);
+  const [dispatchPaymentDone, setDispatchPaymentDone] = useState(false);
 
   const [logisticsStage, setLogisticsStage] = useState<"pickup" | "dispatch">(() => {
     if (initialLogisticsStage) return initialLogisticsStage;
@@ -317,6 +359,23 @@ export default function TicketDetail({
     pickupAdvanceState.ticketId === ticket.id ? pickupAdvanceState.unlocked : false;
   const setPickupAdvanceUnlocked = (unlocked: boolean) =>
     setPickupAdvanceState({ ticketId: ticket.id, unlocked });
+
+  const [dispatchBaseline, setDispatchBaseline] = useState<null | {
+    dispatchDate: string;
+    dispatchCourierName: string;
+    dispatchLrNumber: string;
+    dispatchLocation: string;
+    invoiceGenerated: boolean;
+    paymentDone: boolean;
+  }>(null);
+  const [dispatchAdvanceState, setDispatchAdvanceState] = useState<{ ticketId: string; unlocked: boolean }>(() => ({
+    ticketId: ticket.id,
+    unlocked: false,
+  }));
+  const dispatchAdvanceUnlocked =
+    dispatchAdvanceState.ticketId === ticket.id ? dispatchAdvanceState.unlocked : false;
+  const setDispatchAdvanceUnlocked = (unlocked: boolean) =>
+    setDispatchAdvanceState({ ticketId: ticket.id, unlocked });
 
   const [customerPickupLoading, setCustomerPickupLoading] = useState(false);
   const [customerPickupError, setCustomerPickupError] = useState("");
@@ -458,6 +517,21 @@ export default function TicketDetail({
         setDispatchLocation(
           String(dispatch?.pickupDetails?.pickupLocation || ""),
         );
+        setDispatchInvoiceGenerated(Boolean(dispatch?.billing?.invoiceGenerated));
+        setDispatchPaymentDone(Boolean(dispatch?.billing?.paymentDone));
+        setDispatchBaseline(
+          dispatch
+            ? {
+                dispatchDate: dispatchDateFromApi || toDateInputValue(new Date()),
+                dispatchCourierName: String(dispatch?.courierDetails?.courierName || "BlueDart"),
+                dispatchLrNumber: String(dispatch?.courierDetails?.lrNumber || ""),
+                dispatchLocation: String(dispatch?.pickupDetails?.pickupLocation || ""),
+                invoiceGenerated: Boolean(dispatch?.billing?.invoiceGenerated),
+                paymentDone: Boolean(dispatch?.billing?.paymentDone),
+              }
+            : null,
+        );
+        setDispatchAdvanceState({ ticketId: ticket.id, unlocked: false });
       })
       .catch((e) => {
         if (cancelled) return;
@@ -535,12 +609,39 @@ export default function TicketDetail({
     );
   }, [pickupBaseline, pickupDate, courierName, lrNumber, pickupLocation]);
 
+  const dispatchDirty = useMemo(() => {
+    if (!dispatchBaseline) return true;
+    return (
+      dispatchBaseline.dispatchDate !== dispatchDate ||
+      dispatchBaseline.dispatchCourierName !== dispatchCourierName ||
+      dispatchBaseline.dispatchLrNumber !== dispatchLrNumber ||
+      dispatchBaseline.dispatchLocation !== dispatchLocation ||
+      dispatchBaseline.invoiceGenerated !== dispatchInvoiceGenerated ||
+      dispatchBaseline.paymentDone !== dispatchPaymentDone
+    );
+  }, [
+    dispatchBaseline,
+    dispatchDate,
+    dispatchCourierName,
+    dispatchLrNumber,
+    dispatchLocation,
+    dispatchInvoiceGenerated,
+    dispatchPaymentDone,
+  ]);
+
   const canAdvanceToInTransit =
     canEditLogistics &&
     ticket.status === "PICKUP_SCHEDULED" &&
     Boolean(pickupBaseline) &&
     pickupAdvanceUnlocked &&
     !pickupDirty;
+
+  const canAdvanceToClosed =
+    canEditLogistics &&
+    ticket.status === "DISPATCHED" &&
+    Boolean(dispatchBaseline) &&
+    dispatchAdvanceUnlocked &&
+    !dispatchDirty;
 
   useEffect(() => {
     if (!showSlaSettings || !canEditSla) return;
@@ -851,12 +952,32 @@ export default function TicketDetail({
                     return;
                   }
 
+                  if (newStatus === "IN_TRANSIT") {
+                    if (!canAdvanceToInTransit) {
+                      openLogistics(
+                        "pickup",
+                        "Please open Logistics and save pickup details first (Save Pickup).",
+                      );
+                      return;
+                    }
+                  }
+
                   if (newStatus === "DISPATCHED") {
                     openLogistics(
                       "dispatch",
                       "Please open Logistics and save dispatch details first (Save Dispatch).",
                     );
                     return;
+                  }
+
+                  if (newStatus === "CLOSED") {
+                    if (!canAdvanceToClosed) {
+                      openLogistics(
+                        "dispatch",
+                        "Please open Logistics and save dispatch details first (Save Dispatch).",
+                      );
+                      return;
+                    }
                   }
 
                   await onUpdateStatus(newStatus);
@@ -1078,14 +1199,73 @@ export default function TicketDetail({
                     />
                   </div>
 
-                  <div>
-                    <div className="form-label">Inverter Make</div>
-                    <input
-                      className="form-input"
-                      value={details.inverterMake}
-                      onChange={(e) => setDetails((p) => ({ ...p, inverterMake: e.target.value }))}
-                    />
-                  </div>
+	                  <div>
+	                    <div className="form-label">Inverter Make</div>
+	                    <input
+	                      className="form-input"
+	                      value={details.inverterMake}
+	                      onChange={(e) => {
+	                        setBrandAddMsg("");
+	                        setBrandAddError("");
+	                        setDetails((p) => ({ ...p, inverterMake: e.target.value }));
+	                      }}
+	                    />
+	                    {canAddBrandToDropdown ? (
+	                      <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+	                        <button
+	                          className="btn btn-ghost btn-sm"
+	                          type="button"
+	                          disabled={brandAdding}
+	                          onClick={() => {
+	                            const name = details.inverterMake.trim();
+	                            if (!name) return;
+	                            setBrandAdding(true);
+	                            setBrandAddMsg("");
+	                            setBrandAddError("");
+	                            apiInverterBrandAdd(name)
+	                              .then((savedName) => {
+	                                setKnownBrands((prev) => {
+	                                  const next = Array.isArray(prev) ? [...prev] : [];
+	                                  const key = String(savedName || name).trim().toLowerCase();
+	                                  if (!key) return next;
+	                                  const exists = next.some(
+	                                    (b) => String(b || "").trim().toLowerCase() === key,
+	                                  );
+	                                  if (!exists) next.push(String(savedName || name).trim());
+	                                  return next;
+	                                });
+	                                setBrandAddMsg("Added to brand dropdown.");
+	                              })
+	                              .catch((e) =>
+	                                setBrandAddError(
+	                                  e instanceof Error ? e.message : "Failed to add brand",
+	                                ),
+	                              )
+	                              .finally(() => setBrandAdding(false));
+	                          }}
+	                        >
+	                          {brandAdding ? "Adding..." : "Add to Brand Dropdown"}
+	                        </button>
+	                        {brandAddMsg ? (
+	                          <span style={{ fontSize: 12, color: "var(--green)" }}>{brandAddMsg}</span>
+	                        ) : brandAddError ? (
+	                          <span style={{ fontSize: 12, color: "var(--red)" }}>{brandAddError}</span>
+	                        ) : (
+	                          <span style={{ fontSize: 12, color: "var(--text3)" }}>
+	                            This brand is not in dropdown.
+	                          </span>
+	                        )}
+	                      </div>
+	                    ) : brandAddMsg ? (
+	                      <div style={{ marginTop: 8, fontSize: 12, color: "var(--green)" }}>
+	                        {brandAddMsg}
+	                      </div>
+	                    ) : brandAddError ? (
+	                      <div style={{ marginTop: 8, fontSize: 12, color: "var(--red)" }}>
+	                        {brandAddError}
+	                      </div>
+	                    ) : null}
+	                  </div>
                   <div>
                     <div className="form-label">Model</div>
                     <input
@@ -1663,6 +1843,23 @@ export default function TicketDetail({
                       </div>
                     </div>
                   </div>
+
+                  {roleName === "SALES" &&
+                  String(ticket.status || "").toUpperCase() === "UNDER_REPAIRED" &&
+                  String(jobCard.currentStatus || "").toUpperCase().trim() === "REPAIRABLE" ? (
+                    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+                      <button
+                        className="btn btn-accent btn-sm"
+                        type="button"
+                        onClick={() => {
+                          setActiveTab("logistics");
+                          setLogisticsStage("dispatch");
+                        }}
+                      >
+                        Approve → Go to Dispatch
+                      </button>
+                    </div>
+                  ) : null}
 
                   {String(jobCard.currentStatus || "").toUpperCase() === "NOT_REPAIRABLE" ? (
                     <div
@@ -2319,6 +2516,8 @@ export default function TicketDetail({
                           courierName: dispatchCourierName,
                           lrNumber: dispatchLrNumber,
                           dispatchLocation,
+                          invoiceGenerated: dispatchInvoiceGenerated,
+                          paymentDone: dispatchPaymentDone,
                         });
 
                   Promise.resolve(save)
@@ -2354,6 +2553,35 @@ export default function TicketDetail({
                           pickupLocation: pickupLocSaved,
                         });
                         setPickupAdvanceUnlocked(true);
+                      }
+                      if (logisticsStage === "dispatch") {
+                        const dispatchDateSaved =
+                          toDateInputValueSafe(dispatch?.pickupDetails?.scheduledDate) || dispatchDate;
+                        const courierSaved = String(
+                          dispatch?.courierDetails?.courierName || dispatchCourierName,
+                        );
+                        const lrSaved = String(dispatch?.courierDetails?.lrNumber || dispatchLrNumber);
+                        const dispatchLocSaved = String(
+                          dispatch?.pickupDetails?.pickupLocation || dispatchLocation,
+                        );
+                        const invoiceSaved = Boolean(dispatch?.billing?.invoiceGenerated);
+                        const paymentSaved = Boolean(dispatch?.billing?.paymentDone);
+
+                        setDispatchDate(dispatchDateSaved);
+                        setDispatchCourierName(courierSaved);
+                        setDispatchLrNumber(lrSaved);
+                        setDispatchLocation(dispatchLocSaved);
+                        setDispatchInvoiceGenerated(invoiceSaved);
+                        setDispatchPaymentDone(paymentSaved);
+                        setDispatchBaseline({
+                          dispatchDate: dispatchDateSaved,
+                          dispatchCourierName: courierSaved,
+                          dispatchLrNumber: lrSaved,
+                          dispatchLocation: dispatchLocSaved,
+                          invoiceGenerated: invoiceSaved,
+                          paymentDone: paymentSaved,
+                        });
+                        setDispatchAdvanceUnlocked(true);
                       }
 
                       setLogisticsSavedMsg(
@@ -2599,6 +2827,29 @@ export default function TicketDetail({
                       style={{ fontFamily: "var(--mono)" }}
                     />
                   </div>
+                  <div className="detail-card">
+                    <div className="detail-label">Billing</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                        <input
+                          type="checkbox"
+                          checked={dispatchInvoiceGenerated}
+                          disabled={!canEditLogistics}
+                          onChange={(e) => setDispatchInvoiceGenerated(e.target.checked)}
+                        />
+                        Invoice generated
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                        <input
+                          type="checkbox"
+                          checked={dispatchPaymentDone}
+                          disabled={!canEditLogistics}
+                          onChange={(e) => setDispatchPaymentDone(e.target.checked)}
+                        />
+                        Payment done
+                      </label>
+                    </div>
+                  </div>
                 </div>
 
                 {canEditLogistics ? (
@@ -2614,24 +2865,28 @@ export default function TicketDetail({
                       }}
                     >
                       <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5 }}>
-                        After saving dispatch, you can move the ticket to{" "}
-                        <span className="tag">CLOSED</span>.
+                        {canAdvanceToClosed ? (
+                          <>
+                            You can move the ticket to <span className="tag">CLOSED</span>.
+                          </>
+                        ) : (
+                          <>Save dispatch to go to next step.</>
+                        )}
                       </div>
-                      <button
-                        className="btn btn-accent btn-sm"
-                        disabled={
-                          logisticsAdvancing ||
-                          ticket.status !== "DISPATCHED"
-                        }
-                        onClick={() => {
-                          setLogisticsAdvancing(true);
-                          onUpdateStatus("CLOSED")
-                            .catch(() => {})
-                            .finally(() => setLogisticsAdvancing(false));
-                        }}
-                      >
-                        {logisticsAdvancing ? "Updating..." : "Next → Closed"}
-                      </button>
+                      {dispatchAdvanceUnlocked ? (
+                        <button
+                          className="btn btn-accent btn-sm"
+                          disabled={logisticsAdvancing || !canAdvanceToClosed}
+                          onClick={() => {
+                            setLogisticsAdvancing(true);
+                            onUpdateStatus("CLOSED")
+                              .catch(() => {})
+                              .finally(() => setLogisticsAdvancing(false));
+                          }}
+                        >
+                          {logisticsAdvancing ? "Updating..." : "Next → Closed"}
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                 ) : (

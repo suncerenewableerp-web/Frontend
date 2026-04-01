@@ -116,6 +116,20 @@ export function getStoredAuth() {
 async function parseJsonEnvelope<T>(res: Response): Promise<ApiEnvelope<T>> {
   const text = await res.text();
   if (!text) return { success: false, message: "Empty response" };
+  const trimmed = text.trim();
+  // Prevent dumping full HTML error pages into UI.
+  if (
+    trimmed.startsWith("<!DOCTYPE") ||
+    trimmed.startsWith("<!doctype") ||
+    trimmed.startsWith("<html") ||
+    trimmed.startsWith("<HTML")
+  ) {
+    const suffix = res.statusText ? ` ${res.statusText}` : "";
+    return {
+      success: false,
+      message: `${res.status || "Request"}${typeof res.status === "number" ? suffix : ""}`.trim(),
+    };
+  }
   try {
     return JSON.parse(text) as ApiEnvelope<T>;
   } catch {
@@ -274,6 +288,10 @@ export type BackendLogistics = {
     trackingId?: string;
     lrNumber?: string;
     awbNumber?: string;
+  };
+  billing?: {
+    invoiceGenerated?: boolean;
+    paymentDone?: boolean;
   };
   documents?: string[];
   createdAt?: string | Date;
@@ -618,6 +636,7 @@ export type JobCardListRow = {
   ticket: Ticket;
   jobStatus: string;
   updatedAt: string; // YYYY-MM-DD
+  updatedAtMs: number;
 };
 
 export async function apiJobCardsList(): Promise<JobCardListRow[]> {
@@ -632,11 +651,15 @@ export async function apiJobCardsList(): Promise<JobCardListRow[]> {
       const ticketObj = jc?.ticket && typeof jc.ticket === "object" ? (jc.ticket as BackendTicket) : null;
       if (!ticketObj) return null;
       const ticket = toTicket(ticketObj);
+      const updatedAtRaw = jc?.updatedAt;
+      const updatedAtDate = updatedAtRaw ? new Date(updatedAtRaw as string) : null;
+      const updatedAtMs = updatedAtDate && !Number.isNaN(updatedAtDate.getTime()) ? updatedAtDate.getTime() : 0;
       return {
         jobCardId: String(jc?._id || jc?.id || ""),
         ticket,
         jobStatus: String(jc?.currentStatus || ""),
         updatedAt: toDateInput(jc?.updatedAt),
+        updatedAtMs,
       } satisfies JobCardListRow;
     })
     .filter(Boolean) as JobCardListRow[];
@@ -870,6 +893,23 @@ export async function apiSlaSettingsUpdate(input: SlaSettings): Promise<SlaSetti
   return env.data;
 }
 
+export async function apiInverterBrandsList(): Promise<string[]> {
+  const env = await apiFetch<unknown>("/api/settings/inverter-brands", { method: "GET" });
+  if (!env.success) throw new Error(env.message || "Failed to fetch inverter brands");
+  return Array.isArray(env.data)
+    ? (env.data as unknown[]).map((x) => String(x || "")).filter(Boolean)
+    : [];
+}
+
+export async function apiInverterBrandAdd(name: string): Promise<string> {
+  const env = await apiFetch<{ name?: unknown }>("/api/settings/inverter-brands", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+  if (!env.success) throw new Error(env.message || "Failed to add inverter brand");
+  return String(env.data?.name || name || "");
+}
+
 export async function apiSchedulePickup(input: {
   ticketId: string;
   pickupDate: string; // YYYY-MM-DD
@@ -897,6 +937,8 @@ export async function apiScheduleDispatch(input: {
   courierName: string;
   lrNumber: string;
   dispatchLocation: string;
+  invoiceGenerated?: boolean;
+  paymentDone?: boolean;
 }): Promise<void> {
   const payload = {
     ticketId: input.ticketId,
@@ -904,6 +946,8 @@ export async function apiScheduleDispatch(input: {
     courierName: input.courierName,
     lrNumber: input.lrNumber,
     dispatchLocation: input.dispatchLocation,
+    ...(typeof input.invoiceGenerated === "boolean" ? { invoiceGenerated: input.invoiceGenerated } : {}),
+    ...(typeof input.paymentDone === "boolean" ? { paymentDone: input.paymentDone } : {}),
   };
   const env = await apiFetch<unknown>("/api/logistics/schedule-dispatch", {
     method: "POST",
