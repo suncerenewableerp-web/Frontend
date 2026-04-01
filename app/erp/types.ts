@@ -59,6 +59,8 @@ export interface JobCard {
   inDate: string; // YYYY-MM-DD
   outDate: string; // YYYY-MM-DD
   currentStatus: string;
+  engineerFinalStatus?: string;
+  engineerFinalizedAt?: string; // YYYY-MM-DD
   remarks: string;
   checkedByName: string;
   checkedByDate: string; // YYYY-MM-DD

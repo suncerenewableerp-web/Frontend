@@ -11,6 +11,7 @@ import {
   apiSlaSettingsGet,
   apiSlaSettingsUpdate,
   apiTicketJobCardGet,
+  apiTicketJobCardFinalize,
   apiTicketJobCardUpdate,
   apiTicketPickupDetailsGet,
   apiTicketPickupDocumentUpload,
@@ -748,6 +749,20 @@ export default function TicketDetail({
         }
       })
       .catch((e) => setJobError(e instanceof Error ? e.message : "Failed to save job card"))
+      .finally(() => setJobSaving(false));
+  };
+
+  const finalizeJobCard = (decision: "REPAIRABLE" | "NOT_REPAIRABLE") => {
+    if (!jobCard) return;
+    setJobSaving(true);
+    setJobError("");
+    setJobSavedMsg("");
+    apiTicketJobCardFinalize(ticket.id, decision)
+      .then((saved) => {
+        setJobCard(saved);
+        setJobSavedMsg(decision === "REPAIRABLE" ? "Finalized as REPAIRABLE." : "Finalized as NOT REPAIRABLE (SCRAP).");
+      })
+      .catch((e) => setJobError(e instanceof Error ? e.message : "Failed to finalize job card"))
       .finally(() => setJobSaving(false));
   };
 
@@ -1792,19 +1807,57 @@ export default function TicketDetail({
                     placeholder="Write testing details..."
                   />
 
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
-                    <button
-                      className="btn btn-accent"
-                      disabled={!canEditJobCard || jobSaving}
-                      onClick={saveJobCard}
-                    >
-                      {jobSaving ? "Saving..." : "Save Job Card"}
-                    </button>
-                    {!canEditJobCard && (
-                      <div style={{ fontSize: 12, color: "var(--text3)" }}>
-                        You don&apos;t have permission to edit job cards.
-                      </div>
-                    )}
+	                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
+	                    <button
+	                      className="btn btn-accent"
+	                      disabled={!canEditJobCard || jobSaving}
+	                      onClick={saveJobCard}
+	                    >
+	                      {jobSaving ? "Saving..." : "Save Job Card"}
+	                    </button>
+	                    {roleName === "ENGINEER" &&
+	                    String(ticket.status || "").toUpperCase() === "UNDER_REPAIRED" ? (
+	                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+	                        <button
+	                          className="btn btn-ghost btn-sm"
+	                          type="button"
+	                          disabled={jobSaving}
+	                          onClick={() => finalizeJobCard("REPAIRABLE")}
+	                        >
+	                          Approve (Repaired)
+	                        </button>
+	                        <button
+	                          className="btn btn-ghost btn-sm"
+	                          type="button"
+	                          disabled={jobSaving}
+	                          onClick={() => finalizeJobCard("NOT_REPAIRABLE")}
+	                        >
+	                          Scrap (Not Repairable)
+	                        </button>
+	                        {String(jobCard.engineerFinalStatus || "").trim() ? (
+	                          <span style={{ fontSize: 12, color: "var(--text3)" }}>
+	                            Final:{" "}
+	                            <span className="tag">
+	                              {String(jobCard.engineerFinalStatus || "").toUpperCase()}
+	                            </span>
+	                            {jobCard.engineerFinalizedAt ? (
+	                              <span style={{ marginLeft: 8, fontFamily: "var(--mono)" }}>
+	                                {jobCard.engineerFinalizedAt}
+	                              </span>
+	                            ) : null}
+	                          </span>
+	                        ) : (
+	                          <span style={{ fontSize: 12, color: "var(--text3)" }}>
+	                            Final decision pending
+	                          </span>
+	                        )}
+	                      </div>
+	                    ) : null}
+	                    {!canEditJobCard && (
+	                      <div style={{ fontSize: 12, color: "var(--text3)" }}>
+	                        You don&apos;t have permission to edit job cards.
+	                      </div>
+	                    )}
                     {jobSavedMsg && (
                       <div style={{ fontSize: 12, color: "var(--green)" }}>{jobSavedMsg}</div>
                     )}
@@ -1826,47 +1879,66 @@ export default function TicketDetail({
                         {jobCard.checkedByDate || "—"}
                       </div>
                     </div>
-                    <div className="detail-card">
-                      <div className="detail-label">Repairability</div>
-                      <div className="detail-value">
-                        {String(jobCard.currentStatus || "").trim() ? (
-                          <span className="tag">{String(jobCard.currentStatus || "").toUpperCase()}</span>
-                        ) : (
-                          "—"
-                        )}
-                      </div>
-                    </div>
-                    <div className="detail-card">
-                      <div className="detail-label">Ticket Status</div>
-                      <div className="detail-value">
-                        <span className="tag">{ticket.status}</span>
+	                    <div className="detail-card">
+	                      <div className="detail-label">Repairability</div>
+	                      <div className="detail-value">
+	                        {String(jobCard.currentStatus || "").trim() ? (
+	                          <span className="tag">{String(jobCard.currentStatus || "").toUpperCase()}</span>
+	                        ) : (
+	                          "—"
+	                        )}
+	                      </div>
+	                    </div>
+	                    <div className="detail-card">
+	                      <div className="detail-label">Final Decision</div>
+	                      <div className="detail-value">
+	                        {String(jobCard.engineerFinalStatus || "").trim() ? (
+	                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+	                            <span className="tag">
+	                              {String(jobCard.engineerFinalStatus || "").toUpperCase()}
+	                            </span>
+	                            {jobCard.engineerFinalizedAt ? (
+	                              <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text3)" }}>
+	                                {jobCard.engineerFinalizedAt}
+	                              </span>
+	                            ) : null}
+	                          </div>
+	                        ) : (
+	                          "Pending"
+	                        )}
+	                      </div>
+	                    </div>
+	                    <div className="detail-card">
+	                      <div className="detail-label">Ticket Status</div>
+	                      <div className="detail-value">
+	                        <span className="tag">{ticket.status}</span>
                       </div>
                     </div>
                   </div>
 
-                  {roleName === "SALES" &&
-                  String(ticket.status || "").toUpperCase() === "UNDER_REPAIRED" &&
-                  String(jobCard.currentStatus || "").toUpperCase().trim() === "REPAIRABLE" ? (
-                    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
-                      <button
-                        className="btn btn-accent btn-sm"
-                        type="button"
-                        onClick={() => {
-                          setActiveTab("logistics");
-                          setLogisticsStage("dispatch");
-                        }}
-                      >
-                        Approve → Go to Dispatch
-                      </button>
-                    </div>
-                  ) : null}
+	                  {roleName === "SALES" &&
+	                  String(ticket.status || "").toUpperCase() === "UNDER_REPAIRED" &&
+	                  String(jobCard.engineerFinalStatus || "").trim() ? (
+	                    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+	                      <button
+	                        className="btn btn-accent btn-sm"
+	                        type="button"
+	                        onClick={() => {
+	                          setActiveTab("logistics");
+	                          setLogisticsStage("dispatch");
+	                        }}
+	                      >
+	                        Dispatch → Logistics
+	                      </button>
+	                    </div>
+	                  ) : null}
 
-                  {String(jobCard.currentStatus || "").toUpperCase() === "NOT_REPAIRABLE" ? (
-                    <div
-                      style={{
-                        marginTop: 10,
-                        marginBottom: 14,
-                        padding: "10px 12px",
+	                  {String(jobCard.engineerFinalStatus || "").toUpperCase() === "NOT_REPAIRABLE" ? (
+	                    <div
+	                      style={{
+	                        marginTop: 10,
+	                        marginBottom: 14,
+	                        padding: "10px 12px",
                         borderRadius: 10,
                         border: "1px solid rgba(217,119,6,0.25)",
                         background: "rgba(217,119,6,0.08)",

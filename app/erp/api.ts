@@ -331,6 +331,8 @@ type BackendJobCard = {
   inDate?: string | Date;
   outDate?: string | Date;
   currentStatus?: string;
+  engineerFinalStatus?: string;
+  engineerFinalizedAt?: string | Date;
   remarks?: string;
   checkedByName?: string;
   checkedByDate?: string | Date;
@@ -455,6 +457,10 @@ function toJobCard(jc: BackendJobCard, ticketId: string): JobCard {
     inDate: toDateInput(jc?.inDate),
     outDate: toDateInput(jc?.outDate),
     currentStatus: String(jc?.currentStatus || ""),
+    ...(String(jc?.engineerFinalStatus || "").trim()
+      ? { engineerFinalStatus: String(jc?.engineerFinalStatus || "") }
+      : {}),
+    ...(jc?.engineerFinalizedAt ? { engineerFinalizedAt: toDateInput(jc?.engineerFinalizedAt) } : {}),
     remarks: String(jc?.remarks || ""),
     checkedByName: String(jc?.checkedByName || ""),
     checkedByDate: toDateInput(jc?.checkedByDate),
@@ -635,6 +641,7 @@ export type JobCardListRow = {
   jobCardId: string;
   ticket: Ticket;
   jobStatus: string;
+  engineerFinalStatus: string;
   updatedAt: string; // YYYY-MM-DD
   updatedAtMs: number;
 };
@@ -658,11 +665,27 @@ export async function apiJobCardsList(): Promise<JobCardListRow[]> {
         jobCardId: String(jc?._id || jc?.id || ""),
         ticket,
         jobStatus: String(jc?.currentStatus || ""),
+        engineerFinalStatus: String(jc?.engineerFinalStatus || ""),
         updatedAt: toDateInput(jc?.updatedAt),
         updatedAtMs,
       } satisfies JobCardListRow;
     })
     .filter(Boolean) as JobCardListRow[];
+}
+
+export async function apiTicketJobCardFinalize(
+  ticketId: string,
+  decision: "REPAIRABLE" | "NOT_REPAIRABLE",
+): Promise<JobCard> {
+  const env = await apiFetch<BackendJobCard>(
+    `/api/tickets/${encodeURIComponent(ticketId)}/jobcard`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ engineerFinalStatus: decision }),
+    },
+  );
+  if (!env.success) throw new Error(env.message || "Failed to finalize job card");
+  return toJobCard(env.data, ticketId);
 }
 
 export async function apiTicketGet(id: string): Promise<Ticket> {

@@ -90,14 +90,17 @@ export default function TicketsList({
   const repairableRows = useMemo(() => {
     return engineerUpdateRows.filter((r) => {
       const st = String(r?.ticket?.status || "").toUpperCase();
-      const job = String(r?.jobStatus || "").toUpperCase();
-      // Ticket should come from UNDER_REPAIRED, then after engineer marks REPAIRABLE it shows here.
-      return st === "UNDER_REPAIRED" && job === "REPAIRABLE";
+      const final = String(r?.engineerFinalStatus || "").toUpperCase().trim();
+      // Show only after engineer finalizes.
+      return st === "UNDER_REPAIRED" && final === "REPAIRABLE";
     });
   }, [engineerUpdateRows]);
 
   const notRepairableRows = useMemo(() => {
-    return engineerUpdateRows.filter((r) => String(r?.jobStatus || "").toUpperCase() === "NOT_REPAIRABLE");
+    return engineerUpdateRows.filter((r) => {
+      const final = String(r?.engineerFinalStatus || "").toUpperCase().trim();
+      return final === "NOT_REPAIRABLE";
+    });
   }, [engineerUpdateRows]);
 
   const repairableTickets = useMemo(() => repairableRows.map((r) => r.ticket), [repairableRows]);
