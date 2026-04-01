@@ -114,6 +114,25 @@ export default function ErpApp({
   }, [hydrated, user]);
 
   useEffect(() => {
+    if (!hydrated || !user) return;
+    const role = String(user.role || "").toUpperCase();
+    if (role === "CUSTOMER") return;
+
+    let cancelled = false;
+    const tick = () => {
+      if (cancelled) return;
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      void loadTickets().catch(() => {});
+    };
+
+    const interval = setInterval(tick, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [hydrated, user]);
+
+  useEffect(() => {
     if (!sidebarOpen) return;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";

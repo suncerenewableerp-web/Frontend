@@ -62,7 +62,7 @@ export const INITIAL_ROLES: RoleDefinition[] = [
     permissions: {
       dashboard: { view: true, create: false, edit: false, delete: false },
       tickets: { view: true, create: true, edit: true, delete: false },
-      jobcard: { view: false, create: false, edit: false, delete: false },
+      jobcard: { view: true, create: false, edit: false, delete: false },
       logistics: { view: true, create: true, edit: true, delete: false },
       sla: { view: true, create: false, edit: true, delete: false },
       reports: { view: true, create: false, edit: false, delete: false },

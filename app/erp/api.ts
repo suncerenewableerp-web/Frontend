@@ -613,6 +613,35 @@ export async function apiTicketsList(params?: {
   return env.data.tickets.map(toTicket);
 }
 
+export type JobCardListRow = {
+  jobCardId: string;
+  ticket: Ticket;
+  jobStatus: string;
+  updatedAt: string; // YYYY-MM-DD
+};
+
+export async function apiJobCardsList(): Promise<JobCardListRow[]> {
+  const env = await apiFetch<Array<BackendJobCard & { ticket?: BackendTicket | string; updatedAt?: string | Date }>>(
+    "/api/jobcards",
+    { method: "GET" },
+  );
+  if (!env.success) throw new Error(env.message || "Failed to fetch job cards");
+  const rows = Array.isArray(env.data) ? env.data : [];
+  return rows
+    .map((jc) => {
+      const ticketObj = jc?.ticket && typeof jc.ticket === "object" ? (jc.ticket as BackendTicket) : null;
+      if (!ticketObj) return null;
+      const ticket = toTicket(ticketObj);
+      return {
+        jobCardId: String(jc?._id || jc?.id || ""),
+        ticket,
+        jobStatus: String(jc?.currentStatus || ""),
+        updatedAt: toDateInput(jc?.updatedAt),
+      } satisfies JobCardListRow;
+    })
+    .filter(Boolean) as JobCardListRow[];
+}
+
 export async function apiTicketGet(id: string): Promise<Ticket> {
   const env = await apiFetch<BackendTicket>(`/api/tickets/${encodeURIComponent(id)}`, {
     method: "GET",

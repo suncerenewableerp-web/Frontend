@@ -30,6 +30,7 @@ import { canAccess } from "../utils";
 import { Badge, PriorityBadge, SlaBadge, StatusBadge } from "./Badges";
 import DatePicker from "./DatePicker";
 import TicketTimeline from "./TicketTimeline";
+import { FiFile, FiFileText, FiImage } from "react-icons/fi";
 
 const DEFAULT_FINAL_TESTING: Array<Pick<JobCardFinalTestingActivity, "sr" | "activity">> = [
   { sr: 1, activity: "Continuity test of AC side" },
@@ -44,6 +45,56 @@ const DEFAULT_FINAL_TESTING: Array<Pick<JobCardFinalTestingActivity, "sr" | "act
   { sr: 10, activity: "Cleaning of all filters" },
   { sr: 11, activity: "Cleaning of inverter body" },
 ];
+
+function docLinkLabel(u: string): string {
+  const raw = String(u || "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw);
+    const publicId = parsed.searchParams.get("public_id");
+    const format = parsed.searchParams.get("format");
+    if (publicId) {
+      const decoded = decodeURIComponent(publicId);
+      const base = decoded.split("/").pop() || decoded;
+      return format ? `${base}.${format}` : base;
+    }
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    return parts[parts.length - 1] || raw;
+  } catch {
+    return raw.split("/").slice(-1)[0].split("?")[0];
+  }
+}
+
+function docKind(u: string): { kind: "image" | "pdf" | "other"; format: string } {
+  const raw = String(u || "").trim();
+  if (!raw) return { kind: "other", format: "" };
+  try {
+    const parsed = new URL(raw);
+    const format = String(parsed.searchParams.get("format") || "").toLowerCase();
+    if (format) {
+      if (format === "pdf") return { kind: "pdf", format };
+      if (["png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff", "avif", "svg"].includes(format)) {
+        return { kind: "image", format };
+      }
+      return { kind: "other", format };
+    }
+    const base = (parsed.pathname.split("/").filter(Boolean).pop() || "").toLowerCase();
+    const ext = base.includes(".") ? base.split(".").pop() || "" : "";
+    if (ext === "pdf") return { kind: "pdf", format: ext };
+    if (["png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff", "avif", "svg"].includes(ext)) {
+      return { kind: "image", format: ext };
+    }
+    return { kind: "other", format: ext };
+  } catch {
+    const clean = raw.split("?")[0] || "";
+    const ext = clean.includes(".") ? (clean.split(".").pop() || "").toLowerCase() : "";
+    if (ext === "pdf") return { kind: "pdf", format: ext };
+    if (["png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff", "avif", "svg"].includes(ext)) {
+      return { kind: "image", format: ext };
+    }
+    return { kind: "other", format: ext };
+  }
+}
 
 function emptyServiceJob(sn: number): JobCardServiceJob {
   return {
@@ -274,6 +325,8 @@ export default function TicketDetail({
   const [pickupDocFile, setPickupDocFile] = useState<File | null>(null);
   const [pickupDocUploading, setPickupDocUploading] = useState(false);
   const [pickupDocError, setPickupDocError] = useState("");
+  const [docPreviewUrl, setDocPreviewUrl] = useState<string | null>(null);
+  const [docPreviewKind, setDocPreviewKind] = useState<"image" | "pdf" | "other">("other");
 
   const [showSlaSettings, setShowSlaSettings] = useState(false);
   const [slaLoading, setSlaLoading] = useState(false);
@@ -463,6 +516,15 @@ export default function TicketDetail({
     };
   }, [roleName, ticket.id, ticket.customerAddress]);
 
+  useEffect(() => {
+    if (!docPreviewUrl) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDocPreviewUrl(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [docPreviewUrl]);
+
   const pickupDirty = useMemo(() => {
     if (!pickupBaseline) return true;
     return (
@@ -586,6 +648,120 @@ export default function TicketDetail({
       })
       .catch((e) => setJobError(e instanceof Error ? e.message : "Failed to save job card"))
       .finally(() => setJobSaving(false));
+  };
+
+  const renderPickupDocumentCard = (u: string) => {
+    const label = docLinkLabel(u);
+    const k = docKind(u).kind;
+    return (
+      <div
+        key={u}
+        style={{
+          display: "flex",
+          gap: 12,
+          alignItems: "stretch",
+          border: "1px solid var(--border)",
+          borderRadius: 10,
+          padding: "12px 12px",
+          background: "var(--card)",
+        }}
+      >
+        <div
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: 10,
+            overflow: "hidden",
+            border: "1px solid var(--border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "var(--bg2)",
+            flex: "0 0 auto",
+            fontFamily: "var(--mono)",
+            fontSize: 11,
+            color: "var(--text2)",
+            position: "relative",
+          }}
+        >
+          {k === "image" ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={u}
+              alt={label || "Document"}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          ) : k === "pdf" ? (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+              <FiFileText size={24} style={{ color: "#ef4444" }} />
+              <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--text2)" }}>PDF</span>
+            </div>
+          ) : (
+            <FiFile size={24} style={{ color: "var(--text2)" }} />
+          )}
+          {k === "image" ? (
+            <div
+              style={{
+                position: "absolute",
+                right: 6,
+                bottom: 6,
+                width: 22,
+                height: 22,
+                borderRadius: 999,
+                background: "rgba(0,0,0,0.55)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                border: "1px solid rgba(255,255,255,0.2)",
+              }}
+              aria-hidden="true"
+            >
+              <FiImage size={14} style={{ color: "white" }} />
+            </div>
+          ) : null}
+        </div>
+
+        <div style={{ minWidth: 0, flex: "1 1 auto", display: "flex", flexDirection: "column", gap: 6 }}>
+          <div
+            style={{
+              color: "var(--text1)",
+              fontSize: 13,
+              fontWeight: 600,
+              display: "block",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            title={label}
+          >
+            {label}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text3)" }}>
+            {k === "pdf" ? "PDF Document" : k === "image" ? "Image" : "File"}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>
+          <button
+            className="btn btn-ghost btn-sm"
+            type="button"
+            onClick={() => {
+              setDocPreviewKind(k);
+              setDocPreviewUrl(u);
+            }}
+          >
+            Preview
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            type="button"
+            onClick={() => window.open(u, "_blank", "noopener,noreferrer")}
+          >
+            Open
+          </button>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -785,19 +961,9 @@ export default function TicketDetail({
 
                     <div style={{ marginTop: 6 }}>
                       <div className="detail-label">Documents</div>
-                      <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 10 }}>
                         {pickupDocuments.length ? (
-                          pickupDocuments.map((u) => (
-                            <a
-                              key={u}
-                              href={u}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{ color: "var(--blue)", fontSize: 12 }}
-                            >
-                              {u.split("/").slice(-1)[0]}
-                            </a>
-                          ))
+                          pickupDocuments.map(renderPickupDocumentCard)
                         ) : (
                           <div style={{ fontSize: 12, color: "var(--text3)" }}>
                             No documents uploaded yet.
@@ -1466,323 +1632,645 @@ export default function TicketDetail({
                 </>
               ) : (
                 <>
-                <div className="form-section">Service Job History</div>
-                <div className="scroll-x">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th style={{ width: 60 }}>SN</th>
-                        <th>Job Name</th>
-                        <th>Specification</th>
-                        <th style={{ width: 90 }}>Qty</th>
-                        <th>Reason</th>
-                        <th style={{ width: 140 }}>Date</th>
-                        <th style={{ width: 160 }}>Done By</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {jobCard.serviceJobs.map((row, idx) => (
-                        <tr key={idx}>
-                          <td style={{ fontFamily: "var(--mono)", color: "var(--text3)" }}>
-                            {idx + 1}
-                          </td>
-                          <td>
-                            <input
-                              className="form-input"
-                              value={row.jobName}
-                              disabled={!canEditJobCard}
-                              onChange={(e) =>
-                                setJobCard((p) =>
-                                  !p
-                                    ? p
-                                    : {
-                                        ...p,
-                                        serviceJobs: p.serviceJobs.map((r, i) =>
-                                          i === idx ? { ...r, jobName: e.target.value } : r,
-                                        ),
-                                      },
-                                )
-                              }
-                            />
-                          </td>
-                          <td>
-                            <input
-                              className="form-input"
-                              value={row.specification}
-                              disabled={!canEditJobCard}
-                              onChange={(e) =>
-                                setJobCard((p) =>
-                                  !p
-                                    ? p
-                                    : {
-                                        ...p,
-                                        serviceJobs: p.serviceJobs.map((r, i) =>
-                                          i === idx ? { ...r, specification: e.target.value } : r,
-                                        ),
-                                      },
-                                )
-                              }
-                            />
-                          </td>
-                          <td>
-                            <input
-                              className="form-input"
-                              type="number"
-                              min={0}
-                              value={row.qty}
-                              disabled={!canEditJobCard}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                const qty = v === "" ? "" : Number(v);
-                                setJobCard((p) =>
-                                  !p
-                                    ? p
-                                    : {
-                                        ...p,
-                                        serviceJobs: p.serviceJobs.map((r, i) =>
-                                          i === idx ? { ...r, qty } : r,
-                                        ),
-                                      },
-                                );
-                              }}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              className="form-input"
-                              value={row.reason}
-                              disabled={!canEditJobCard}
-                              onChange={(e) =>
-                                setJobCard((p) =>
-                                  !p
-                                    ? p
-                                    : {
-                                        ...p,
-                                        serviceJobs: p.serviceJobs.map((r, i) =>
-                                          i === idx ? { ...r, reason: e.target.value } : r,
-                                        ),
-                                      },
-                                )
-                              }
-                            />
-                          </td>
-                          <td>
-                            <input
-                              className="form-input"
-                              type="date"
-                              value={row.date}
-                              disabled={!canEditJobCard}
-                              onChange={(e) =>
-                                setJobCard((p) =>
-                                  !p
-                                    ? p
-                                    : {
-                                        ...p,
-                                        serviceJobs: p.serviceJobs.map((r, i) =>
-                                          i === idx ? { ...r, date: e.target.value } : r,
-                                        ),
-                                      },
-                                )
-                              }
-                            />
-                          </td>
-                          <td>
-                            <input
-                              className="form-input"
-                              value={row.doneBy}
-                              disabled={!canEditJobCard}
-                              onChange={(e) =>
-                                setJobCard((p) =>
-                                  !p
-                                    ? p
-                                    : {
-                                        ...p,
-                                        serviceJobs: p.serviceJobs.map((r, i) =>
-                                          i === idx ? { ...r, doneBy: e.target.value } : r,
-                                        ),
-                                      },
-                                )
-                              }
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {canEditJobCard && (
-                  <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      onClick={() =>
-                        setJobCard((p) =>
-                          !p
-                            ? p
-                            : {
-                                ...p,
-                                serviceJobs: normalizeServiceJobs(
-                                  [...p.serviceJobs, emptyServiceJob(p.serviceJobs.length + 1)],
-                                  p.serviceJobs.length + 1,
-                                ),
-                              },
-                        )
-                      }
-                    >
-                      + Add Row
-                    </button>
-                  </div>
-                )}
-
-                <div className="form-section">Final Testing</div>
-                <div className="scroll-x">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th style={{ width: 60 }}>Sr</th>
-                        <th>Activity</th>
-                        <th style={{ width: 80, textAlign: "center" }}>Yes</th>
-                        <th style={{ width: 80, textAlign: "center" }}>No</th>
-                        <th style={{ width: 260 }}>Remarks</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {jobCard.finalTestingActivities.map((row, idx) => (
-                        <tr key={row.sr || idx}>
-                          <td style={{ fontFamily: "var(--mono)", color: "var(--text3)" }}>
-                            {row.sr}
-                          </td>
-                          <td>{row.activity}</td>
-                          <td style={{ textAlign: "center" }}>
-                            <input
-                              type="radio"
-                              name={`ft-${row.sr}`}
-                              checked={row.result === "YES"}
-                              disabled={!canEditJobCard}
-                              onChange={() =>
-                                setJobCard((p) =>
-                                  !p
-                                    ? p
-                                    : {
-                                        ...p,
-                                        finalTestingActivities: p.finalTestingActivities.map((r, i) =>
-                                          i === idx ? { ...r, result: "YES" } : r,
-                                        ),
-                                      },
-                                )
-                              }
-                            />
-                          </td>
-                          <td style={{ textAlign: "center" }}>
-                            <input
-                              type="radio"
-                              name={`ft-${row.sr}`}
-                              checked={row.result === "NO"}
-                              disabled={!canEditJobCard}
-                              onChange={() =>
-                                setJobCard((p) =>
-                                  !p
-                                    ? p
-                                    : {
-                                        ...p,
-                                        finalTestingActivities: p.finalTestingActivities.map((r, i) =>
-                                          i === idx ? { ...r, result: "NO" } : r,
-                                        ),
-                                      },
-                                )
-                              }
-                            />
-                          </td>
-                          <td>
-                            <input
-                              className="form-input"
-                              value={row.remarks}
-                              disabled={!canEditJobCard}
-                              onChange={(e) =>
-                                setJobCard((p) =>
-                                  !p
-                                    ? p
-                                    : {
-                                        ...p,
-                                        finalTestingActivities: p.finalTestingActivities.map((r, i) =>
-                                          i === idx ? { ...r, remarks: e.target.value } : r,
-                                        ),
-                                      },
-                                )
-                              }
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="form-section">Final Status</div>
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label className="form-label">Final Status</label>
-                    <input
-                      className="form-input"
-                      value={jobCard.finalStatus}
-                      disabled={!canEditJobCard}
-                      onChange={(e) =>
-                        setJobCard((p) => (p ? { ...p, finalStatus: e.target.value } : p))
-                      }
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Checked By</label>
-                    <input
-                      className="form-input"
-                      value={jobCard.finalCheckedByName}
-                      disabled={!canEditJobCard}
-                      onChange={(e) =>
-                        setJobCard((p) => (p ? { ...p, finalCheckedByName: e.target.value } : p))
-                      }
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Checked Date</label>
-                    <input
-                      className="form-input"
-                      type="date"
-                      value={jobCard.finalCheckedByDate}
-                      disabled={!canEditJobCard}
-                      onChange={(e) =>
-                        setJobCard((p) => (p ? { ...p, finalCheckedByDate: e.target.value } : p))
-                      }
-                    />
-                  </div>
-                  <div className="form-group full">
-                    <label className="form-label">Final Remarks</label>
-                    <textarea
-                      className="form-textarea"
-                      value={jobCard.finalRemarks}
-                      disabled={!canEditJobCard}
-                      onChange={(e) =>
-                        setJobCard((p) => (p ? { ...p, finalRemarks: e.target.value } : p))
-                      }
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
-                  <button
-                    className="btn btn-accent"
-                    disabled={!canEditJobCard || jobSaving}
-                    onClick={saveJobCard}
-                  >
-                    {jobSaving ? "Saving..." : "Save Job Card"}
-                  </button>
-                  {!canEditJobCard && (
-                    <div style={{ fontSize: 12, color: "var(--text3)" }}>
-                      You don&apos;t have permission to edit job cards.
+                  <div className="form-section">Engineer Report</div>
+                  <div className="detail-grid" style={{ marginBottom: 14 }}>
+                    <div className="detail-card">
+                      <div className="detail-label">Engineer</div>
+                      <div className="detail-value" style={{ fontSize: 13, fontWeight: 600 }}>
+                        {jobCard.checkedByName || "—"}
+                      </div>
                     </div>
+                    <div className="detail-card">
+                      <div className="detail-label">Checked Date</div>
+                      <div className="detail-value" style={{ fontFamily: "var(--mono)" }}>
+                        {jobCard.checkedByDate || "—"}
+                      </div>
+                    </div>
+                    <div className="detail-card">
+                      <div className="detail-label">Repairability</div>
+                      <div className="detail-value">
+                        {String(jobCard.currentStatus || "").trim() ? (
+                          <span className="tag">{String(jobCard.currentStatus || "").toUpperCase()}</span>
+                        ) : (
+                          "—"
+                        )}
+                      </div>
+                    </div>
+                    <div className="detail-card">
+                      <div className="detail-label">Ticket Status</div>
+                      <div className="detail-value">
+                        <span className="tag">{ticket.status}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {String(jobCard.currentStatus || "").toUpperCase() === "NOT_REPAIRABLE" ? (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        marginBottom: 14,
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: "1px solid rgba(217,119,6,0.25)",
+                        background: "rgba(217,119,6,0.08)",
+                        fontSize: 12,
+                        color: "var(--text2)",
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      This job card was marked <b>NOT REPAIRABLE</b> by the engineer.
+                    </div>
+                  ) : null}
+
+                  {canEditJobCard ? (
+                    <>
+                      <div className="form-grid" style={{ marginBottom: 16 }}>
+                        <div className="form-group full">
+                          <label className="form-label">Diagnosis</label>
+                          <textarea
+                            className="form-textarea"
+                            rows={3}
+                            value={jobCard.diagnosis || ""}
+                            disabled={!canEditJobCard}
+                            onChange={(e) =>
+                              setJobCard((p) => (p ? { ...p, diagnosis: e.target.value } : p))
+                            }
+                            placeholder="—"
+                          />
+                        </div>
+                        <div className="form-group full">
+                          <label className="form-label">Repair Notes</label>
+                          <textarea
+                            className="form-textarea"
+                            rows={3}
+                            value={jobCard.repairNotes || ""}
+                            disabled={!canEditJobCard}
+                            onChange={(e) =>
+                              setJobCard((p) => (p ? { ...p, repairNotes: e.target.value } : p))
+                            }
+                            placeholder="—"
+                          />
+                        </div>
+                        <div className="form-group full">
+                          <label className="form-label">Test Results</label>
+                          <textarea
+                            className="form-textarea"
+                            rows={3}
+                            value={jobCard.testResults || ""}
+                            disabled={!canEditJobCard}
+                            onChange={(e) =>
+                              setJobCard((p) => (p ? { ...p, testResults: e.target.value } : p))
+                            }
+                            placeholder="—"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="form-section">Service Job History</div>
+                      <div className="scroll-x">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th style={{ width: 60 }}>SN</th>
+                              <th>Job Name</th>
+                              <th>Specification</th>
+                              <th style={{ width: 90 }}>Qty</th>
+                              <th>Reason</th>
+                              <th style={{ width: 140 }}>Date</th>
+                              <th style={{ width: 160 }}>Done By</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {jobCard.serviceJobs.map((row, idx) => (
+                              <tr key={idx}>
+                                <td style={{ fontFamily: "var(--mono)", color: "var(--text3)" }}>
+                                  {idx + 1}
+                                </td>
+                                <td>
+                                  <input
+                                    className="form-input"
+                                    value={row.jobName}
+                                    disabled={!canEditJobCard}
+                                    onChange={(e) =>
+                                      setJobCard((p) =>
+                                        !p
+                                          ? p
+                                          : {
+                                              ...p,
+                                              serviceJobs: p.serviceJobs.map((r, i) =>
+                                                i === idx ? { ...r, jobName: e.target.value } : r,
+                                              ),
+                                            },
+                                      )
+                                    }
+                                  />
+                                </td>
+                                <td>
+                                  <input
+                                    className="form-input"
+                                    value={row.specification}
+                                    disabled={!canEditJobCard}
+                                    onChange={(e) =>
+                                      setJobCard((p) =>
+                                        !p
+                                          ? p
+                                          : {
+                                              ...p,
+                                              serviceJobs: p.serviceJobs.map((r, i) =>
+                                                i === idx ? { ...r, specification: e.target.value } : r,
+                                              ),
+                                            },
+                                      )
+                                    }
+                                  />
+                                </td>
+                                <td>
+                                  <input
+                                    className="form-input"
+                                    type="number"
+                                    min={0}
+                                    value={row.qty}
+                                    disabled={!canEditJobCard}
+                                    onChange={(e) => {
+                                      const v = e.target.value;
+                                      const qty = v === "" ? "" : Number(v);
+                                      setJobCard((p) =>
+                                        !p
+                                          ? p
+                                          : {
+                                              ...p,
+                                              serviceJobs: p.serviceJobs.map((r, i) =>
+                                                i === idx ? { ...r, qty } : r,
+                                              ),
+                                            },
+                                      );
+                                    }}
+                                  />
+                                </td>
+                                <td>
+                                  <input
+                                    className="form-input"
+                                    value={row.reason}
+                                    disabled={!canEditJobCard}
+                                    onChange={(e) =>
+                                      setJobCard((p) =>
+                                        !p
+                                          ? p
+                                          : {
+                                              ...p,
+                                              serviceJobs: p.serviceJobs.map((r, i) =>
+                                                i === idx ? { ...r, reason: e.target.value } : r,
+                                              ),
+                                            },
+                                      )
+                                    }
+                                  />
+                                </td>
+                                <td>
+                                  <input
+                                    className="form-input"
+                                    type="date"
+                                    value={row.date}
+                                    disabled={!canEditJobCard}
+                                    onChange={(e) =>
+                                      setJobCard((p) =>
+                                        !p
+                                          ? p
+                                          : {
+                                              ...p,
+                                              serviceJobs: p.serviceJobs.map((r, i) =>
+                                                i === idx ? { ...r, date: e.target.value } : r,
+                                              ),
+                                            },
+                                      )
+                                    }
+                                  />
+                                </td>
+                                <td>
+                                  <input
+                                    className="form-input"
+                                    value={row.doneBy}
+                                    disabled={!canEditJobCard}
+                                    onChange={(e) =>
+                                      setJobCard((p) =>
+                                        !p
+                                          ? p
+                                          : {
+                                              ...p,
+                                              serviceJobs: p.serviceJobs.map((r, i) =>
+                                                i === idx ? { ...r, doneBy: e.target.value } : r,
+                                              ),
+                                            },
+                                      )
+                                    }
+                                  />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {canEditJobCard && (
+                        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={() =>
+                              setJobCard((p) =>
+                                !p
+                                  ? p
+                                  : {
+                                      ...p,
+                                      serviceJobs: normalizeServiceJobs(
+                                        [...p.serviceJobs, emptyServiceJob(p.serviceJobs.length + 1)],
+                                        p.serviceJobs.length + 1,
+                                      ),
+                                    },
+                              )
+                            }
+                          >
+                            + Add Row
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="form-section">Final Testing</div>
+                      <div className="scroll-x">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th style={{ width: 60 }}>Sr</th>
+                              <th>Activity</th>
+                              <th style={{ width: 80, textAlign: "center" }}>Yes</th>
+                              <th style={{ width: 80, textAlign: "center" }}>No</th>
+                              <th style={{ width: 260 }}>Remarks</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {jobCard.finalTestingActivities.map((row, idx) => (
+                              <tr key={row.sr || idx}>
+                                <td style={{ fontFamily: "var(--mono)", color: "var(--text3)" }}>
+                                  {row.sr}
+                                </td>
+                                <td>{row.activity}</td>
+                                <td style={{ textAlign: "center" }}>
+                                  <input
+                                    type="radio"
+                                    name={`ft-${row.sr}`}
+                                    checked={row.result === "YES"}
+                                    disabled={!canEditJobCard}
+                                    onChange={() =>
+                                      setJobCard((p) =>
+                                        !p
+                                          ? p
+                                          : {
+                                              ...p,
+                                              finalTestingActivities: p.finalTestingActivities.map((r, i) =>
+                                                i === idx ? { ...r, result: "YES" } : r,
+                                              ),
+                                            },
+                                      )
+                                    }
+                                  />
+                                </td>
+                                <td style={{ textAlign: "center" }}>
+                                  <input
+                                    type="radio"
+                                    name={`ft-${row.sr}`}
+                                    checked={row.result === "NO"}
+                                    disabled={!canEditJobCard}
+                                    onChange={() =>
+                                      setJobCard((p) =>
+                                        !p
+                                          ? p
+                                          : {
+                                              ...p,
+                                              finalTestingActivities: p.finalTestingActivities.map((r, i) =>
+                                                i === idx ? { ...r, result: "NO" } : r,
+                                              ),
+                                            },
+                                      )
+                                    }
+                                  />
+                                </td>
+                                <td>
+                                  <input
+                                    className="form-input"
+                                    value={row.remarks}
+                                    disabled={!canEditJobCard}
+                                    onChange={(e) =>
+                                      setJobCard((p) =>
+                                        !p
+                                          ? p
+                                          : {
+                                              ...p,
+                                              finalTestingActivities: p.finalTestingActivities.map((r, i) =>
+                                                i === idx ? { ...r, remarks: e.target.value } : r,
+                                              ),
+                                            },
+                                      )
+                                    }
+                                  />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="form-section">Final Status</div>
+                      <div className="form-grid">
+                        <div className="form-group">
+                          <label className="form-label">Final Status</label>
+                          <input
+                            className="form-input"
+                            value={jobCard.finalStatus}
+                            disabled={!canEditJobCard}
+                            onChange={(e) =>
+                              setJobCard((p) => (p ? { ...p, finalStatus: e.target.value } : p))
+                            }
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Checked By</label>
+                          <input
+                            className="form-input"
+                            value={jobCard.finalCheckedByName}
+                            disabled={!canEditJobCard}
+                            onChange={(e) =>
+                              setJobCard((p) => (p ? { ...p, finalCheckedByName: e.target.value } : p))
+                            }
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Checked Date</label>
+                          <input
+                            className="form-input"
+                            type="date"
+                            value={jobCard.finalCheckedByDate}
+                            disabled={!canEditJobCard}
+                            onChange={(e) =>
+                              setJobCard((p) => (p ? { ...p, finalCheckedByDate: e.target.value } : p))
+                            }
+                          />
+                        </div>
+                        <div className="form-group full">
+                          <label className="form-label">Final Remarks</label>
+                          <textarea
+                            className="form-textarea"
+                            value={jobCard.finalRemarks}
+                            disabled={!canEditJobCard}
+                            onChange={(e) =>
+                              setJobCard((p) => (p ? { ...p, finalRemarks: e.target.value } : p))
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
+                        <button
+                          className="btn btn-accent"
+                          disabled={!canEditJobCard || jobSaving}
+                          onClick={saveJobCard}
+                        >
+                          {jobSaving ? "Saving..." : "Save Job Card"}
+                        </button>
+                        {jobSavedMsg && (
+                          <div style={{ fontSize: 12, color: "var(--green)" }}>{jobSavedMsg}</div>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {(() => {
+                        const diagnosisText = String(jobCard.diagnosis || "").trim();
+                        const repairNotesText = String(jobCard.repairNotes || "").trim();
+                        const testResultsText = String(jobCard.testResults || "").trim();
+                        const hasNotes = Boolean(diagnosisText || repairNotesText || testResultsText);
+
+                        const filledJobs = (jobCard.serviceJobs || []).filter((r) => {
+                          const jobName = String(r?.jobName || "").trim();
+                          const spec = String(r?.specification || "").trim();
+                          const qty = String(r?.qty ?? "").trim();
+                          const reason = String(r?.reason || "").trim();
+                          const date = String(r?.date || "").trim();
+                          const doneBy = String(r?.doneBy || "").trim();
+                          return Boolean(jobName || spec || qty || reason || date || doneBy);
+                        });
+
+                        const filledFinal = (jobCard.finalTestingActivities || []).filter((r) => {
+                          const result = String(r?.result || "").toUpperCase();
+                          const remarks = String(r?.remarks || "").trim();
+                          return result === "YES" || result === "NO" || Boolean(remarks);
+                        });
+
+                        const finalStatus = String(jobCard.finalStatus || "").trim();
+                        const finalCheckedByName = String(jobCard.finalCheckedByName || "").trim();
+                        const finalCheckedByDate = String(jobCard.finalCheckedByDate || "").trim();
+                        const finalRemarks = String(jobCard.finalRemarks || "").trim();
+                        const hasFinal = Boolean(finalStatus || finalCheckedByName || finalCheckedByDate || finalRemarks);
+
+                        return (
+                          <>
+                            {hasNotes ? (
+                              <>
+                                <div className="form-section">Engineer Notes</div>
+                                {diagnosisText ? (
+                                  <div style={{ marginBottom: 10 }}>
+                                    <div className="detail-label">Diagnosis</div>
+                                    <div
+                                      style={{
+                                        marginTop: 6,
+                                        padding: "10px 12px",
+                                        borderRadius: 10,
+                                        border: "1px solid var(--border)",
+                                        background: "var(--bg2)",
+                                        fontSize: 13,
+                                        color: "var(--text2)",
+                                        whiteSpace: "pre-wrap",
+                                        lineHeight: 1.5,
+                                      }}
+                                    >
+                                      {diagnosisText}
+                                    </div>
+                                  </div>
+                                ) : null}
+                                {repairNotesText ? (
+                                  <div style={{ marginBottom: 10 }}>
+                                    <div className="detail-label">Repair Notes</div>
+                                    <div
+                                      style={{
+                                        marginTop: 6,
+                                        padding: "10px 12px",
+                                        borderRadius: 10,
+                                        border: "1px solid var(--border)",
+                                        background: "var(--bg2)",
+                                        fontSize: 13,
+                                        color: "var(--text2)",
+                                        whiteSpace: "pre-wrap",
+                                        lineHeight: 1.5,
+                                      }}
+                                    >
+                                      {repairNotesText}
+                                    </div>
+                                  </div>
+                                ) : null}
+                                {testResultsText ? (
+                                  <div style={{ marginBottom: 10 }}>
+                                    <div className="detail-label">Test Results</div>
+                                    <div
+                                      style={{
+                                        marginTop: 6,
+                                        padding: "10px 12px",
+                                        borderRadius: 10,
+                                        border: "1px solid var(--border)",
+                                        background: "var(--bg2)",
+                                        fontSize: 13,
+                                        color: "var(--text2)",
+                                        whiteSpace: "pre-wrap",
+                                        lineHeight: 1.5,
+                                      }}
+                                    >
+                                      {testResultsText}
+                                    </div>
+                                  </div>
+                                ) : null}
+                              </>
+                            ) : null}
+
+                            {filledJobs.length ? (
+                              <>
+                                <div className="form-section" style={{ marginTop: 14 }}>Service Job History</div>
+                                <div className="scroll-x">
+                                  <table>
+                                    <thead>
+                                      <tr>
+                                        <th style={{ width: 60 }}>SN</th>
+                                        <th>Job Name</th>
+                                        <th>Specification</th>
+                                        <th style={{ width: 90 }}>Qty</th>
+                                        <th>Reason</th>
+                                        <th style={{ width: 140 }}>Date</th>
+                                        <th style={{ width: 160 }}>Done By</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {filledJobs.map((row, idx) => (
+                                        <tr key={idx}>
+                                          <td style={{ fontFamily: "var(--mono)", color: "var(--text3)" }}>
+                                            {idx + 1}
+                                          </td>
+                                          <td>{row.jobName || "—"}</td>
+                                          <td>{row.specification || "—"}</td>
+                                          <td style={{ fontFamily: "var(--mono)" }}>
+                                            {row.qty === "" || row.qty == null ? "—" : String(row.qty)}
+                                          </td>
+                                          <td>{row.reason || "—"}</td>
+                                          <td style={{ fontFamily: "var(--mono)" }}>{row.date || "—"}</td>
+                                          <td>{row.doneBy || "—"}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </>
+                            ) : null}
+
+                            {filledFinal.length ? (
+                              <>
+                                <div className="form-section" style={{ marginTop: 14 }}>Final Testing</div>
+                                <div className="scroll-x">
+                                  <table>
+                                    <thead>
+                                      <tr>
+                                        <th style={{ width: 60 }}>Sr</th>
+                                        <th>Activity</th>
+                                        <th style={{ width: 110, textAlign: "center" }}>Result</th>
+                                        <th style={{ width: 320 }}>Remarks</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {filledFinal.map((row, idx) => (
+                                        <tr key={row.sr || idx}>
+                                          <td style={{ fontFamily: "var(--mono)", color: "var(--text3)" }}>
+                                            {row.sr}
+                                          </td>
+                                          <td>{row.activity}</td>
+                                          <td style={{ textAlign: "center" }}>
+                                            {String(row.result || "").toUpperCase() === "YES" ? (
+                                              <span className="tag" style={{ background: "rgba(22,163,74,0.12)", borderColor: "rgba(22,163,74,0.25)" }}>
+                                                YES
+                                              </span>
+                                            ) : String(row.result || "").toUpperCase() === "NO" ? (
+                                              <span className="tag" style={{ background: "rgba(192,57,43,0.12)", borderColor: "rgba(192,57,43,0.25)" }}>
+                                                NO
+                                              </span>
+                                            ) : (
+                                              "—"
+                                            )}
+                                          </td>
+                                          <td>{row.remarks || "—"}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </>
+                            ) : null}
+
+                            {hasFinal ? (
+                              <>
+                                <div className="form-section" style={{ marginTop: 14 }}>Final Status</div>
+                                <div className="detail-grid" style={{ marginBottom: 10 }}>
+                                  {finalStatus ? (
+                                    <div className="detail-card">
+                                      <div className="detail-label">Final Status</div>
+                                      <div className="detail-value" style={{ fontFamily: "var(--mono)" }}>
+                                        {finalStatus}
+                                      </div>
+                                    </div>
+                                  ) : null}
+                                  {finalCheckedByName ? (
+                                    <div className="detail-card">
+                                      <div className="detail-label">Checked By</div>
+                                      <div className="detail-value">{finalCheckedByName}</div>
+                                    </div>
+                                  ) : null}
+                                  {finalCheckedByDate ? (
+                                    <div className="detail-card">
+                                      <div className="detail-label">Checked Date</div>
+                                      <div className="detail-value" style={{ fontFamily: "var(--mono)" }}>
+                                        {finalCheckedByDate}
+                                      </div>
+                                    </div>
+                                  ) : null}
+                                </div>
+                                {finalRemarks ? (
+                                  <div style={{ marginBottom: 10 }}>
+                                    <div className="detail-label">Final Remarks</div>
+                                    <div
+                                      style={{
+                                        marginTop: 6,
+                                        padding: "10px 12px",
+                                        borderRadius: 10,
+                                        border: "1px solid var(--border)",
+                                        background: "var(--bg2)",
+                                        fontSize: 13,
+                                        color: "var(--text2)",
+                                        whiteSpace: "pre-wrap",
+                                        lineHeight: 1.5,
+                                      }}
+                                    >
+                                      {finalRemarks}
+                                    </div>
+                                  </div>
+                                ) : null}
+                              </>
+                            ) : null}
+                          </>
+                        );
+                      })()}
+                    </>
                   )}
-                  {jobSavedMsg && (
-                    <div style={{ fontSize: 12, color: "var(--green)" }}>{jobSavedMsg}</div>
-                  )}
-                </div>
               </>
               )
             )}
@@ -2011,19 +2499,9 @@ export default function TicketDetail({
                           {pickupDocError}
                         </div>
                       ) : null}
-                      <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
                         {pickupDocuments.length ? (
-                          pickupDocuments.map((u) => (
-                            <a
-                              key={u}
-                              href={u}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{ color: "var(--blue)", fontSize: 12 }}
-                            >
-                              {u.split("/").slice(-1)[0]}
-                            </a>
-                          ))
+                          pickupDocuments.map(renderPickupDocumentCard)
                         ) : (
                           <div style={{ fontSize: 12, color: "var(--text3)" }}>No documents uploaded yet.</div>
                         )}
@@ -2265,6 +2743,92 @@ export default function TicketDetail({
           </div>
         </div>
       )}
+      {docPreviewUrl ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setDocPreviewUrl(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            zIndex: 1000,
+            padding: 16,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(980px, 100%)",
+              height: "min(80vh, 760px)",
+              background: "var(--card)",
+              border: "1px solid var(--border)",
+              borderRadius: 14,
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <div
+              style={{
+                padding: "10px 12px",
+                borderBottom: "1px solid var(--border)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+              }}
+            >
+              <div style={{ fontSize: 12, color: "var(--text2)", minWidth: 0, overflow: "hidden" }}>
+                <span
+                  style={{
+                    fontFamily: "var(--mono)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    display: "block",
+                  }}
+                  title={docLinkLabel(docPreviewUrl)}
+                >
+                  {docLinkLabel(docPreviewUrl)}
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <a className="btn btn-ghost btn-sm" href={docPreviewUrl} target="_blank" rel="noreferrer">
+                  Open in new tab
+                </a>
+                <button className="btn btn-ghost btn-sm" type="button" onClick={() => setDocPreviewUrl(null)}>
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div style={{ flex: "1 1 auto", background: "var(--bg2)" }}>
+              {docPreviewKind === "image" ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={docPreviewUrl}
+                  alt={docLinkLabel(docPreviewUrl)}
+                  style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                />
+              ) : docPreviewKind === "pdf" ? (
+                <iframe
+                  src={docPreviewUrl}
+                  title={docLinkLabel(docPreviewUrl) || "PDF Preview"}
+                  style={{ width: "100%", height: "100%", border: 0 }}
+                />
+              ) : (
+                <div style={{ padding: 16, fontSize: 13, color: "var(--text2)" }}>
+                  Preview not available for this file type. Use “Open in new tab”.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
