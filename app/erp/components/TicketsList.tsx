@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { STATUS_ORDER } from "../constants";
 import type { RoleDefinition, Ticket, User } from "../types";
 import { canAccess } from "../utils";
-import { PriorityBadge, SlaBadge, StatusBadge } from "./Badges";
+import { EngineerOutcomeBadge, PriorityBadge, SlaBadge, StatusBadge } from "./Badges";
 import { LuSearch, LuTicket } from "react-icons/lu";
 import { apiJobCardsList, type JobCardListRow } from "../api";
 
@@ -405,7 +405,9 @@ export default function TicketsList({
                               <td>
                                 <div className="status-sla">
                                   <StatusBadge status={t.status} />
-                                  <SlaBadge status={t.slaStatus} />
+                                  <EngineerOutcomeBadge
+                                    outcome={updatesTab === "repairable" ? "REPAIRED" : "SCRAP"}
+                                  />
                                 </div>
                               </td>
                               <td

@@ -241,6 +241,11 @@ export const SLA_COLORS = {
   BREACHED: "#dc2626",
 } as const;
 
+export const ENGINEER_OUTCOME_COLORS = {
+  REPAIRED: "#0ea5e9",
+  SCRAP: "#dc2626",
+} as const;
+
 export const PRESET_COLORS = [
   "#8B4513",
   "#B8860B",

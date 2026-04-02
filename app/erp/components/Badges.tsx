@@ -1,6 +1,6 @@
 "use client";
 
-import { PRIORITY_COLORS, SLA_COLORS, STATUS_COLORS } from "../constants";
+import { ENGINEER_OUTCOME_COLORS, PRIORITY_COLORS, SLA_COLORS, STATUS_COLORS } from "../constants";
 import type { TicketStatus } from "../types";
 
 export function Badge({ label, color }: { label: string; color: string }) {
@@ -36,3 +36,6 @@ export function SlaBadge({ status }: { status: "MET" | "BREACHED" | "AT_RISK" })
   );
 }
 
+export function EngineerOutcomeBadge({ outcome }: { outcome: "REPAIRED" | "SCRAP" }) {
+  return <Badge label={outcome} color={ENGINEER_OUTCOME_COLORS[outcome]} />;
+}

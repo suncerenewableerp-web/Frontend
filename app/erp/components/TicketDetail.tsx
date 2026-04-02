@@ -1701,7 +1701,16 @@ export default function TicketDetail({
                                               .filter(Boolean)
                                           : [{ name: "", qty: "" }]) as unknown[]
                                     )
-                                      .map(toComponentUsed)
+                                      .map((x) => {
+                                        // Keep raw spacing while typing; sanitize on save.
+                                        if (!x) return { name: "", qty: "" };
+                                        if (typeof x === "string") return { name: String(x), qty: "" };
+                                        if (typeof x === "object") {
+                                          const o = x as JobCardComponentUsed;
+                                          return { name: String(o?.name ?? ""), qty: o?.qty ?? "" };
+                                        }
+                                        return { name: String(x), qty: "" };
+                                      })
                                       .map((c, cIdx) => (
                                       <div
                                         key={cIdx}
@@ -1732,20 +1741,25 @@ export default function TicketDetail({
                                                           .split(/[\n,]+/g)
                                                           .map((x) => x.trim())
                                                           .filter(Boolean)
-                                                      : [{ name: "", qty: "" }];
-                                                const arr = (base as unknown[]).map(toComponentUsed);
+                                                          .map((name) => ({ name, qty: "" as const }))
+                                                      : [{ name: "", qty: "" as const }];
+                                                const arr: JobCardComponentUsed[] = base.map((x) => {
+                                                  if (!x) return { name: "", qty: "" };
+                                                  if (typeof x === "string") return { name: String(x), qty: "" };
+                                                  if (typeof x === "object") {
+                                                    const o = x as JobCardComponentUsed;
+                                                    return { name: String(o?.name ?? ""), qty: o?.qty ?? "" };
+                                                  }
+                                                  return { name: String(x), qty: "" };
+                                                });
                                                 while (arr.length <= cIdx) arr.push({ name: "", qty: "" });
                                                 arr[cIdx] = { ...arr[cIdx], name: v };
-                                                const cleaned: JobCardComponentUsed[] = arr.map((x) => {
-                                                  const c = toComponentUsed(x);
-                                                  return { name: String(c?.name || "").trim(), qty: c.qty };
-                                                });
-                                                const keptNames = cleaned
+                                                const keptNames = arr
                                                   .map((x) => String(x?.name || "").trim())
                                                   .filter(Boolean);
                                                 return {
                                                   ...r,
-                                                  componentsUsed: cleaned,
+                                                  componentsUsed: arr,
                                                   // Keep legacy string in sync for old views/exports.
                                                   specification: keptNames.join(", "),
                                                 };
@@ -2452,14 +2466,25 @@ export default function TicketDetail({
                         const testResultsText = String(jobCard.testResults || "").trim();
                         const hasNotes = Boolean(diagnosisText || repairNotesText || testResultsText);
 
+                        const doneByFallback = Array.from(
+                          new Set(
+                            [jobCard.checkedByName, jobCard.repairActionsByName]
+                              .map((x) => String(x || "").trim())
+                              .filter(Boolean),
+                          ),
+                        ).join(", ");
+
                         const filledJobs = (jobCard.serviceJobs || []).filter((r) => {
                           const jobName = String(r?.jobName || "").trim();
                           const spec = String(r?.specification || "").trim();
                           const qty = String(r?.qty ?? "").trim();
+                          const comps = Array.isArray(r?.componentsUsed)
+                            ? r.componentsUsed.map((x) => String(x?.name || "").trim()).filter(Boolean)
+                            : [];
                           const reason = String(r?.reason || "").trim();
                           const date = String(r?.date || "").trim();
                           const doneBy = String(r?.doneBy || "").trim();
-                          return Boolean(jobName || spec || qty || reason || date || doneBy);
+                          return Boolean(jobName || spec || qty || comps.length || reason || date || doneBy);
                         });
 
                         const filledFinal = (jobCard.finalTestingActivities || []).filter((r) => {
@@ -2552,7 +2577,7 @@ export default function TicketDetail({
                                         <th style={{ width: 60 }}>SN</th>
                                         <th>Job Name</th>
                                         <th>Specification</th>
-                                        <th style={{ width: 90 }}>Qty</th>
+                                        <th style={{ width: 220 }}>Qty</th>
                                         <th>Reason</th>
                                         <th style={{ width: 140 }}>Date</th>
                                         <th style={{ width: 160 }}>Done By</th>
@@ -2565,13 +2590,44 @@ export default function TicketDetail({
                                             {idx + 1}
                                           </td>
                                           <td>{row.jobName || "—"}</td>
-                                          <td>{row.specification || "—"}</td>
-                                          <td style={{ fontFamily: "var(--mono)" }}>
-                                            {row.qty === "" || row.qty == null ? "—" : String(row.qty)}
+                                          <td>
+                                            {(() => {
+                                              const spec = String(row.specification || "").trim();
+                                              if (spec) return spec;
+                                              const comps = Array.isArray(row.componentsUsed)
+                                                ? row.componentsUsed
+                                                    .map((c) => String(c?.name || "").trim())
+                                                    .filter(Boolean)
+                                                : [];
+                                              return comps.length ? comps.join(", ") : "—";
+                                            })()}
+                                          </td>
+                                          <td style={{ fontFamily: "var(--mono)", whiteSpace: "pre", lineHeight: 1.35 }}>
+                                            {(() => {
+                                              if (row.qty !== "" && row.qty != null) return String(row.qty);
+                                              const comps = Array.isArray(row.componentsUsed)
+                                                ? row.componentsUsed
+                                                    .map((c) => {
+                                                      const name = String(c?.name || "").trim();
+                                                      const qty =
+                                                        c?.qty === "" || c?.qty == null
+                                                          ? ""
+                                                          : Number.isFinite(Number(c.qty))
+                                                            ? String(Number(c.qty))
+                                                            : "";
+                                                      if (!name) return "";
+                                                      return qty ? `${name} = ${qty}` : name;
+                                                    })
+                                                    .filter(Boolean)
+                                                : [];
+                                              return comps.length ? comps.join("\n") : "—";
+                                            })()}
                                           </td>
                                           <td>{row.reason || "—"}</td>
-                                          <td style={{ fontFamily: "var(--mono)" }}>{row.date || "—"}</td>
-                                          <td>{row.doneBy || "—"}</td>
+                                          <td style={{ fontFamily: "var(--mono)" }}>
+                                            {row.date || jobCard.engineerFinalizedAt || jobCard.checkedByDate || "—"}
+                                          </td>
+                                          <td>{row.doneBy || doneByFallback || "—"}</td>
                                         </tr>
                                       ))}
                                     </tbody>
