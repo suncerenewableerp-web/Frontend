@@ -22,6 +22,7 @@ import {
 } from "../api";
 import type {
   JobCard,
+  JobCardComponentUsed,
   JobCardFinalTestingActivity,
   JobCardServiceJob,
   RoleDefinition,
@@ -104,7 +105,7 @@ function emptyServiceJob(sn: number): JobCardServiceJob {
     sn,
     jobName: "",
     specification: "",
-    componentsUsed: [],
+    componentsUsed: [{ name: "", qty: "" }],
     qty: "",
     reason: "",
     date: "",
@@ -112,25 +113,49 @@ function emptyServiceJob(sn: number): JobCardServiceJob {
   };
 }
 
+function toComponentUsed(v: unknown): JobCardComponentUsed {
+  type ComponentUsedLike = {
+    name?: unknown;
+    component?: unknown;
+    partName?: unknown;
+    value?: unknown;
+    qty?: unknown;
+    quantity?: unknown;
+  };
+  if (!v) return { name: "", qty: "" };
+  if (typeof v === "string") return { name: String(v || "").trim(), qty: "" };
+  if (typeof v === "object") {
+    const o = v as ComponentUsedLike;
+    const name = String(o?.name ?? o?.component ?? o?.partName ?? o?.value ?? "").trim();
+    const rawQty = o?.qty ?? o?.quantity ?? "";
+    const qtyNum = rawQty === "" || rawQty == null ? NaN : Number(rawQty);
+    return { name, qty: Number.isFinite(qtyNum) ? qtyNum : "" };
+  }
+  return { name: String(v || "").trim(), qty: "" };
+}
+
 function normalizeServiceJobs(jobs: JobCardServiceJob[], minRows = 5): JobCardServiceJob[] {
   const next: JobCardServiceJob[] = (jobs || []).map((j, idx) => {
     const base = { ...emptyServiceJob(idx + 1), ...j, sn: idx + 1 };
     // Backward compatibility: older job cards stored components in `specification` string only.
     // For engineer workflow we prefer `componentsUsed[]` so we can show multiple inputs.
-    const componentsUsed =
+    const componentsUsedRaw: unknown[] =
       Array.isArray(base.componentsUsed) && base.componentsUsed.length
-        ? base.componentsUsed.map((x) => String(x || "").trim()).filter(Boolean)
+        ? (base.componentsUsed as unknown[])
         : base.specification
           ? base.specification
               .split(/[\n,]+/g)
               .map((x) => x.trim())
               .filter(Boolean)
           : [];
+    const componentsUsed = componentsUsedRaw.map(toComponentUsed);
+    if (!componentsUsed.length) componentsUsed.push({ name: "", qty: "" });
+    const keptNames = componentsUsed.map((c) => String(c?.name || "").trim()).filter(Boolean);
     return {
       ...base,
-      componentsUsed: componentsUsed.length ? componentsUsed : base.componentsUsed || [],
+      componentsUsed,
       // Keep legacy string in a normalized form so other views/exports remain consistent.
-      specification: componentsUsed.length ? componentsUsed.join(", ") : base.specification,
+      specification: keptNames.length ? keptNames.join(", ") : base.specification,
     };
   });
   while (next.length < minRows) next.push(emptyServiceJob(next.length + 1));
@@ -212,6 +237,7 @@ export default function TicketDetail({
   const roleName = String(user.role || "").toUpperCase();
   const canShowWarranty = roleName !== "CUSTOMER";
   const canUploadPickupDocs = roleName === "ADMIN" || roleName === "SALES";
+  const canSeeCustomerContact = roleName === "ADMIN" || roleName === "SALES";
   const tabs = useMemo(() => {
     if (roleName === "CUSTOMER") return ["overview"] as TicketTab[];
     if (roleName === "ENGINEER") return ["jobcard"] as TicketTab[];
@@ -692,9 +718,18 @@ export default function TicketDetail({
         sn: idx + 1,
         jobName: r.jobName.trim(),
         specification: r.specification.trim(),
-        componentsUsed: Array.isArray(r.componentsUsed)
-          ? r.componentsUsed.map((x) => String(x || "").trim()).filter(Boolean)
-          : undefined,
+        componentsUsed: (() => {
+          if (!Array.isArray(r.componentsUsed)) return undefined;
+          const cleaned = (r.componentsUsed as unknown[])
+            .map(toComponentUsed)
+            .map((c) => {
+              const name = String(c?.name || "").trim();
+              const qtyNum = c?.qty === "" || c?.qty == null ? NaN : Number(c.qty);
+              return { name, qty: Number.isFinite(qtyNum) ? qtyNum : null };
+            })
+            .filter((c) => c.name);
+          return cleaned.length ? cleaned : undefined;
+        })(),
         reason: r.reason.trim(),
         doneBy: r.doneBy.trim(),
       }))
@@ -898,6 +933,16 @@ export default function TicketDetail({
           <div style={{ fontSize: 13, color: "var(--text2)", marginTop: 3 }}>
             {ticket.customer} · {ticket.inverterMake} {ticket.inverterModel} ({ticket.capacity})
           </div>
+          {canSeeCustomerContact ? (
+            <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
+              Phone: <span className="td-mono">{ticket.customerPhone || "—"}</span>
+            </div>
+          ) : null}
+          {canSeeCustomerContact ? (
+            <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
+              Email: <span className="td-mono">{ticket.createdByEmail || ticket.customerEmail || "—"}</span>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -1026,6 +1071,20 @@ export default function TicketDetail({
 
       {activeTab === "overview" && (
         <>
+          {canSeeCustomerContact ? (
+            <div className="detail-grid" style={{ marginBottom: 14 }}>
+              {[
+                ["Customer", ticket.customerName || ticket.customer || "—"],
+                ["Company", ticket.customerCompany || "—"],
+                ["Address", ticket.customerAddress || "—"],
+              ].map(([label, val]) => (
+                <div key={label} className="detail-card">
+                  <div className="detail-label">{label}</div>
+                  <div className="detail-value">{val}</div>
+                </div>
+              ))}
+            </div>
+          ) : null}
           <div className="detail-grid">
             {[
               ["Inverter Make", ticket.inverterMake],
@@ -1614,12 +1673,15 @@ export default function TicketDetail({
                                               .split(/[\n,]+/g)
                                               .map((x) => x.trim())
                                               .filter(Boolean)
-                                          : [""]) as string[]
-                                    ).map((c, cIdx) => (
+                                          : [{ name: "", qty: "" }]) as unknown[]
+                                    )
+                                      .map(toComponentUsed)
+                                      .map((c, cIdx) => (
                                       <div
                                         key={cIdx}
                                         style={{
                                           display: "flex",
+                                          flexWrap: "wrap",
                                           gap: 8,
                                           alignItems: "center",
                                           minWidth: 0,
@@ -1627,8 +1689,8 @@ export default function TicketDetail({
                                       >
                                         <input
                                           className="form-input"
-                                          style={{ flex: 1, minWidth: 0 }}
-                                          value={c}
+                                          style={{ flex: "1 1 280px", minWidth: 220 }}
+                                          value={c.name}
                                           disabled={!canEditJobCard}
                                           onChange={(e) => {
                                             const v = e.target.value;
@@ -1644,23 +1706,61 @@ export default function TicketDetail({
                                                           .split(/[\n,]+/g)
                                                           .map((x) => x.trim())
                                                           .filter(Boolean)
-                                                      : [""];
-                                                const arr = [...base];
-                                                while (arr.length <= cIdx) arr.push("");
-                                                arr[cIdx] = v;
-                                                const cleaned = arr.map((x) => String(x || "").trim());
-                                                const kept = cleaned.filter((x) => x);
+                                                      : [{ name: "", qty: "" }];
+                                                const arr = (base as unknown[]).map(toComponentUsed);
+                                                while (arr.length <= cIdx) arr.push({ name: "", qty: "" });
+                                                arr[cIdx] = { ...arr[cIdx], name: v };
+                                                const cleaned: JobCardComponentUsed[] = arr.map((x) => {
+                                                  const c = toComponentUsed(x);
+                                                  return { name: String(c?.name || "").trim(), qty: c.qty };
+                                                });
+                                                const keptNames = cleaned
+                                                  .map((x) => String(x?.name || "").trim())
+                                                  .filter(Boolean);
                                                 return {
                                                   ...r,
                                                   componentsUsed: cleaned,
                                                   // Keep legacy string in sync for old views/exports.
-                                                  specification: kept.join(", "),
+                                                  specification: keptNames.join(", "),
                                                 };
                                               });
                                               return { ...p, serviceJobs: next };
                                             });
                                           }}
                                           placeholder={`Component ${cIdx + 1}`}
+                                        />
+                                        <input
+                                          className="form-input"
+                                          style={{ width: 88, flex: "0 0 88px" }}
+                                          type="number"
+                                          min={0}
+                                          value={c.qty}
+                                          disabled={!canEditJobCard}
+                                          onChange={(e) => {
+                                            const raw = e.target.value;
+                                            const qty: number | "" = raw === "" ? "" : Number(raw);
+                                            setJobCard((p) => {
+                                              if (!p) return p;
+                                              const next = p.serviceJobs.map((r, i) => {
+                                                if (i !== idx) return r;
+                                                const base =
+                                                  r.componentsUsed && r.componentsUsed.length
+                                                    ? r.componentsUsed
+                                                    : r.specification
+                                                      ? r.specification
+                                                          .split(/[\n,]+/g)
+                                                          .map((x) => x.trim())
+                                                          .filter(Boolean)
+                                                      : [{ name: "", qty: "" }];
+                                                const arr = (base as unknown[]).map(toComponentUsed);
+                                                while (arr.length <= cIdx) arr.push({ name: "", qty: "" });
+                                                arr[cIdx] = { ...arr[cIdx], qty };
+                                                return { ...r, componentsUsed: arr };
+                                              });
+                                              return { ...p, serviceJobs: next };
+                                            });
+                                          }}
+                                          placeholder="Qty"
                                         />
                                         {canEditJobCard ? (
                                           <button
@@ -1675,7 +1775,8 @@ export default function TicketDetail({
                                                       .split(/[\n,]+/g)
                                                       .map((x) => x.trim())
                                                       .filter(Boolean)
-                                                  : [""]) as string[]).length <= 1
+                                                  : [{ name: "", qty: "" }]) as unknown[])
+                                                .map(toComponentUsed).length <= 1
                                             }
                                             onClick={() => {
                                               setJobCard((p) => {
@@ -1690,16 +1791,22 @@ export default function TicketDetail({
                                                             .split(/[\n,]+/g)
                                                             .map((x) => x.trim())
                                                             .filter(Boolean)
-                                                        : [""];
-                                                  const arr = [...base];
+                                                        : [{ name: "", qty: "" }];
+                                                  const arr = (base as unknown[]).map(toComponentUsed);
                                                   if (arr.length <= 1) return r;
                                                   arr.splice(cIdx, 1);
-                                                  const cleaned = arr.map((x) => String(x || "").trim());
-                                                  const kept = cleaned.filter((x) => x);
+                                                  if (!arr.length) arr.push({ name: "", qty: "" });
+                                                  const cleaned: JobCardComponentUsed[] = arr.map((x) => {
+                                                    const c = toComponentUsed(x);
+                                                    return { name: String(c?.name || "").trim(), qty: c.qty };
+                                                  });
+                                                  const keptNames = cleaned
+                                                    .map((x) => String(x?.name || "").trim())
+                                                    .filter(Boolean);
                                                   return {
                                                     ...r,
                                                     componentsUsed: cleaned,
-                                                    specification: kept.join(", "),
+                                                    specification: keptNames.join(", "),
                                                   };
                                                 });
                                                 return { ...p, serviceJobs: next };
@@ -1730,8 +1837,11 @@ export default function TicketDetail({
                                                         .split(/[\n,]+/g)
                                                         .map((x) => x.trim())
                                                         .filter(Boolean)
-                                                    : [""];
-                                              const arr = [...base, ""];
+                                                    : [{ name: "", qty: "" }];
+                                              const arr: JobCardComponentUsed[] = [
+                                                ...(base as unknown[]).map(toComponentUsed),
+                                                { name: "", qty: "" },
+                                              ];
                                               return { ...r, componentsUsed: arr };
                                             });
                                             return { ...p, serviceJobs: next };

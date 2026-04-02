@@ -21,7 +21,7 @@ export default function SignupScreen({
     email: string;
     password: string;
     role: string;
-    phone?: string;
+    phone: string;
     company?: string;
   }) => Promise<User>;
   onFinish: (user: User) => void;
@@ -80,6 +80,7 @@ export default function SignupScreen({
     const e: Record<string, string> = {};
     if (!form.fullName.trim()) e.fullName = "Full name is required";
     if (!form.email.includes("@")) e.email = "Enter a valid email address";
+    if (!form.phone.trim()) e.phone = "Phone number is required";
     if (form.password.length < 6)
       e.password = "Password must be at least 6 characters";
     if (form.password !== form.confirmPassword)
@@ -109,7 +110,7 @@ export default function SignupScreen({
       email: form.email.trim(),
       password: form.password,
       role: CUSTOMER_ROLE_ID,
-      phone: form.phone.trim() || undefined,
+      phone: form.phone.trim(),
       company: form.company.trim() || undefined,
     })
       .then((u) => {
@@ -503,17 +504,22 @@ export default function SignupScreen({
                 </div>
 
                 <div className="form-group">
-                  <label className="auth-label">Phone</label>
+                  <label className="auth-label">Phone *</label>
                   <input
-                    className="auth-input"
+                    className={`auth-input ${errors.phone ? "error" : ""}`}
+                    style={{ marginBottom: errors.phone ? 4 : 18 }}
                     placeholder="+91 XXXXX XXXXX"
                     value={form.phone}
                     type="tel"
                     inputMode="tel"
                     autoComplete="tel"
                     enterKeyHint="next"
+                    aria-invalid={!!errors.phone}
                     onChange={(e) => set("phone", e.target.value)}
                   />
+                  {errors.phone && (
+                    <div className="form-error">{errors.phone}</div>
+                  )}
                 </div>
 
                 {(selectedRole === "CUSTOMER" || selectedRole === "SALES") && (

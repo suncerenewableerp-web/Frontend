@@ -44,6 +44,7 @@ export default function UserProvisionModal({
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [roleId, setRoleId] = useState(() => {
     const preferred =
       selectableRoles.find((r) => r.id === "ENGINEER")?.id ||
@@ -72,10 +73,12 @@ export default function UserProvisionModal({
     if (mode === "create") {
       const nameNorm = name.trim();
       const emailNorm = email.trim().toLowerCase();
+      const phoneNorm = phone.trim();
       const roleNorm = normalizeRoleId(roleId);
 
       if (!nameNorm) return setError("Name is required");
       if (!emailNorm.includes("@")) return setError("Valid email is required");
+      if (!phoneNorm) return setError("Phone is required");
       if (password.length < 6) return setError("Password must be at least 6 characters");
       if (!roleNorm) return setError("Role is required");
 
@@ -84,6 +87,7 @@ export default function UserProvisionModal({
         await apiUserCreate({
           name: nameNorm,
           email: emailNorm,
+          phone: phoneNorm,
           password,
           role: roleNorm,
         });
@@ -169,6 +173,15 @@ export default function UserProvisionModal({
                     placeholder="e.g. engineer@sunce.in"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Phone *</label>
+                  <input
+                    className="form-input"
+                    placeholder="e.g. +919999988888"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
                   />
                 </div>
                 <div className="form-group">

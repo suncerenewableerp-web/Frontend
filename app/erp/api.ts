@@ -2,6 +2,7 @@
 
 import type {
   JobCard,
+  JobCardComponentUsed,
   JobCardFinalTestingActivity,
   JobCardServiceJob,
   ModulePermission,
@@ -242,7 +243,8 @@ type BackendTicket = {
   _id?: string;
   id?: string;
   ticketId?: string;
-  customer?: { name?: string; company?: string; phone?: string; address?: string };
+  customer?: { name?: string; company?: string; phone?: string; email?: string; address?: string };
+  createdBy?: BackendUser | string;
   inverter?: {
     make?: string;
     model?: string;
@@ -414,9 +416,30 @@ function toYesNo(v: unknown): "YES" | "NO" | "" {
   return "";
 }
 
+function toComponentUsed(v: unknown): JobCardComponentUsed {
+  type ComponentUsedLike = {
+    name?: unknown;
+    component?: unknown;
+    partName?: unknown;
+    value?: unknown;
+    qty?: unknown;
+    quantity?: unknown;
+  };
+  if (!v) return { name: "", qty: "" };
+  if (typeof v === "string") return { name: String(v || "").trim(), qty: "" };
+  if (typeof v === "object") {
+    const o = v as ComponentUsedLike;
+    const name = String(o?.name ?? o?.component ?? o?.partName ?? o?.value ?? "").trim();
+    const rawQty = o?.qty ?? o?.quantity ?? "";
+    const qtyNum = rawQty === "" || rawQty == null ? NaN : Number(rawQty);
+    return { name, qty: Number.isFinite(qtyNum) ? qtyNum : "" };
+  }
+  return { name: String(v || "").trim(), qty: "" };
+}
+
 function toServiceJob(j: BackendJobCardServiceJob, idx: number): JobCardServiceJob {
   const componentsUsed = Array.isArray(j?.componentsUsed)
-    ? (j.componentsUsed as unknown[]).map((x) => String(x || "").trim()).filter(Boolean)
+    ? (j.componentsUsed as unknown[]).map(toComponentUsed)
     : undefined;
   return {
     sn: typeof j?.sn === "number" ? j.sn : idx + 1,
@@ -516,6 +539,9 @@ function toTicket(t: BackendTicket): Ticket {
       ? `${customerName} / ${customerCompany}`
       : customerName || customerCompany || "—";
 
+  const createdByEmail =
+    t?.createdBy && typeof t.createdBy === "object" ? String((t.createdBy as BackendUser)?.email || "") : "";
+
   return {
     id: String(t?._id || t?.id || ""),
     ticketId: String(t?.ticketId || ""),
@@ -523,6 +549,8 @@ function toTicket(t: BackendTicket): Ticket {
     customerName,
     customerCompany,
     customerPhone: t?.customer?.phone ? String(t.customer.phone) : "",
+    customerEmail: t?.customer?.email ? String(t.customer.email) : "",
+    createdByEmail,
     customerAddress: t?.customer?.address ? String(t.customer.address) : "",
     pickupDate: pickupDate || undefined,
     courierName: courierName || undefined,
@@ -576,7 +604,7 @@ export async function apiSignup(input: {
   email: string;
   password: string;
   role: string;
-  phone?: string;
+  phone: string;
   company?: string;
 }): Promise<{ user: User; tokens: Tokens }> {
   const env = await apiFetch<{
@@ -864,7 +892,7 @@ export async function apiUserCreate(input: {
   email: string;
   password: string;
   role: string;
-  phone?: string;
+  phone: string;
   company?: string;
 }): Promise<User> {
   const env = await apiFetch<{ user: BackendUser }>("/api/users", {
@@ -1110,7 +1138,7 @@ export type JobCardUpdateInput = Partial<{
     sn?: number;
     jobName?: string;
     specification?: string;
-    componentsUsed?: string[];
+    componentsUsed?: Array<{ name: string; qty?: number | null }>;
     qty?: number | null;
     reason?: string;
     date?: string;

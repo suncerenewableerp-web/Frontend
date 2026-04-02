@@ -26,11 +26,16 @@ export interface User {
 
 export type YesNo = "YES" | "NO" | "";
 
+export type JobCardComponentUsed = {
+  name: string;
+  qty: number | "";
+};
+
 export interface JobCardServiceJob {
   sn: number;
   jobName: string;
   specification: string;
-  componentsUsed?: string[]; // Spare/components used (multi)
+  componentsUsed?: JobCardComponentUsed[]; // Spare/components used (multi, with qty)
   qty: number | "";
   reason: string;
   date: string; // YYYY-MM-DD
@@ -87,6 +92,8 @@ export interface Ticket {
   customerName?: string;
   customerCompany?: string;
   customerPhone?: string;
+  customerEmail?: string;
+  createdByEmail?: string;
   customerAddress?: string;
   pickupDate?: string; // YYYY-MM-DD
   courierName?: string;

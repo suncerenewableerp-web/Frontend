@@ -174,7 +174,7 @@ export default function ErpApp({
     email: string;
     password: string;
     role: string;
-    phone?: string;
+    phone: string;
     company?: string;
   }) => {
     const { user: created } = await apiSignup(input);
