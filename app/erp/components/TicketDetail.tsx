@@ -8,6 +8,7 @@ import {
   apiLogisticsByTicket,
   apiSchedulePickup,
   apiScheduleDispatch,
+  apiUnderDispatchSave,
   apiSlaSettingsGet,
   apiSlaSettingsUpdate,
   apiTicketJobCardGet,
@@ -232,7 +233,7 @@ export default function TicketDetail({
   onUpdateStatus: (status: TicketStatus) => Promise<void>;
   onTicketUpdated: (t: Ticket) => void;
   initialTab?: TicketTab;
-  initialLogisticsStage?: "pickup" | "dispatch";
+  initialLogisticsStage?: "pickup" | "under_dispatch" | "dispatch";
 }) {
   const roleName = String(user.role || "").toUpperCase();
   const canShowWarranty = roleName !== "CUSTOMER";
@@ -269,10 +270,12 @@ export default function TicketDetail({
     if (roleName !== "ADMIN" && roleName !== "SALES") return false;
     return canAccess(roles, user.role, "sla", "edit");
   }, [roles, user.role, roleName]);
-  const canEditJobCard = useMemo(
-    () => canAccess(roles, user.role, "jobcard", "edit"),
-    [roles, user.role],
-  );
+  const canEditJobCard = useMemo(() => {
+    const can = canAccess(roles, user.role, "jobcard", "edit");
+    if (!can) return false;
+    if (roleName === "ENGINEER" && ticket.status === "CLOSED") return false;
+    return true;
+  }, [roles, user.role, roleName, ticket.status]);
 
   const canManageBrandList =
     roleName === "ADMIN" || roleName === "SALES";
@@ -358,9 +361,9 @@ export default function TicketDetail({
   const [dispatchInvoiceGenerated, setDispatchInvoiceGenerated] = useState(false);
   const [dispatchPaymentDone, setDispatchPaymentDone] = useState(false);
 
-  const [logisticsStage, setLogisticsStage] = useState<"pickup" | "dispatch">(() => {
+  const [logisticsStage, setLogisticsStage] = useState<"pickup" | "under_dispatch" | "dispatch">(() => {
     if (initialLogisticsStage) return initialLogisticsStage;
-    return ticket.status === "DISPATCHED" || ticket.status === "CLOSED"
+    return ticket.status === "UNDER_DISPATCH" || ticket.status === "DISPATCHED" || ticket.status === "CLOSED"
       ? "dispatch"
       : "pickup";
   });
@@ -370,6 +373,7 @@ export default function TicketDetail({
   const [logisticsLoading, setLogisticsLoading] = useState(false);
   const [logisticsSaving, setLogisticsSaving] = useState(false);
   const [logisticsAdvancing, setLogisticsAdvancing] = useState(false);
+  const [underDispatchSaving, setUnderDispatchSaving] = useState(false);
   const [logisticsError, setLogisticsError] = useState("");
   const [logisticsSavedMsg, setLogisticsSavedMsg] = useState("");
 
@@ -393,9 +397,18 @@ export default function TicketDetail({
     dispatchCourierName: string;
     dispatchLrNumber: string;
     dispatchLocation: string;
+  }>(null);
+  const [dispatchBillingBaseline, setDispatchBillingBaseline] = useState<null | {
     invoiceGenerated: boolean;
     paymentDone: boolean;
   }>(null);
+  const dispatchBillingDirty = useMemo(() => {
+    if (!dispatchBillingBaseline) return true;
+    return (
+      dispatchBillingBaseline.invoiceGenerated !== dispatchInvoiceGenerated ||
+      dispatchBillingBaseline.paymentDone !== dispatchPaymentDone
+    );
+  }, [dispatchBillingBaseline, dispatchInvoiceGenerated, dispatchPaymentDone]);
   const [dispatchAdvanceState, setDispatchAdvanceState] = useState<{ ticketId: string; unlocked: boolean }>(() => ({
     ticketId: ticket.id,
     unlocked: false,
@@ -539,23 +552,34 @@ export default function TicketDetail({
         );
 
         const dispatchDateFromApi = toDateInputValueSafe(dispatch?.pickupDetails?.scheduledDate);
-        setDispatchDate(dispatchDateFromApi || toDateInputValue(new Date()));
-        setDispatchCourierName(String(dispatch?.courierDetails?.courierName || "BlueDart"));
-        setDispatchLrNumber(String(dispatch?.courierDetails?.lrNumber || ""));
-        setDispatchLocation(
-          String(dispatch?.pickupDetails?.pickupLocation || ""),
-        );
-        setDispatchInvoiceGenerated(Boolean(dispatch?.billing?.invoiceGenerated));
-        setDispatchPaymentDone(Boolean(dispatch?.billing?.paymentDone));
+        const nextDispatchDate = dispatchDateFromApi || toDateInputValue(new Date());
+        const nextDispatchCourier = String(dispatch?.courierDetails?.courierName || "BlueDart");
+        const nextDispatchLr = String(dispatch?.courierDetails?.lrNumber || "");
+        const nextDispatchLoc = String(dispatch?.pickupDetails?.pickupLocation || "");
+        const nextInvoice = Boolean(dispatch?.billing?.invoiceGenerated);
+        const nextPayment = Boolean(dispatch?.billing?.paymentDone);
+
+        setDispatchDate(nextDispatchDate);
+        setDispatchCourierName(nextDispatchCourier);
+        setDispatchLrNumber(nextDispatchLr);
+        setDispatchLocation(nextDispatchLoc);
+        setDispatchInvoiceGenerated(nextInvoice);
+        setDispatchPaymentDone(nextPayment);
         setDispatchBaseline(
           dispatch
             ? {
-                dispatchDate: dispatchDateFromApi || toDateInputValue(new Date()),
-                dispatchCourierName: String(dispatch?.courierDetails?.courierName || "BlueDart"),
-                dispatchLrNumber: String(dispatch?.courierDetails?.lrNumber || ""),
-                dispatchLocation: String(dispatch?.pickupDetails?.pickupLocation || ""),
-                invoiceGenerated: Boolean(dispatch?.billing?.invoiceGenerated),
-                paymentDone: Boolean(dispatch?.billing?.paymentDone),
+                dispatchDate: nextDispatchDate,
+                dispatchCourierName: nextDispatchCourier,
+                dispatchLrNumber: nextDispatchLr,
+                dispatchLocation: nextDispatchLoc,
+              }
+            : null,
+        );
+        setDispatchBillingBaseline(
+          dispatch
+            ? {
+                invoiceGenerated: nextInvoice,
+                paymentDone: nextPayment,
               }
             : null,
         );
@@ -664,9 +688,7 @@ export default function TicketDetail({
       dispatchBaseline.dispatchDate !== dispatchDate ||
       dispatchBaseline.dispatchCourierName !== dispatchCourierName ||
       dispatchBaseline.dispatchLrNumber !== dispatchLrNumber ||
-      dispatchBaseline.dispatchLocation !== dispatchLocation ||
-      dispatchBaseline.invoiceGenerated !== dispatchInvoiceGenerated ||
-      dispatchBaseline.paymentDone !== dispatchPaymentDone
+      dispatchBaseline.dispatchLocation !== dispatchLocation
     );
   }, [
     dispatchBaseline,
@@ -674,8 +696,6 @@ export default function TicketDetail({
     dispatchCourierName,
     dispatchLrNumber,
     dispatchLocation,
-    dispatchInvoiceGenerated,
-    dispatchPaymentDone,
   ]);
 
   const canAdvanceToInTransit =
@@ -1023,7 +1043,7 @@ export default function TicketDetail({
                   return;
                 }
 
-                const openLogistics = (stage: "pickup" | "dispatch", msg?: string) => {
+                const openLogistics = (stage: "pickup" | "under_dispatch" | "dispatch", msg?: string) => {
                   setActiveTab("logistics");
                   setLogisticsStage(stage);
                   if (msg) setLogisticsError(msg);
@@ -1046,6 +1066,15 @@ export default function TicketDetail({
                       );
                       return;
                     }
+                  }
+
+                  if (newStatus === "UNDER_DISPATCH") {
+                    openLogistics(
+                      "under_dispatch",
+                      "Please review Under Dispatch (invoice/payment) and save it before scheduling dispatch.",
+                    );
+                    await onUpdateStatus(newStatus);
+                    return;
                   }
 
                   if (newStatus === "DISPATCHED") {
@@ -2068,17 +2097,17 @@ export default function TicketDetail({
 
 	                  {roleName === "SALES" &&
 	                  String(ticket.status || "").toUpperCase() === "UNDER_REPAIRED" &&
-	                  String(jobCard.engineerFinalStatus || "").trim() ? (
+	                  String(jobCard.engineerFinalStatus || "").toUpperCase().trim() === "REPAIRABLE" ? (
 	                    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
 	                      <button
 	                        className="btn btn-accent btn-sm"
 	                        type="button"
 	                        onClick={() => {
 	                          setActiveTab("logistics");
-	                          setLogisticsStage("dispatch");
+	                          setLogisticsStage("under_dispatch");
 	                        }}
 	                      >
-	                        Dispatch → Logistics
+	                        Under Dispatch → Logistics
 	                      </button>
 	                    </div>
 	                  ) : null}
@@ -2751,16 +2780,25 @@ export default function TicketDetail({
             }}
           >
             <div className="table-title">Logistics</div>
-            {canEditLogistics ? (
+            {canEditLogistics && logisticsStage !== "under_dispatch" ? (
               <button
                 className="btn btn-accent btn-sm"
                 disabled={
                   logisticsSaving ||
                   (logisticsStage === "pickup"
                     ? !pickupDate.trim()
-                    : !dispatchDate.trim())
+                    : !dispatchDate.trim() ||
+                      (ticket.status !== "UNDER_DISPATCH" && ticket.status !== "DISPATCHED"))
                 }
                 onClick={() => {
+                  if (
+                    logisticsStage === "dispatch" &&
+                    ticket.status !== "UNDER_DISPATCH" &&
+                    ticket.status !== "DISPATCHED"
+                  ) {
+                    setLogisticsError("Please complete Under Dispatch first, then schedule Dispatch.");
+                    return;
+                  }
                   setLogisticsSaving(true);
                   setLogisticsError("");
                   setLogisticsSavedMsg("");
@@ -2780,8 +2818,6 @@ export default function TicketDetail({
                           courierName: dispatchCourierName,
                           lrNumber: dispatchLrNumber,
                           dispatchLocation,
-                          invoiceGenerated: dispatchInvoiceGenerated,
-                          paymentDone: dispatchPaymentDone,
                         });
 
                   Promise.resolve(save)
@@ -2842,6 +2878,8 @@ export default function TicketDetail({
                           dispatchCourierName: courierSaved,
                           dispatchLrNumber: lrSaved,
                           dispatchLocation: dispatchLocSaved,
+                        });
+                        setDispatchBillingBaseline({
                           invoiceGenerated: invoiceSaved,
                           paymentDone: paymentSaved,
                         });
@@ -2873,9 +2911,24 @@ export default function TicketDetail({
               >
                 Pickup Scheduled
               </div>
+              {canEditLogistics ? (
+                <div
+                  className={`tab ${logisticsStage === "under_dispatch" ? "active" : ""}`}
+                  onClick={() => setLogisticsStage("under_dispatch")}
+                >
+                  Under Dispatch
+                </div>
+              ) : null}
               <div
                 className={`tab ${logisticsStage === "dispatch" ? "active" : ""}`}
-                onClick={() => setLogisticsStage("dispatch")}
+                onClick={() => {
+                  if (canEditLogistics && ticket.status === "UNDER_REPAIRED") {
+                    setLogisticsStage("under_dispatch");
+                    setLogisticsError("Please complete Under Dispatch first, then schedule Dispatch.");
+                    return;
+                  }
+                  setLogisticsStage("dispatch");
+                }}
               >
                 Dispatch
               </div>
@@ -3055,6 +3108,89 @@ export default function TicketDetail({
                   </div>
                 )}
               </>
+            ) : logisticsStage === "under_dispatch" ? (
+              <>
+                {canEditLogistics ? (
+                  <div
+                    style={{
+                      padding: "12px 14px",
+                      borderRadius: 12,
+                      border: "1px solid var(--border)",
+                      background: "var(--bg2)",
+                    }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: "var(--text1)" }}>
+                      Under Dispatch (Billing Review)
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 10, lineHeight: 1.5 }}>
+                      Only billing is required here.
+                      {ticket.status === "UNDER_REPAIRED" ? (
+                        <> Saving will move the ticket to <span className="tag">UNDER DISPATCH</span>.</>
+                      ) : null}
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center" }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                        <input
+                          type="checkbox"
+                          checked={dispatchInvoiceGenerated}
+                          disabled={underDispatchSaving}
+                          onChange={(e) => setDispatchInvoiceGenerated(e.target.checked)}
+                        />
+                        Invoice generated
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                        <input
+                          type="checkbox"
+                          checked={dispatchPaymentDone}
+                          disabled={underDispatchSaving}
+                          onChange={(e) => setDispatchPaymentDone(e.target.checked)}
+                        />
+                        Payment done
+                      </label>
+                      <button
+                        className="btn btn-accent btn-sm"
+                        type="button"
+                        disabled={underDispatchSaving || !dispatchBillingDirty}
+                        onClick={() => {
+                          setUnderDispatchSaving(true);
+                          setLogisticsError("");
+                          setLogisticsSavedMsg("");
+                          apiUnderDispatchSave({
+                            ticketId: ticket.id,
+                            invoiceGenerated: dispatchInvoiceGenerated,
+                            paymentDone: dispatchPaymentDone,
+                          })
+                            .then(() => Promise.all([apiTicketGet(ticket.id), apiLogisticsByTicket(ticket.id)]))
+                            .then(([fresh, rows]) => {
+                              onTicketUpdated(fresh);
+                              const dispatch =
+                                rows.find((r) => String(r?.type || "").toUpperCase() === "DELIVERY") || null;
+                              const invoiceSaved = Boolean(dispatch?.billing?.invoiceGenerated);
+                              const paymentSaved = Boolean(dispatch?.billing?.paymentDone);
+                              setDispatchInvoiceGenerated(invoiceSaved);
+                              setDispatchPaymentDone(paymentSaved);
+                              setDispatchBillingBaseline({ invoiceGenerated: invoiceSaved, paymentDone: paymentSaved });
+                              setLogisticsSavedMsg("Under dispatch saved.");
+                              setLogisticsStage("dispatch");
+                            })
+                            .catch((e) =>
+                              setLogisticsError(
+                                e instanceof Error ? e.message : "Failed to save under-dispatch review",
+                              ),
+                            )
+                            .finally(() => setUnderDispatchSaving(false));
+                        }}
+                      >
+                        {underDispatchSaving ? "Saving..." : "Save Under Dispatch"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 16, fontSize: 12, color: "var(--text3)" }}>
+                    You don&apos;t have permission to edit logistics.
+                  </div>
+                )}
+              </>
             ) : (
               <>
                 <div className="detail-grid">
@@ -3097,29 +3233,6 @@ export default function TicketDetail({
                       placeholder="e.g. BD2026..."
                       style={{ fontFamily: "var(--mono)" }}
                     />
-                  </div>
-                  <div className="detail-card">
-                    <div className="detail-label">Billing</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
-                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                        <input
-                          type="checkbox"
-                          checked={dispatchInvoiceGenerated}
-                          disabled={!canEditLogistics}
-                          onChange={(e) => setDispatchInvoiceGenerated(e.target.checked)}
-                        />
-                        Invoice generated
-                      </label>
-                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                        <input
-                          type="checkbox"
-                          checked={dispatchPaymentDone}
-                          disabled={!canEditLogistics}
-                          onChange={(e) => setDispatchPaymentDone(e.target.checked)}
-                        />
-                        Payment done
-                      </label>
-                    </div>
                   </div>
                 </div>
 

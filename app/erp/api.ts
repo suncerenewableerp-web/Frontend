@@ -503,6 +503,7 @@ function toTicket(t: BackendTicket): Ticket {
     if (s === "PICKUP_SCHEDULED") return "PICKUP_SCHEDULED";
     if (s === "IN_TRANSIT") return "IN_TRANSIT";
     if (s === "UNDER_REPAIRED") return "UNDER_REPAIRED";
+    if (s === "UNDER_DISPATCH") return "UNDER_DISPATCH";
     if (s === "DISPATCHED") return "DISPATCHED";
     if (s === "CLOSED") return "CLOSED";
 
@@ -988,8 +989,6 @@ export async function apiScheduleDispatch(input: {
   courierName: string;
   lrNumber: string;
   dispatchLocation: string;
-  invoiceGenerated?: boolean;
-  paymentDone?: boolean;
 }): Promise<void> {
   const payload = {
     ticketId: input.ticketId,
@@ -997,14 +996,30 @@ export async function apiScheduleDispatch(input: {
     courierName: input.courierName,
     lrNumber: input.lrNumber,
     dispatchLocation: input.dispatchLocation,
-    ...(typeof input.invoiceGenerated === "boolean" ? { invoiceGenerated: input.invoiceGenerated } : {}),
-    ...(typeof input.paymentDone === "boolean" ? { paymentDone: input.paymentDone } : {}),
   };
   const env = await apiFetch<unknown>("/api/logistics/schedule-dispatch", {
     method: "POST",
     body: JSON.stringify(payload),
   });
   if (!env.success) throw new Error(env.message || "Failed to schedule dispatch");
+}
+
+export async function apiUnderDispatchSave(input: {
+  ticketId: string;
+  invoiceGenerated: boolean;
+  paymentDone: boolean;
+}): Promise<{ invoiceGenerated: boolean; paymentDone: boolean }> {
+  const payload = {
+    ticketId: input.ticketId,
+    invoiceGenerated: input.invoiceGenerated,
+    paymentDone: input.paymentDone,
+  };
+  const env = await apiFetch<{ invoiceGenerated?: unknown; paymentDone?: unknown }>(
+    "/api/logistics/under-dispatch",
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+  if (!env.success) throw new Error(env.message || "Failed to save under-dispatch review");
+  return { invoiceGenerated: Boolean(env.data?.invoiceGenerated), paymentDone: Boolean(env.data?.paymentDone) };
 }
 
 export async function apiTicketPickupDetailsGet(ticketId: string): Promise<{

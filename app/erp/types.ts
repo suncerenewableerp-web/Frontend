@@ -82,6 +82,7 @@ export type TicketStatus =
   | "PICKUP_SCHEDULED"
   | "IN_TRANSIT"
   | "UNDER_REPAIRED"
+  | "UNDER_DISPATCH"
   | "DISPATCHED"
   | "CLOSED";
 

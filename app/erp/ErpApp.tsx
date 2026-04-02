@@ -57,7 +57,7 @@ export default function ErpApp({
     "overview" | "jobcard" | "logistics" | "sla"
   >("overview");
   const [ticketDetailLogisticsStage, setTicketDetailLogisticsStage] = useState<
-    "pickup" | "dispatch"
+    "pickup" | "under_dispatch" | "dispatch"
   >("pickup");
   const [showNewTicket, setShowNewTicket] = useState(false);
   const [notification, setNotification] = useState("");
@@ -342,7 +342,13 @@ export default function ErpApp({
                   setSelectedTicket(t);
                   setTicketDetailTab(user.role === "ENGINEER" ? "jobcard" : "overview");
                   setTicketDetailLogisticsStage(
-                    t.status === "DISPATCHED" || t.status === "CLOSED" ? "dispatch" : "pickup",
+                    t.status === "DISPATCHED" || t.status === "CLOSED"
+                      ? "dispatch"
+                      : t.status === "UNDER_DISPATCH"
+                        ? "under_dispatch"
+                        : t.status === "UNDER_REPAIRED" && user.role !== "ENGINEER" && user.role !== "CUSTOMER"
+                          ? "under_dispatch"
+                          : "pickup",
                   );
                   setPage("ticket_detail");
                 }}
@@ -364,7 +370,13 @@ export default function ErpApp({
                   const nextTab = opts?.tab || (user.role === "ENGINEER" ? "jobcard" : "overview");
                   setTicketDetailTab(nextTab);
                   setTicketDetailLogisticsStage(
-                    t.status === "DISPATCHED" || t.status === "CLOSED" ? "dispatch" : "pickup",
+                    t.status === "DISPATCHED" || t.status === "CLOSED"
+                      ? "dispatch"
+                      : t.status === "UNDER_DISPATCH"
+                        ? "under_dispatch"
+                        : t.status === "UNDER_REPAIRED" && user.role !== "ENGINEER" && user.role !== "CUSTOMER"
+                          ? "under_dispatch"
+                          : "pickup",
                   );
                   setPage("ticket_detail");
                 }}

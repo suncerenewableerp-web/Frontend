@@ -216,6 +216,7 @@ export const STATUS_ORDER: TicketStatus[] = [
   "PICKUP_SCHEDULED",
   "IN_TRANSIT",
   "UNDER_REPAIRED",
+  "UNDER_DISPATCH",
   "DISPATCHED",
   "CLOSED",
 ];
@@ -225,6 +226,7 @@ export const STATUS_COLORS: Record<TicketStatus, string> = {
   PICKUP_SCHEDULED: "#8b5cf6",
   IN_TRANSIT: "#d97706",
   UNDER_REPAIRED: "#ea580c",
+  UNDER_DISPATCH: "#0ea5e9",
   DISPATCHED: "#16a34a",
   CLOSED: "#64748b",
 };
