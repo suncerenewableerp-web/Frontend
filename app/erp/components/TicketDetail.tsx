@@ -236,6 +236,7 @@ export default function TicketDetail({
 }) {
   const roleName = String(user.role || "").toUpperCase();
   const canShowWarranty = roleName !== "CUSTOMER";
+  const canShowHeaderBadges = roleName !== "CUSTOMER";
   const canUploadPickupDocs = roleName === "ADMIN" || roleName === "SALES";
   const canSeeCustomerContact = roleName === "ADMIN" || roleName === "SALES";
   const tabs = useMemo(() => {
@@ -589,31 +590,52 @@ export default function TicketDetail({
   useEffect(() => {
     if (roleName !== "CUSTOMER") return;
     let cancelled = false;
-    queueMicrotask(() => {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    let first = true;
+
+    const tick = () => {
       if (cancelled) return;
-      setCustomerPickupLoading(true);
-      setCustomerPickupError("");
-      setCustomerPickupSavedMsg("");
-    });
-    apiTicketPickupDetailsGet(ticket.id)
-      .then((data) => {
-        if (cancelled) return;
-        setPickupDate(data.pickupDate || "");
-        setPickupLocation(String(data.pickupLocation || ticket.customerAddress || ""));
-        setPickupDocuments(data.documents || []);
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        setCustomerPickupError(
-          e instanceof Error ? e.message : "Failed to load pickup details",
-        );
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setCustomerPickupLoading(false);
-      });
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        timeout = setTimeout(tick, 15000);
+        return;
+      }
+
+      const showSpinner = first;
+      first = false;
+
+      if (showSpinner) {
+        setCustomerPickupLoading(true);
+        setCustomerPickupError("");
+        setCustomerPickupSavedMsg("");
+      }
+
+      apiTicketPickupDetailsGet(ticket.id)
+        .then((data) => {
+          if (cancelled) return;
+          setPickupDate(data.pickupDate || "");
+          setPickupLocation(String(data.pickupLocation || ticket.customerAddress || ""));
+          setPickupDocuments(data.documents || []);
+          setCustomerPickupError("");
+
+          const isScheduled = Boolean(String(data.pickupDate || "").trim());
+          const hasDocs = Array.isArray(data.documents) && data.documents.length > 0;
+          timeout = setTimeout(tick, isScheduled || hasDocs ? 30000 : 5000);
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          setCustomerPickupError(e instanceof Error ? e.message : "Failed to load pickup details");
+          timeout = setTimeout(tick, 15000);
+        })
+        .finally(() => {
+          if (cancelled) return;
+          if (showSpinner) setCustomerPickupLoading(false);
+        });
+    };
+
+    timeout = setTimeout(tick, 0);
     return () => {
       cancelled = true;
+      if (timeout) clearTimeout(timeout);
     };
   }, [roleName, ticket.id, ticket.customerAddress]);
 
@@ -926,9 +948,13 @@ export default function TicketDetail({
             <span style={{ fontFamily: "var(--mono)", fontSize: 18, fontWeight: 700, color: "var(--accent)" }}>
               {ticket.ticketId}
             </span>
-            <PriorityBadge priority={ticket.priority} />
-            <StatusBadge status={ticket.status} />
-            <SlaBadge status={ticket.slaStatus} />
+            {canShowHeaderBadges ? (
+              <>
+                <PriorityBadge priority={ticket.priority} />
+                <StatusBadge status={ticket.status} />
+                <SlaBadge status={ticket.slaStatus} />
+              </>
+            ) : null}
           </div>
           <div style={{ fontSize: 13, color: "var(--text2)", marginTop: 3 }}>
             {ticket.customer} · {ticket.inverterMake} {ticket.inverterModel} ({ticket.capacity})
@@ -2876,9 +2902,16 @@ export default function TicketDetail({
                           onChange={(e) => {
                             setPickupDocError("");
                             const f = e.target.files?.[0] || null;
+                            if (f && f.size > 2 * 1024 * 1024) {
+                              setPickupDocFile(null);
+                              setPickupDocError("File too large. Max 2MB.");
+                              e.target.value = "";
+                              return;
+                            }
                             setPickupDocFile(f);
                           }}
                         />
+                        <div style={{ fontSize: 12, color: "var(--text3)" }}>PDF/Image up to 2MB</div>
                         <button
                           className="btn btn-ghost btn-sm"
                           type="button"
