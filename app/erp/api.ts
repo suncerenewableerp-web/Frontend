@@ -741,7 +741,24 @@ export type TicketCreateInput = {
   warrantyEndDate?: string; // YYYY-MM-DD (only when under warranty)
 };
 
-export async function apiCreateTicket(input: TicketCreateInput): Promise<Ticket> {
+function makeLocalTicketId(used?: Set<string>) {
+  const year = new Date().getFullYear();
+  // Keep legacy format `SR-YYYY-XXXX` but try to avoid collisions in-batch.
+  for (let i = 0; i < 20; i++) {
+    const id = `SR-${year}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+    if (!used || !used.has(id)) {
+      used?.add(id);
+      return id;
+    }
+  }
+  // Fallback with timestamp if RNG keeps colliding.
+  const stamp = Date.now().toString().slice(-6);
+  const id = `SR-${year}-${stamp}`;
+  used?.add(id);
+  return id;
+}
+
+function ticketCreatePayloadFromInput(input: TicketCreateInput, ticketId: string) {
   const customerName = String(input.customerName || "").trim();
   const customerCompany = String(input.customerCompany || "").trim();
   const inverterLocation = String(input.inverterLocation || "").trim();
@@ -762,8 +779,8 @@ export async function apiCreateTicket(input: TicketCreateInput): Promise<Ticket>
     warrantyEnd = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString();
   }
 
-  const payload = {
-    ticketId: `SR-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`,
+  return {
+    ticketId,
     ...(customerName || customerCompany || inverterLocation
       ? {
           customer: {
@@ -786,13 +803,31 @@ export async function apiCreateTicket(input: TicketCreateInput): Promise<Ticket>
       ...(errorCode ? { errorCode } : {}),
     },
   };
+}
 
+export async function apiCreateTicket(input: TicketCreateInput): Promise<Ticket> {
+  const payload = ticketCreatePayloadFromInput(input, makeLocalTicketId());
   const env = await apiFetch<BackendTicket>("/api/tickets", {
     method: "POST",
     body: JSON.stringify(payload),
   });
   if (!env.success) throw new Error(env.message || "Failed to create ticket");
   return toTicket(env.data);
+}
+
+export async function apiCreateTicketsBulk(inputs: TicketCreateInput[]): Promise<Ticket[]> {
+  if (!Array.isArray(inputs) || inputs.length === 0) return [];
+
+  const used = new Set<string>();
+  const tickets = inputs.map((input) => ticketCreatePayloadFromInput(input, makeLocalTicketId(used)));
+
+  const env = await apiFetch<{ tickets: BackendTicket[] }>("/api/tickets/bulk", {
+    method: "POST",
+    body: JSON.stringify({ tickets }),
+  });
+  if (!env.success) throw new Error(env.message || "Failed to create tickets");
+  const rows = Array.isArray(env.data?.tickets) ? env.data.tickets : [];
+  return rows.map((t) => toTicket(t));
 }
 
 export async function apiUpdateTicketStatus(

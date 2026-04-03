@@ -322,12 +322,15 @@ const INVERTER_MODELS = INVERTER_MODELS_RAW.split(/\r?\n/).map((s) => s.trim()).
 export default function NewTicketModal({
   onClose,
   onSubmit,
+  onSubmitBulk,
   userRole,
 }: {
   onClose: () => void;
   onSubmit: (t: TicketCreateInput) => Promise<void>;
+  onSubmitBulk: (tickets: TicketCreateInput[]) => Promise<void>;
   userRole?: string;
 }) {
+  const [mode, setMode] = useState<"single" | "bulk">("single");
   const [form, setForm] = useState({
     customerName: "",
     customerCompany: "",
@@ -352,6 +355,45 @@ export default function NewTicketModal({
   const faultRef = useRef<HTMLTextAreaElement | null>(null);
   const brandSearchRef = useRef<HTMLInputElement | null>(null);
   const brandWrapRef = useRef<HTMLDivElement | null>(null);
+  const [bulkBrandOpen, setBulkBrandOpen] = useState(false);
+  const [bulkBrandSearch, setBulkBrandSearch] = useState("");
+  const bulkBrandSearchRef = useRef<HTMLInputElement | null>(null);
+  const bulkBrandWrapRef = useRef<HTMLDivElement | null>(null);
+
+  type BulkItem = {
+    brandOption: string;
+    inverterMake: string;
+    inverterModel: string;
+    capacity: string;
+    serialNumber: string;
+    faultDescription: string;
+    errorCode: string;
+  };
+
+  const emptyBulkItem = (): BulkItem => ({
+    brandOption: "",
+    inverterMake: "",
+    inverterModel: "",
+    capacity: "",
+    serialNumber: "",
+    faultDescription: "",
+    errorCode: "",
+  });
+
+  const [bulkCustomer, setBulkCustomer] = useState({
+    customerName: "",
+    customerCompany: "",
+    inverterLocation: "",
+  });
+
+  const [bulkSettings, setBulkSettings] = useState({
+    priority: "MEDIUM" as "LOW" | "MEDIUM" | "HIGH",
+    warrantyStatus: false,
+    warrantyEndDate: "",
+  });
+
+  const [bulkItems, setBulkItems] = useState<BulkItem[]>(() => [emptyBulkItem()]);
+  const [bulkActiveIndex, setBulkActiveIndex] = useState(0);
 
   const canSetPriorityAndWarranty =
     String(userRole || "").toUpperCase() === "ADMIN" ||
@@ -366,6 +408,30 @@ export default function NewTicketModal({
     if (!q) return src;
     return src.filter((b) => String(b).toLowerCase().includes(q));
   }, [brandSearch, brands]);
+
+  const bulkFilteredBrands = useMemo(() => {
+    const q = bulkBrandSearch.trim().toLowerCase();
+    const src = (brands || []).map((b) => String(b || "")).filter(Boolean);
+    if (!q) return src;
+    return src.filter((b) => String(b).toLowerCase().includes(q));
+  }, [bulkBrandSearch, brands]);
+
+  useEffect(() => {
+    // Switching tabs should not leave dropdowns/errors hanging.
+    setError("");
+    setBrandOpen(false);
+    setBulkBrandOpen(false);
+    setBulkBrandSearch("");
+  }, [mode]);
+
+  useEffect(() => {
+    setBulkBrandOpen(false);
+    setBulkBrandSearch("");
+  }, [bulkActiveIndex]);
+
+  useEffect(() => {
+    setBulkActiveIndex((i) => Math.max(0, Math.min(i, (bulkItems?.length || 1) - 1)));
+  }, [bulkItems?.length]);
 
   useEffect(() => {
     let cancelled = false;
@@ -408,11 +474,44 @@ export default function NewTicketModal({
     };
   }, [brandOpen]);
 
+  useEffect(() => {
+    if (!bulkBrandOpen) return;
+    // Focus search when dropdown opens.
+    queueMicrotask(() => bulkBrandSearchRef.current?.focus());
+
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") setBulkBrandOpen(false);
+    };
+
+    const onPointerDown = (ev: MouseEvent | TouchEvent) => {
+      const el = bulkBrandWrapRef.current;
+      if (!el) return;
+      const target = ev.target as Node | null;
+      if (target && !el.contains(target)) setBulkBrandOpen(false);
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+    };
+  }, [bulkBrandOpen]);
+
   const brandLabel = useMemo(() => {
     if (!brandOption) return "";
     if (brandOption === OTHER_BRAND_VALUE) return "Others";
     return brandOption;
   }, [brandOption]);
+
+  const bulkBrandOption = bulkItems[bulkActiveIndex]?.brandOption || "";
+  const bulkBrandLabel = useMemo(() => {
+    if (!bulkBrandOption) return "";
+    if (bulkBrandOption === OTHER_BRAND_VALUE) return "Others";
+    return bulkBrandOption;
+  }, [bulkBrandOption]);
 
   const modelPlaceholder = useMemo(() => {
     // Suggest an example model (no dropdown; user types freely)
@@ -460,6 +559,84 @@ export default function NewTicketModal({
       .finally(() => setLoading(false));
   };
 
+  const setBulkItem = (idx: number, patch: Partial<BulkItem>) => {
+    setBulkItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+  };
+
+  const addBulkItem = () => {
+    setBulkItems((prev) => {
+      const next = [...prev, emptyBulkItem()];
+      setBulkActiveIndex(next.length - 1);
+      return next;
+    });
+  };
+
+  const removeBulkItem = (idx: number) => {
+    setBulkItems((prev) => {
+      if (prev.length <= 1) return prev;
+      const next = prev.filter((_, i) => i !== idx);
+      setBulkActiveIndex((current) => {
+        if (current > idx) return current - 1;
+        if (current === idx) return Math.max(0, idx - 1);
+        return current;
+      });
+      return next.length ? next : [emptyBulkItem()];
+    });
+  };
+
+  const handleSubmitBulk = () => {
+    const missingShared: string[] = [];
+    if (canSetPriorityAndWarranty && bulkSettings.warrantyStatus && !bulkSettings.warrantyEndDate.trim()) {
+      missingShared.push("Warranty end date");
+    }
+    if (missingShared.length) {
+      setError(`Please fill required field(s): ${missingShared.join(", ")}.`);
+      return;
+    }
+
+    const inputs: TicketCreateInput[] = [];
+    for (let i = 0; i < bulkItems.length; i++) {
+      const it = bulkItems[i]!;
+      const capacity = String(it.capacity || "").trim();
+      const faultDescription = String(it.faultDescription || "").trim();
+      if (!capacity || !faultDescription) {
+        const missing: string[] = [];
+        if (!capacity) missing.push("Capacity");
+        if (!faultDescription) missing.push("Fault Description");
+        setError(`Ticket #${i + 1}: Please fill required field(s): ${missing.join(", ")}.`);
+        return;
+      }
+
+      inputs.push({
+        capacity,
+        faultDescription,
+        customerName: bulkCustomer.customerName.trim() || undefined,
+        customerCompany: bulkCustomer.customerCompany.trim() || undefined,
+        inverterLocation: bulkCustomer.inverterLocation.trim() || undefined,
+        inverterMake: it.inverterMake.trim() || undefined,
+        inverterModel: it.inverterModel.trim() || undefined,
+        serialNumber: it.serialNumber.trim() || undefined,
+        errorCode: it.errorCode.trim() || undefined,
+        ...(canSetPriorityAndWarranty ? { priority: bulkSettings.priority || undefined } : {}),
+        ...(canSetPriorityAndWarranty
+          ? {
+              warrantyStatus: bulkSettings.warrantyStatus,
+              warrantyEndDate: bulkSettings.warrantyStatus
+                ? bulkSettings.warrantyEndDate.trim() || undefined
+                : undefined,
+            }
+          : {}),
+      });
+    }
+
+    setLoading(true);
+    setError("");
+    onSubmitBulk(inputs)
+      .then(() => onClose())
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to create tickets"))
+      .finally(() => setLoading(false));
+  };
+
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal">
@@ -475,136 +652,132 @@ export default function NewTicketModal({
               {error}
             </div>
           )}
-          <div className="form-section">Customer Information</div>
-          <div className="form-grid">
-            <div className="form-group">
-              <label className="form-label">Company Name</label>
-              <input
-                className="form-input"
-                placeholder="Company name"
-                value={form.customerCompany}
-                onChange={(e) => set("customerCompany", e.target.value)}
-              />
+          <div className="tabs" style={{ marginTop: -6, marginBottom: 14 }}>
+            <div
+              className={`tab ${mode === "single" ? "active" : ""}`}
+              onClick={() => setMode("single")}
+              role="button"
+              tabIndex={0}
+            >
+              Single Ticket
             </div>
-            <div className="form-group">
-              <label className="form-label">Complaint Raised By</label>
-              <input
-                className="form-input"
-                placeholder="Customer name"
-                value={form.customerName}
-                onChange={(e) => set("customerName", e.target.value)}
-              />
+            <div
+              className={`tab ${mode === "bulk" ? "active" : ""}`}
+              onClick={() => setMode("bulk")}
+              role="button"
+              tabIndex={0}
+            >
+              Bulk Ticket Raiser
             </div>
           </div>
-          <div className="form-section">Inverter Details</div>
-          <div className="form-grid">
-            <div className="form-group">
-              <label className="form-label">Brand Name</label>
-              <div ref={brandWrapRef} style={{ position: "relative" }}>
-                <button
-                  type="button"
-                  className="form-select"
-                  aria-haspopup="listbox"
-                  aria-expanded={brandOpen}
-                  disabled={loading}
-                  onClick={() => {
-                    setBrandOpen((v) => !v);
-                  }}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 10,
-                  }}
-                >
-                  <span style={{ color: brandLabel ? "var(--text)" : "var(--text3)" }}>
-                    {brandLabel || "Select brand (optional)"}
-                  </span>
-                  <span aria-hidden style={{ color: "var(--text3)" }}>▾</span>
-                </button>
 
-                {brandOpen ? (
-                  <div
-                    role="listbox"
-                    aria-label="Brand options"
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      right: 0,
-                      top: "calc(100% + 6px)",
-                      background: "var(--surface)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 10,
-                      boxShadow: "var(--shadow)",
-                      zIndex: 50,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div style={{ padding: 10, borderBottom: "1px solid var(--border)" }}>
-                      <div className="search-wrap">
-                        <span className="search-icon" aria-hidden>
-                          <LuSearch />
-                        </span>
-                        <input
-                          ref={brandSearchRef}
-                          className="form-input"
-                          placeholder="Search brand..."
-                          value={brandSearch}
-                          onChange={(e) => setBrandSearch(e.target.value)}
-                          style={{ paddingLeft: 32 }}
-                        />
-                      </div>
-                      {brandSearch.trim() ? (
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm"
-                          onClick={() => {
-                            setBrandSearch("");
-                            brandSearchRef.current?.focus();
-                          }}
-                          style={{ marginTop: 8 }}
-                        >
-                          Clear search
-                        </button>
-                      ) : null}
-                    </div>
+          {mode === "single" ? (
+            <>
+              <div className="form-section">Customer Information</div>
+              <div className="form-grid">
+                <div className="form-group">
+                  <label className="form-label">Company Name</label>
+                  <input
+                    className="form-input"
+                    placeholder="Company name"
+                    value={form.customerCompany}
+                    onChange={(e) => set("customerCompany", e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Complaint Raised By</label>
+                  <input
+                    className="form-input"
+                    placeholder="Customer name"
+                    value={form.customerName}
+                    onChange={(e) => set("customerName", e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="form-section">Inverter Details</div>
+              <div className="form-grid">
+                <div className="form-group">
+                  <label className="form-label">Brand Name</label>
+                  <div ref={brandWrapRef} style={{ position: "relative" }}>
+                    <button
+                      type="button"
+                      className="form-select"
+                      aria-haspopup="listbox"
+                      aria-expanded={brandOpen}
+                      disabled={loading}
+                      onClick={() => {
+                        setBrandOpen((v) => !v);
+                      }}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 10,
+                      }}
+                    >
+                      <span style={{ color: brandLabel ? "var(--text)" : "var(--text3)" }}>
+                        {brandLabel || "Select brand (optional)"}
+                      </span>
+                      <span aria-hidden style={{ color: "var(--text3)" }}>▾</span>
+                    </button>
 
-                    <div style={{ maxHeight: 240, overflowY: "auto" }}>
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={!brandOption}
-                        className="table-link"
-                        onClick={() => {
-                          setBrandOption("");
-                          set("inverterMake", "");
-                          setBrandSearch("");
-                          setBrandOpen(false);
-                        }}
+                    {brandOpen ? (
+                      <div
+                        role="listbox"
+                        aria-label="Brand options"
                         style={{
-                          width: "100%",
-                          padding: "10px 12px",
-                          textAlign: "left",
-                          color: !brandOption ? "var(--accent)" : "var(--text)",
+                          position: "absolute",
+                          left: 0,
+                          right: 0,
+                          top: "calc(100% + 6px)",
+                          background: "var(--surface)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 10,
+                          boxShadow: "var(--shadow)",
+                          zIndex: 50,
+                          overflow: "hidden",
                         }}
                       >
-                        Select brand (optional)
-                      </button>
+                        <div style={{ padding: 10, borderBottom: "1px solid var(--border)" }}>
+                          <div className="search-wrap">
+                            <span className="search-icon" aria-hidden>
+                              <LuSearch />
+                            </span>
+                            <input
+                              ref={brandSearchRef}
+                              className="form-input"
+                              placeholder="Search brand..."
+                              value={brandSearch}
+                              onChange={(e) => setBrandSearch(e.target.value)}
+                              style={{ paddingLeft: 32 }}
+                            />
+                          </div>
+                          {brandSearch.trim() ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => {
+                                setBrandSearch("");
+                                brandSearchRef.current?.focus();
+                              }}
+                              style={{ marginTop: 8 }}
+                            >
+                              Clear search
+                            </button>
+                          ) : null}
+                        </div>
 
-                      {filteredBrands.map((b) => {
-                        const selected = brandOption === b;
-                        return (
+                        <div style={{ maxHeight: 240, overflowY: "auto" }}>
                           <button
-                            key={b}
                             type="button"
                             role="option"
-                            aria-selected={selected}
+                            aria-selected={!brandOption}
                             className="table-link"
                             onClick={() => {
-                              setBrandOption(b);
-                              set("inverterMake", b);
+                              setBrandOption("");
+                              set("inverterMake", "");
                               setBrandSearch("");
                               setBrandOpen(false);
                             }}
@@ -612,151 +785,551 @@ export default function NewTicketModal({
                               width: "100%",
                               padding: "10px 12px",
                               textAlign: "left",
-                              color: selected ? "var(--accent)" : "var(--text)",
+                              color: !brandOption ? "var(--accent)" : "var(--text)",
                             }}
                           >
-                            {b}
+                            Select brand (optional)
                           </button>
-                        );
-                      })}
 
-                      <div style={{ height: 1, background: "var(--border)" }} />
+                          {filteredBrands.map((b) => {
+                            const selected = brandOption === b;
+                            return (
+                              <button
+                                key={b}
+                                type="button"
+                                role="option"
+                                aria-selected={selected}
+                                className="table-link"
+                                onClick={() => {
+                                  setBrandOption(b);
+                                  set("inverterMake", b);
+                                  setBrandSearch("");
+                                  setBrandOpen(false);
+                                }}
+                                style={{
+                                  width: "100%",
+                                  padding: "10px 12px",
+                                  textAlign: "left",
+                                  color: selected ? "var(--accent)" : "var(--text)",
+                                }}
+                              >
+                                {b}
+                              </button>
+                            );
+                          })}
 
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={brandOption === OTHER_BRAND_VALUE}
-                        className="table-link"
-                        onClick={() => {
-                          setBrandOption(OTHER_BRAND_VALUE);
-                          set("inverterMake", "");
-                          setBrandSearch("");
-                          setBrandOpen(false);
-                        }}
-                        style={{
-                          width: "100%",
-                          padding: "10px 12px",
-                          textAlign: "left",
-                          color: brandOption === OTHER_BRAND_VALUE ? "var(--accent)" : "var(--text)",
-                        }}
-                      >
-                        Others
-                      </button>
-                    </div>
+                          <div style={{ height: 1, background: "var(--border)" }} />
+
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={brandOption === OTHER_BRAND_VALUE}
+                            className="table-link"
+                            onClick={() => {
+                              setBrandOption(OTHER_BRAND_VALUE);
+                              set("inverterMake", "");
+                              setBrandSearch("");
+                              setBrandOpen(false);
+                            }}
+                            style={{
+                              width: "100%",
+                              padding: "10px 12px",
+                              textAlign: "left",
+                              color: brandOption === OTHER_BRAND_VALUE ? "var(--accent)" : "var(--text)",
+                            }}
+                          >
+                            Others
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-              </div>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Model</label>
-              <input
-                className="form-input"
-                placeholder={modelPlaceholder}
-                value={form.inverterModel}
-                onChange={(e) => set("inverterModel", e.target.value)}
-                disabled={loading}
-              />
-            </div>
-            {brandOption === OTHER_BRAND_VALUE ? (
-              <div className="form-group full">
-                <label className="form-label">Other Brand</label>
-                <input
-                  className="form-input"
-                  placeholder="Enter brand name"
-                  value={form.inverterMake}
-                  onChange={(e) => set("inverterMake", e.target.value)}
-                />
-              </div>
-            ) : null}
-            <div className="form-group">
-              <label className="form-label">Capacity *</label>
-              <input
-                className="form-input"
-                placeholder="e.g. 50kW"
-                ref={capacityRef}
-                onChange={(e) => set("capacity", e.target.value)}
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Serial Number</label>
-              <input
-                className="form-input"
-                placeholder="Equipment serial"
-                onChange={(e) => set("serialNumber", e.target.value)}
-              />
-            </div>
-            <div className="form-group full">
-              <label className="form-label">Inverter Location</label>
-              <input
-                className="form-input"
-                placeholder="Pickup/installation location (Full Address)"
-                onChange={(e) => set("inverterLocation", e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="form-section">Fault Details</div>
-          <div className="form-grid">
-            <div className="form-group full">
-              <label className="form-label">Fault Description *</label>
-              <textarea
-                className="form-textarea"
-                placeholder="Describe the issue..."
-                ref={faultRef}
-                onChange={(e) => set("faultDescription", e.target.value)}
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Error Code</label>
-              <input
-                className="form-input"
-                placeholder="e.g. F001"
-                onChange={(e) => set("errorCode", e.target.value)}
-              />
-            </div>
-            {canSetPriorityAndWarranty ? (
-              <>
-                <div className="form-group">
-                  <label className="form-label">Priority</label>
-                  <select
-                    className="form-select"
-                    value={form.priority}
-                    onChange={(e) =>
-                      set("priority", e.target.value as "LOW" | "MEDIUM" | "HIGH")
-                    }
-                  >
-                    <option value="LOW">LOW</option>
-                    <option value="MEDIUM">MEDIUM</option>
-                    <option value="HIGH">HIGH</option>
-                  </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Warranty</label>
-                  <select
-                    className="form-select"
-                    value={form.warrantyStatus ? "true" : "false"}
-                    onChange={(e) => {
-                      const under = e.target.value === "true";
-                      set("warrantyStatus", under);
-                      if (!under) set("warrantyEndDate", "");
-                    }}
-                  >
-                    <option value="true">Under Warranty</option>
-                    <option value="false">Out of Warranty</option>
-                  </select>
+                  <label className="form-label">Model</label>
+                  <input
+                    className="form-input"
+                    placeholder={modelPlaceholder}
+                    value={form.inverterModel}
+                    onChange={(e) => set("inverterModel", e.target.value)}
+                    disabled={loading}
+                  />
                 </div>
-                {form.warrantyStatus ? (
-                  <div className="form-group">
-                    <label className="form-label">Warranty End Date</label>
-                    <DatePicker
-                      value={form.warrantyEndDate}
-                      onChange={(next) => set("warrantyEndDate", next)}
-                      placeholder="Select end date"
+                {brandOption === OTHER_BRAND_VALUE ? (
+                  <div className="form-group full">
+                    <label className="form-label">Other Brand</label>
+                    <input
+                      className="form-input"
+                      placeholder="Enter brand name"
+                      value={form.inverterMake}
+                      onChange={(e) => set("inverterMake", e.target.value)}
                     />
                   </div>
                 ) : null}
-              </>
-            ) : null}
-          </div>
+                <div className="form-group">
+                  <label className="form-label">Capacity *</label>
+                  <input
+                    className="form-input"
+                    placeholder="e.g. 50kW"
+                    ref={capacityRef}
+                    onChange={(e) => set("capacity", e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Serial Number</label>
+                  <input
+                    className="form-input"
+                    placeholder="Equipment serial"
+                    onChange={(e) => set("serialNumber", e.target.value)}
+                  />
+                </div>
+                <div className="form-group full">
+                  <label className="form-label">Inverter Location</label>
+                  <input
+                    className="form-input"
+                    placeholder="Pickup/installation location (Full Address)"
+                    onChange={(e) => set("inverterLocation", e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="form-section">Fault Details</div>
+              <div className="form-grid">
+                <div className="form-group full">
+                  <label className="form-label">Fault Description *</label>
+                  <textarea
+                    className="form-textarea"
+                    placeholder="Describe the issue..."
+                    ref={faultRef}
+                    onChange={(e) => set("faultDescription", e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Error Code</label>
+                  <input
+                    className="form-input"
+                    placeholder="e.g. F001"
+                    onChange={(e) => set("errorCode", e.target.value)}
+                  />
+                </div>
+                {canSetPriorityAndWarranty ? (
+                  <>
+                    <div className="form-group">
+                      <label className="form-label">Priority</label>
+                      <select
+                        className="form-select"
+                        value={form.priority}
+                        onChange={(e) => set("priority", e.target.value as "LOW" | "MEDIUM" | "HIGH")}
+                      >
+                        <option value="LOW">LOW</option>
+                        <option value="MEDIUM">MEDIUM</option>
+                        <option value="HIGH">HIGH</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Warranty</label>
+                      <select
+                        className="form-select"
+                        value={form.warrantyStatus ? "true" : "false"}
+                        onChange={(e) => {
+                          const under = e.target.value === "true";
+                          set("warrantyStatus", under);
+                          if (!under) set("warrantyEndDate", "");
+                        }}
+                      >
+                        <option value="true">Under Warranty</option>
+                        <option value="false">Out of Warranty</option>
+                      </select>
+                    </div>
+                    {form.warrantyStatus ? (
+                      <div className="form-group">
+                        <label className="form-label">Warranty End Date</label>
+                        <DatePicker
+                          value={form.warrantyEndDate}
+                          onChange={(next) => set("warrantyEndDate", next)}
+                          placeholder="Select end date"
+                        />
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="form-section">Customer Information</div>
+              <div className="form-grid">
+                <div className="form-group">
+                  <label className="form-label">Company Name</label>
+                  <input
+                    className="form-input"
+                    placeholder="Company name"
+                    value={bulkCustomer.customerCompany}
+                    onChange={(e) =>
+                      setBulkCustomer((p) => ({ ...p, customerCompany: e.target.value }))
+                    }
+                    disabled={loading}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Complaint Raised By</label>
+                  <input
+                    className="form-input"
+                    placeholder="Customer name"
+                    value={bulkCustomer.customerName}
+                    onChange={(e) =>
+                      setBulkCustomer((p) => ({ ...p, customerName: e.target.value }))
+                    }
+                    disabled={loading}
+                  />
+                </div>
+                <div className="form-group full">
+                  <label className="form-label">Inverter Location</label>
+                  <input
+                    className="form-input"
+                    placeholder="Pickup/installation location (Full Address)"
+                    value={bulkCustomer.inverterLocation}
+                    onChange={(e) =>
+                      setBulkCustomer((p) => ({ ...p, inverterLocation: e.target.value }))
+                    }
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+
+              {canSetPriorityAndWarranty ? (
+                <>
+                  <div className="form-section">Ticket Settings</div>
+                  <div className="form-grid">
+                    <div className="form-group">
+                      <label className="form-label">Priority</label>
+                      <select
+                        className="form-select"
+                        value={bulkSettings.priority}
+                        onChange={(e) =>
+                          setBulkSettings((p) => ({
+                            ...p,
+                            priority: e.target.value as "LOW" | "MEDIUM" | "HIGH",
+                          }))
+                        }
+                        disabled={loading}
+                      >
+                        <option value="LOW">LOW</option>
+                        <option value="MEDIUM">MEDIUM</option>
+                        <option value="HIGH">HIGH</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Warranty</label>
+                      <select
+                        className="form-select"
+                        value={bulkSettings.warrantyStatus ? "true" : "false"}
+                        onChange={(e) => {
+                          const under = e.target.value === "true";
+                          setBulkSettings((p) => ({
+                            ...p,
+                            warrantyStatus: under,
+                            warrantyEndDate: under ? p.warrantyEndDate : "",
+                          }));
+                        }}
+                        disabled={loading}
+                      >
+                        <option value="true">Under Warranty</option>
+                        <option value="false">Out of Warranty</option>
+                      </select>
+                    </div>
+                    {bulkSettings.warrantyStatus ? (
+                      <div className="form-group">
+                        <label className="form-label">Warranty End Date</label>
+                        <DatePicker
+                          value={bulkSettings.warrantyEndDate}
+                          onChange={(next) =>
+                            setBulkSettings((p) => ({ ...p, warrantyEndDate: next }))
+                          }
+                          placeholder="Select end date"
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                </>
+              ) : null}
+
+              <div className="form-section">Inverter & Fault Details</div>
+              <div className="bulk-nav" role="tablist" aria-label="Bulk ticket selector">
+                {(bulkItems || []).map((_, idx) => {
+                  const active = idx === bulkActiveIndex;
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      className={`btn btn-ghost btn-sm bulk-pill ${active ? "active" : ""}`}
+                      onClick={() => setBulkActiveIndex(idx)}
+                      disabled={loading}
+                      title={`Ticket #${idx + 1}`}
+                    >
+                      {idx + 1}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {bulkItems[bulkActiveIndex] ? (
+                <div style={{ marginTop: 12 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 10,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text2)" }}>
+                      Ticket #{bulkActiveIndex + 1}
+                    </div>
+                    {bulkItems.length > 1 ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => removeBulkItem(bulkActiveIndex)}
+                        disabled={loading}
+                      >
+                        Remove
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <div className="bulk-ticket-grid">
+                    <div className="form-group">
+                      <label className="form-label">Brand Name</label>
+                      <div ref={bulkBrandWrapRef} style={{ position: "relative" }}>
+                        <button
+                          type="button"
+                          className="form-select"
+                          aria-haspopup="listbox"
+                          aria-expanded={bulkBrandOpen}
+                          disabled={loading}
+                          onClick={() => setBulkBrandOpen((v) => !v)}
+                          style={{
+                            width: "100%",
+                            textAlign: "left",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: 10,
+                          }}
+                        >
+                          <span style={{ color: bulkBrandLabel ? "var(--text)" : "var(--text3)" }}>
+                            {bulkBrandLabel || "Select brand (optional)"}
+                          </span>
+                          <span aria-hidden style={{ color: "var(--text3)" }}>
+                            ▾
+                          </span>
+                        </button>
+
+                        {bulkBrandOpen ? (
+                          <div
+                            role="listbox"
+                            aria-label="Brand options"
+                            style={{
+                              position: "absolute",
+                              left: 0,
+                              right: 0,
+                              top: "calc(100% + 6px)",
+                              background: "var(--surface)",
+                              border: "1px solid var(--border)",
+                              borderRadius: 10,
+                              boxShadow: "var(--shadow)",
+                              zIndex: 50,
+                              overflow: "hidden",
+                            }}
+                          >
+                            <div style={{ padding: 10, borderBottom: "1px solid var(--border)" }}>
+                              <div className="search-wrap">
+                                <span className="search-icon" aria-hidden>
+                                  <LuSearch />
+                                </span>
+                                <input
+                                  ref={bulkBrandSearchRef}
+                                  className="form-input"
+                                  placeholder="Search brand..."
+                                  value={bulkBrandSearch}
+                                  onChange={(e) => setBulkBrandSearch(e.target.value)}
+                                  style={{ paddingLeft: 32 }}
+                                />
+                              </div>
+                              {bulkBrandSearch.trim() ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-sm"
+                                  onClick={() => {
+                                    setBulkBrandSearch("");
+                                    bulkBrandSearchRef.current?.focus();
+                                  }}
+                                  style={{ marginTop: 8 }}
+                                >
+                                  Clear search
+                                </button>
+                              ) : null}
+                            </div>
+
+                            <div style={{ maxHeight: 240, overflowY: "auto" }}>
+                              <button
+                                type="button"
+                                role="option"
+                                aria-selected={!bulkBrandOption}
+                                className="table-link"
+                                onClick={() => {
+                                  setBulkItem(bulkActiveIndex, { brandOption: "", inverterMake: "" });
+                                  setBulkBrandSearch("");
+                                  setBulkBrandOpen(false);
+                                }}
+                                style={{
+                                  width: "100%",
+                                  padding: "10px 12px",
+                                  textAlign: "left",
+                                  color: !bulkBrandOption ? "var(--accent)" : "var(--text)",
+                                }}
+                              >
+                                Select brand (optional)
+                              </button>
+
+                              {bulkFilteredBrands.map((b) => {
+                                const selected = bulkBrandOption === b;
+                                return (
+                                  <button
+                                    key={b}
+                                    type="button"
+                                    role="option"
+                                    aria-selected={selected}
+                                    className="table-link"
+                                    onClick={() => {
+                                      setBulkItem(bulkActiveIndex, { brandOption: b, inverterMake: b });
+                                      setBulkBrandSearch("");
+                                      setBulkBrandOpen(false);
+                                    }}
+                                    style={{
+                                      width: "100%",
+                                      padding: "10px 12px",
+                                      textAlign: "left",
+                                      color: selected ? "var(--accent)" : "var(--text)",
+                                    }}
+                                  >
+                                    {b}
+                                  </button>
+                                );
+                              })}
+
+                              <div style={{ height: 1, background: "var(--border)" }} />
+
+                              <button
+                                type="button"
+                                role="option"
+                                aria-selected={bulkBrandOption === OTHER_BRAND_VALUE}
+                                className="table-link"
+                                onClick={() => {
+                                  setBulkItem(bulkActiveIndex, {
+                                    brandOption: OTHER_BRAND_VALUE,
+                                    inverterMake: "",
+                                  });
+                                  setBulkBrandSearch("");
+                                  setBulkBrandOpen(false);
+                                }}
+                                style={{
+                                  width: "100%",
+                                  padding: "10px 12px",
+                                  textAlign: "left",
+                                  color: bulkBrandOption === OTHER_BRAND_VALUE ? "var(--accent)" : "var(--text)",
+                                }}
+                              >
+                                Others
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {bulkBrandOption === OTHER_BRAND_VALUE ? (
+                        <div style={{ marginTop: 10 }}>
+                          <label className="form-label">Other Brand</label>
+                          <input
+                            className="form-input"
+                            placeholder="Enter brand name"
+                            value={bulkItems[bulkActiveIndex]!.inverterMake}
+                            onChange={(e) => setBulkItem(bulkActiveIndex, { inverterMake: e.target.value })}
+                            disabled={loading}
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Model</label>
+                      <input
+                        className="form-input"
+                        placeholder={modelPlaceholder}
+                        value={bulkItems[bulkActiveIndex]!.inverterModel}
+                        onChange={(e) => setBulkItem(bulkActiveIndex, { inverterModel: e.target.value })}
+                        disabled={loading}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Capacity *</label>
+                      <input
+                        className="form-input"
+                        placeholder="e.g. 50kW"
+                        value={bulkItems[bulkActiveIndex]!.capacity}
+                        onChange={(e) => setBulkItem(bulkActiveIndex, { capacity: e.target.value })}
+                        disabled={loading}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Serial Number</label>
+                      <input
+                        className="form-input"
+                        placeholder="Equipment serial"
+                        value={bulkItems[bulkActiveIndex]!.serialNumber}
+                        onChange={(e) => setBulkItem(bulkActiveIndex, { serialNumber: e.target.value })}
+                        disabled={loading}
+                      />
+                    </div>
+                    <div className="form-group" style={{ gridColumn: "span 3" }}>
+                      <label className="form-label">Fault Description *</label>
+                      <textarea
+                        className="form-textarea"
+                        rows={1}
+                        placeholder="Describe the issue..."
+                        value={bulkItems[bulkActiveIndex]!.faultDescription}
+                        onChange={(e) => setBulkItem(bulkActiveIndex, { faultDescription: e.target.value })}
+                        disabled={loading}
+                        style={{ minHeight: 38 }}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Error Code</label>
+                      <input
+                        className="form-input"
+                        placeholder="e.g. F001"
+                        value={bulkItems[bulkActiveIndex]!.errorCode}
+                        onChange={(e) => setBulkItem(bulkActiveIndex, { errorCode: e.target.value })}
+                        disabled={loading}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={addBulkItem}
+                disabled={loading}
+                style={{ width: "100%" }}
+              >
+                + Add More
+              </button>
+            </>
+          )}
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>
@@ -764,10 +1337,14 @@ export default function NewTicketModal({
           </button>
           <button
             className="btn btn-accent"
-            onClick={handleSubmit}
+            onClick={mode === "single" ? handleSubmit : handleSubmitBulk}
             disabled={loading}
           >
-            {loading ? "Creating..." : "Create Ticket →"}
+            {loading
+              ? "Creating..."
+              : mode === "single"
+                ? "Create Ticket →"
+                : `Create ${bulkItems.length} Ticket${bulkItems.length === 1 ? "" : "s"} →`}
           </button>
         </div>
       </div>

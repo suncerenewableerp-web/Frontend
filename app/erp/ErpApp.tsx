@@ -6,6 +6,7 @@ import Link from "next/link";
 import { LuSunMedium } from "react-icons/lu";
 import {
   apiCreateTicket,
+  apiCreateTicketsBulk,
   apiLogin,
   apiRolesPublic,
   apiSchedulePickup,
@@ -195,6 +196,17 @@ export default function ErpApp({
     const created = await apiCreateTicket(input);
     setTickets((prev) => [created, ...prev]);
     notify(`Ticket ${created.ticketId} created successfully!`);
+  };
+
+  const handleNewTicketsBulk = async (inputs: TicketCreateInput[]) => {
+    const created = await apiCreateTicketsBulk(inputs);
+    if (!created.length) return;
+    setTickets((prev) => [...created, ...prev]);
+    notify(
+      created.length === 1
+        ? `Ticket ${created[0]!.ticketId} created successfully!`
+        : `${created.length} tickets created successfully!`,
+    );
   };
 
   const handleUpdateSelectedTicketStatus = async (status: Ticket["status"]) => {
@@ -441,6 +453,7 @@ export default function ErpApp({
         <NewTicketModal
           onClose={() => setShowNewTicket(false)}
           onSubmit={handleNewTicket}
+          onSubmitBulk={handleNewTicketsBulk}
           userRole={user?.role}
         />
       )}

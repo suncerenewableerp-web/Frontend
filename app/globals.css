@@ -518,6 +518,10 @@ tr:hover td { background: var(--surface2); }
 
 /* ── FORM ── */
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.bulk-nav { display: flex; gap: 8px; flex-wrap: wrap; }
+.bulk-pill { min-width: 34px; justify-content: center; }
+.bulk-pill.active { background: var(--accent-soft); border-color: rgba(107,58,31,0.25); color: var(--accent); }
+.bulk-ticket-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .form-group { display: flex; flex-direction: column; gap: 6px; }
 .form-group.full { grid-column: 1 / -1; }
 .form-label { font-size: 11px; font-weight: 600; color: var(--text2); letter-spacing: 0.5px; text-transform: uppercase; }
@@ -687,6 +691,8 @@ tr:hover td { background: var(--surface2); }
   .kpi-value { font-size: 32px; }
   .two-col { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; gap: 12px; }
+  .bulk-ticket-grid { grid-template-columns: 1fr; gap: 12px; }
+  .bulk-ticket-grid > * { grid-column: auto !important; }
   .detail-grid { grid-template-columns: 1fr; }
 
   .table-header { flex-wrap: wrap; gap: 10px; }
