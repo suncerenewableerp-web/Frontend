@@ -521,6 +521,11 @@ tr:hover td { background: var(--surface2); }
 .bulk-nav { display: flex; gap: 8px; flex-wrap: wrap; }
 .bulk-pill { min-width: 34px; justify-content: center; }
 .bulk-pill.active { background: var(--accent-soft); border-color: rgba(107,58,31,0.25); color: var(--accent); }
+.bulk-pill.partial { border-color: rgba(107,58,31,0.35); color: var(--accent); background: rgba(107,58,31,0.04); }
+.bulk-pill.partial:hover { border-color: rgba(107,58,31,0.45); background: rgba(107,58,31,0.06); color: var(--accent); }
+.bulk-pill.filled { background: linear-gradient(135deg, var(--accent), var(--accent2)); border-color: rgba(107,58,31,0.35); color: #fff; }
+.bulk-pill.filled:hover { background: linear-gradient(135deg, var(--accent2), var(--accent3)); border-color: rgba(107,58,31,0.45); color: #fff; }
+.bulk-pill.active.filled { box-shadow: 0 0 0 3px rgba(107,58,31,0.12); }
 .bulk-ticket-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .form-group { display: flex; flex-direction: column; gap: 6px; }
 .form-group.full { grid-column: 1 / -1; }

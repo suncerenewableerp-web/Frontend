@@ -395,6 +395,25 @@ export default function NewTicketModal({
   const [bulkItems, setBulkItems] = useState<BulkItem[]>(() => [emptyBulkItem()]);
   const [bulkActiveIndex, setBulkActiveIndex] = useState(0);
 
+  const bulkItemNavState = useMemo(() => {
+    return bulkItems.map((it) => {
+      const capacity = String(it.capacity || "").trim();
+      const faultDescription = String(it.faultDescription || "").trim();
+      const complete = Boolean(capacity && faultDescription);
+      const hasAny = [
+        it.brandOption,
+        it.inverterMake,
+        it.inverterModel,
+        it.capacity,
+        it.serialNumber,
+        it.faultDescription,
+        it.errorCode,
+      ].some((v) => Boolean(String(v || "").trim()));
+      const partial = hasAny && !complete;
+      return { complete, partial };
+    });
+  }, [bulkItems]);
+
   const canSetPriorityAndWarranty =
     String(userRole || "").toUpperCase() === "ADMIN" ||
     String(userRole || "").toUpperCase() === "SALES";
@@ -416,22 +435,19 @@ export default function NewTicketModal({
     return src.filter((b) => String(b).toLowerCase().includes(q));
   }, [bulkBrandSearch, brands]);
 
-  useEffect(() => {
-    // Switching tabs should not leave dropdowns/errors hanging.
+  const switchMode = (next: "single" | "bulk") => {
+    setMode(next);
     setError("");
     setBrandOpen(false);
     setBulkBrandOpen(false);
     setBulkBrandSearch("");
-  }, [mode]);
+  };
 
-  useEffect(() => {
+  const activateBulkTicket = (idx: number) => {
+    setBulkActiveIndex(idx);
     setBulkBrandOpen(false);
     setBulkBrandSearch("");
-  }, [bulkActiveIndex]);
-
-  useEffect(() => {
-    setBulkActiveIndex((i) => Math.max(0, Math.min(i, (bulkItems?.length || 1) - 1)));
-  }, [bulkItems?.length]);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -567,11 +583,15 @@ export default function NewTicketModal({
     setBulkItems((prev) => {
       const next = [...prev, emptyBulkItem()];
       setBulkActiveIndex(next.length - 1);
+      setBulkBrandOpen(false);
+      setBulkBrandSearch("");
       return next;
     });
   };
 
   const removeBulkItem = (idx: number) => {
+    setBulkBrandOpen(false);
+    setBulkBrandSearch("");
     setBulkItems((prev) => {
       if (prev.length <= 1) return prev;
       const next = prev.filter((_, i) => i !== idx);
@@ -652,23 +672,23 @@ export default function NewTicketModal({
               {error}
             </div>
           )}
-          <div className="tabs" style={{ marginTop: -6, marginBottom: 14 }}>
-            <div
-              className={`tab ${mode === "single" ? "active" : ""}`}
-              onClick={() => setMode("single")}
-              role="button"
-              tabIndex={0}
-            >
-              Single Ticket
-            </div>
-            <div
-              className={`tab ${mode === "bulk" ? "active" : ""}`}
-              onClick={() => setMode("bulk")}
-              role="button"
-              tabIndex={0}
-            >
-              Bulk Ticket Raiser
-            </div>
+              <div className="tabs" style={{ marginTop: -6, marginBottom: 14 }}>
+                <div
+                  className={`tab ${mode === "single" ? "active" : ""}`}
+                  onClick={() => switchMode("single")}
+                  role="button"
+                  tabIndex={0}
+                >
+                  Single Ticket
+                </div>
+                <div
+                  className={`tab ${mode === "bulk" ? "active" : ""}`}
+                  onClick={() => switchMode("bulk")}
+                  role="button"
+                  tabIndex={0}
+                >
+                  Bulk Ticket Raiser
+                </div>
           </div>
 
           {mode === "single" ? (
@@ -1057,16 +1077,19 @@ export default function NewTicketModal({
               <div className="bulk-nav" role="tablist" aria-label="Bulk ticket selector">
                 {(bulkItems || []).map((_, idx) => {
                   const active = idx === bulkActiveIndex;
+                  const nav = bulkItemNavState[idx] || { complete: false, partial: false };
                   return (
                     <button
                       key={idx}
                       type="button"
                       role="tab"
                       aria-selected={active}
-                      className={`btn btn-ghost btn-sm bulk-pill ${active ? "active" : ""}`}
-                      onClick={() => setBulkActiveIndex(idx)}
+                      className={`btn btn-ghost btn-sm bulk-pill ${active ? "active" : ""} ${
+                        nav.complete ? "filled" : nav.partial ? "partial" : ""
+                      }`}
+                      onClick={() => activateBulkTicket(idx)}
                       disabled={loading}
-                      title={`Ticket #${idx + 1}`}
+                      title={`Ticket #${idx + 1}${nav.complete ? " (Filled)" : nav.partial ? " (In progress)" : ""}`}
                     >
                       {idx + 1}
                     </button>
