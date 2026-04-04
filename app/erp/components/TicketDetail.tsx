@@ -35,6 +35,7 @@ import { canAccess } from "../utils";
 import { Badge, PriorityBadge, SlaBadge, StatusBadge } from "./Badges";
 import DatePicker from "./DatePicker";
 import TicketTimeline from "./TicketTimeline";
+import WhatsAppShareModal from "./WhatsAppShareModal";
 import { FiFile, FiFileText, FiImage } from "react-icons/fi";
 
 const DEFAULT_FINAL_TESTING: Array<Pick<JobCardFinalTestingActivity, "sr" | "activity">> = [
@@ -240,6 +241,7 @@ export default function TicketDetail({
   const canShowHeaderBadges = roleName !== "CUSTOMER";
   const canUploadPickupDocs = roleName === "ADMIN" || roleName === "SALES";
   const canSeeCustomerContact = roleName === "ADMIN" || roleName === "SALES";
+  const canOfferWhatsAppShare = roleName === "ADMIN" || roleName === "SALES";
   const tabs = useMemo(() => {
     if (roleName === "CUSTOMER") return ["overview"] as TicketTab[];
     if (roleName === "ENGINEER") return ["jobcard"] as TicketTab[];
@@ -307,6 +309,84 @@ export default function TicketDetail({
     warrantyStatus: Boolean(ticket.warrantyStatus),
     warrantyEndDate: ticket.warrantyEndDate || "",
   });
+
+  const [waOpen, setWaOpen] = useState(false);
+  const [waTitle, setWaTitle] = useState("Share on WhatsApp");
+  const [waPhone, setWaPhone] = useState(ticket.customerPhone || "");
+  const [waMessage, setWaMessage] = useState("");
+
+  const statusLabel = (s: TicketStatus) => {
+    const map: Record<TicketStatus, string> = {
+      CREATED: "Created",
+      PICKUP_SCHEDULED: "Pickup Scheduled",
+      IN_TRANSIT: "In Transit",
+      UNDER_REPAIRED: "Under Repaired",
+      UNDER_DISPATCH: "Under Dispatch",
+      DISPATCHED: "Dispatched",
+      CLOSED: "Closed",
+    };
+    return map[s] || String(s).replace(/_/g, " ");
+  };
+
+  const buildWhatsAppMessage = (nextStatus: TicketStatus, t: Ticket = ticket) => {
+    const nameRaw = String(details.customerName || t.customerName || "").trim();
+    const firstName = nameRaw ? nameRaw.split(/\s+/)[0] : "";
+    const ticketId = String(t.ticketId || "").trim();
+    const inverter = `${t.inverterMake} ${t.inverterModel} (${t.capacity})`;
+
+    const lines: string[] = [];
+    lines.push(`Hello${firstName ? ` ${firstName}` : ""},`);
+    lines.push("");
+    if (ticketId) lines.push(`Your service ticket ${ticketId} status has been updated.`);
+    else lines.push("Your service ticket status has been updated.");
+    lines.push(`Status: ${statusLabel(nextStatus)}`);
+
+    if (nextStatus === "PICKUP_SCHEDULED") {
+      const pickupDate = String(t.pickupDate || "").trim();
+      const addr = String(details.customerAddress || t.customerAddress || "").trim();
+      if (pickupDate) lines.push(`Pickup date: ${pickupDate}`);
+      if (addr) lines.push(`Pickup location: ${addr}`);
+    }
+
+    if (nextStatus === "IN_TRANSIT" || nextStatus === "DISPATCHED") {
+      const courier = String(t.courierName || "").trim();
+      const lr = String(t.lrNumber || "").trim();
+      if (courier || lr) lines.push(`Courier: ${[courier, lr ? `LR ${lr}` : ""].filter(Boolean).join(" · ")}`);
+    }
+
+    if (nextStatus === "UNDER_REPAIRED") {
+      const eng = String(t.assignedEngineer || "").trim();
+      if (eng && eng !== "-") lines.push(`Assigned engineer: ${eng}`);
+    }
+
+    lines.push("");
+    lines.push(`Inverter: ${inverter}`);
+
+    const serial = String(t.serialNumber || "").trim();
+    if (serial && serial !== "—") lines.push(`Serial: ${serial}`);
+
+    const err = String(t.errorCode || "").trim();
+    if (err) lines.push(`Error code: ${err}`);
+
+    lines.push("");
+    lines.push("Thanks,");
+    lines.push("Sunce Service Team");
+    return lines.join("\n");
+  };
+
+  const offerWhatsAppShare = (nextStatus: TicketStatus, t: Ticket = ticket) => {
+    if (!canOfferWhatsAppShare) return;
+    const phone = String(details.customerPhone || t.customerPhone || "").trim();
+    setWaPhone(phone);
+    setWaMessage(buildWhatsAppMessage(nextStatus, t));
+    setWaTitle(`WhatsApp · ${t.ticketId || "Ticket"} · ${statusLabel(nextStatus)}`);
+    setWaOpen(true);
+  };
+
+  const updateStatusAndShare = async (nextStatus: TicketStatus) => {
+    await onUpdateStatus(nextStatus);
+    offerWhatsAppShare(nextStatus);
+  };
 
   useEffect(() => {
     if (!canManageBrandList) return;
@@ -1068,14 +1148,14 @@ export default function TicketDetail({
                     }
                   }
 
-                  if (newStatus === "UNDER_DISPATCH") {
-                    openLogistics(
-                      "under_dispatch",
-                      "Please review Under Dispatch (invoice/payment) and save it before scheduling dispatch.",
-                    );
-                    await onUpdateStatus(newStatus);
-                    return;
-                  }
+	                  if (newStatus === "UNDER_DISPATCH") {
+	                    openLogistics(
+	                      "under_dispatch",
+	                      "Please review Under Dispatch (invoice/payment) and save it before scheduling dispatch.",
+	                    );
+	                    await updateStatusAndShare(newStatus);
+	                    return;
+	                  }
 
                   if (newStatus === "DISPATCHED") {
                     openLogistics(
@@ -1095,8 +1175,8 @@ export default function TicketDetail({
                     }
                   }
 
-                  await onUpdateStatus(newStatus);
-                })()
+	                  await updateStatusAndShare(newStatus);
+	                })()
                   .catch(() => {})
                   .finally(() => setUpdating(false));
               }}
@@ -2821,13 +2901,16 @@ export default function TicketDetail({
                         });
 
                   Promise.resolve(save)
-                    .then(() => Promise.all([apiTicketGet(ticket.id), apiLogisticsByTicket(ticket.id)]))
-                    .then(([fresh, rows]) => {
-                      onTicketUpdated(fresh);
-                      const pickup =
-                        rows.find((r) => String(r?.type || "").toUpperCase() === "PICKUP") || null;
-                      const dispatch =
-                        rows.find((r) => String(r?.type || "").toUpperCase() === "DELIVERY") || null;
+	                    .then(() => Promise.all([apiTicketGet(ticket.id), apiLogisticsByTicket(ticket.id)]))
+	                    .then(([fresh, rows]) => {
+	                      onTicketUpdated(fresh);
+	                      if (fresh.status && fresh.status !== ticket.status) {
+	                        offerWhatsAppShare(fresh.status, fresh);
+	                      }
+	                      const pickup =
+	                        rows.find((r) => String(r?.type || "").toUpperCase() === "PICKUP") || null;
+	                      const dispatch =
+	                        rows.find((r) => String(r?.type || "").toUpperCase() === "DELIVERY") || null;
                       setPickupLogistics(pickup);
                       setDispatchLogistics(dispatch);
                       setPickupDocuments(
@@ -3086,16 +3169,16 @@ export default function TicketDetail({
                       {pickupAdvanceUnlocked ? (
                         <button
                           className="btn btn-accent btn-sm"
-                          disabled={logisticsAdvancing || !canAdvanceToInTransit}
-                          onClick={() => {
-                            setLogisticsAdvancing(true);
-                            onUpdateStatus("IN_TRANSIT")
-                              .then(() => {
-                                setActiveTab("overview");
-                              })
-                              .catch(() => {})
-                              .finally(() => setLogisticsAdvancing(false));
-                          }}
+	                          disabled={logisticsAdvancing || !canAdvanceToInTransit}
+	                          onClick={() => {
+	                            setLogisticsAdvancing(true);
+	                            updateStatusAndShare("IN_TRANSIT")
+	                              .then(() => {
+	                                setActiveTab("overview");
+	                              })
+	                              .catch(() => {})
+	                              .finally(() => setLogisticsAdvancing(false));
+	                          }}
                         >
                           {logisticsAdvancing ? "Updating..." : "Next → In Transit"}
                         </button>
@@ -3160,13 +3243,16 @@ export default function TicketDetail({
                             invoiceGenerated: dispatchInvoiceGenerated,
                             paymentDone: dispatchPaymentDone,
                           })
-                            .then(() => Promise.all([apiTicketGet(ticket.id), apiLogisticsByTicket(ticket.id)]))
-                            .then(([fresh, rows]) => {
-                              onTicketUpdated(fresh);
-                              const dispatch =
-                                rows.find((r) => String(r?.type || "").toUpperCase() === "DELIVERY") || null;
-                              const invoiceSaved = Boolean(dispatch?.billing?.invoiceGenerated);
-                              const paymentSaved = Boolean(dispatch?.billing?.paymentDone);
+	                            .then(() => Promise.all([apiTicketGet(ticket.id), apiLogisticsByTicket(ticket.id)]))
+	                            .then(([fresh, rows]) => {
+	                              onTicketUpdated(fresh);
+	                              if (fresh.status && fresh.status !== ticket.status) {
+	                                offerWhatsAppShare(fresh.status, fresh);
+	                              }
+	                              const dispatch =
+	                                rows.find((r) => String(r?.type || "").toUpperCase() === "DELIVERY") || null;
+	                              const invoiceSaved = Boolean(dispatch?.billing?.invoiceGenerated);
+	                              const paymentSaved = Boolean(dispatch?.billing?.paymentDone);
                               setDispatchInvoiceGenerated(invoiceSaved);
                               setDispatchPaymentDone(paymentSaved);
                               setDispatchBillingBaseline({ invoiceGenerated: invoiceSaved, paymentDone: paymentSaved });
@@ -3260,13 +3346,13 @@ export default function TicketDetail({
                       {dispatchAdvanceUnlocked ? (
                         <button
                           className="btn btn-accent btn-sm"
-                          disabled={logisticsAdvancing || !canAdvanceToClosed}
-                          onClick={() => {
-                            setLogisticsAdvancing(true);
-                            onUpdateStatus("CLOSED")
-                              .catch(() => {})
-                              .finally(() => setLogisticsAdvancing(false));
-                          }}
+	                          disabled={logisticsAdvancing || !canAdvanceToClosed}
+	                          onClick={() => {
+	                            setLogisticsAdvancing(true);
+	                            updateStatusAndShare("CLOSED")
+	                              .catch(() => {})
+	                              .finally(() => setLogisticsAdvancing(false));
+	                          }}
                         >
                           {logisticsAdvancing ? "Updating..." : "Next → Closed"}
                         </button>
@@ -3468,6 +3554,15 @@ export default function TicketDetail({
           </div>
         </div>
       ) : null}
+
+      <WhatsAppShareModal
+        open={waOpen && canOfferWhatsAppShare}
+        title={waTitle}
+        phone={waPhone}
+        onPhoneChange={setWaPhone}
+        message={waMessage}
+        onClose={() => setWaOpen(false)}
+      />
     </div>
   );
 }
