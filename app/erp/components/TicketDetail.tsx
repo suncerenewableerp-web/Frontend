@@ -17,6 +17,7 @@ import {
   apiTicketPickupDetailsGet,
   apiTicketPickupDocumentUpload,
   apiTicketGet,
+  apiEngineerNamesList,
   apiUpdateTicketDetails,
   apiUpdateTicketFaultDescription,
   type BackendLogistics,
@@ -34,6 +35,7 @@ import type {
 import { canAccess } from "../utils";
 import { Badge, PriorityBadge, SlaBadge, StatusBadge } from "./Badges";
 import DatePicker from "./DatePicker";
+import NameCombobox from "./NameCombobox";
 import TicketTimeline from "./TicketTimeline";
 import WhatsAppShareModal from "./WhatsAppShareModal";
 import { FiFile, FiFileText, FiImage } from "react-icons/fi";
@@ -51,6 +53,12 @@ const DEFAULT_FINAL_TESTING: Array<Pick<JobCardFinalTestingActivity, "sr" | "act
   { sr: 10, activity: "Cleaning of all filters" },
   { sr: 11, activity: "Cleaning of inverter body" },
 ];
+
+const DEFAULT_ENGINEER_DROPDOWN = Object.freeze([
+  "Avinash Kumar",
+  "Ranjan Kumar",
+  "Sourav kumar",
+]);
 
 function docLinkLabel(u: string): string {
   const raw = String(u || "").trim();
@@ -309,6 +317,31 @@ export default function TicketDetail({
     warrantyStatus: Boolean(ticket.warrantyStatus),
     warrantyEndDate: ticket.warrantyEndDate || "",
   });
+
+  const [engineerDropdown, setEngineerDropdown] = useState<string[]>(() => [...DEFAULT_ENGINEER_DROPDOWN]);
+
+  useEffect(() => {
+    if (activeTab !== "jobcard") return;
+    if (roleName !== "ENGINEER") return;
+    let cancelled = false;
+    apiEngineerNamesList()
+      .then((rows) => {
+        if (cancelled) return;
+        const merged = [
+          ...DEFAULT_ENGINEER_DROPDOWN,
+          ...(rows || []).map((r) => String(r?.name || "").trim()).filter(Boolean),
+        ];
+        const uniq = Array.from(new Set(merged.map((x) => x.trim()).filter(Boolean)));
+        uniq.sort((a, b) => a.localeCompare(b));
+        setEngineerDropdown(uniq);
+      })
+      .catch(() => {
+        // Keep default list if API fails (or permission denied).
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, roleName]);
 
   const [waOpen, setWaOpen] = useState(false);
   const [waTitle, setWaTitle] = useState("Share on WhatsApp");
@@ -1656,21 +1689,21 @@ export default function TicketDetail({
                     ))}
                   </div>
 
-                  <div className="form-section">Job Assign To</div>
-                  <div className="form-grid">
-                    <div className="form-group full">
-                      <label className="form-label">Engineer Name</label>
-                      <input
-                        className="form-input"
-                        value={jobCard.checkedByName || ""}
-                        disabled={!canEditJobCard}
-                        onChange={(e) =>
-                          setJobCard((p) => (p ? { ...p, checkedByName: e.target.value } : p))
-                        }
-                        placeholder="Enter engineer name"
-                      />
-                    </div>
-                  </div>
+	                  <div className="form-section">Job Assign To</div>
+	                  <div className="form-grid" style={{ gridTemplateColumns: "minmax(220px, 420px) 1fr" }}>
+	                    <div className="form-group">
+	                      <label className="form-label">Engineer Name</label>
+	                      <NameCombobox
+	                        value={jobCard.checkedByName || ""}
+	                        disabled={!canEditJobCard}
+	                        options={engineerDropdown}
+	                        placeholder="Select engineer name"
+	                        onChange={(v) =>
+	                          setJobCard((p) => (p ? { ...p, checkedByName: v } : p))
+	                        }
+	                      />
+	                    </div>
+	                  </div>
 
                   <div className="form-section">Diagnosis</div>
                   <textarea
@@ -1738,23 +1771,26 @@ export default function TicketDetail({
 
                   {String(jobCard.currentStatus || "").toUpperCase() === "REPAIRABLE" ? (
                     <>
-                      <div className="form-section">Card Repair Actions Carried Out By</div>
-                      <div className="form-grid" style={{ marginBottom: 10 }}>
-                        <div className="form-group full">
-                          <label className="form-label">Name</label>
-                          <input
-                            className="form-input"
-                            value={jobCard.repairActionsByName || ""}
-                            disabled={!canEditJobCard}
-                            onChange={(e) =>
-                              setJobCard((p) =>
-                                p ? { ...p, repairActionsByName: e.target.value } : p,
-                              )
-                            }
-                            placeholder="e.g. QA Team / Sub engineer name"
-                          />
-                        </div>
-                      </div>
+	                      <div className="form-section">Card Repair Actions Carried Out By</div>
+	                      <div
+	                        className="form-grid"
+	                        style={{ marginBottom: 10, gridTemplateColumns: "minmax(220px, 420px) 1fr" }}
+	                      >
+	                        <div className="form-group">
+	                          <label className="form-label">Name</label>
+	                          <NameCombobox
+	                            value={jobCard.repairActionsByName || ""}
+	                            disabled={!canEditJobCard}
+	                            options={engineerDropdown}
+	                            placeholder="e.g. QA Team / Sub engineer name"
+	                            onChange={(v) =>
+	                              setJobCard((p) =>
+	                                p ? { ...p, repairActionsByName: v } : p,
+	                              )
+	                            }
+	                          />
+	                        </div>
+	                      </div>
                       <div className="scroll-x">
                         <table>
                           <thead>

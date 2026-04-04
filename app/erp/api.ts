@@ -923,6 +923,16 @@ export async function apiUsersList(): Promise<User[]> {
   return env.data.users.map(toUser);
 }
 
+export type EngineerName = { id: string; name: string };
+
+export async function apiEngineerNamesList(): Promise<EngineerName[]> {
+  const env = await apiFetch<EngineerName[]>("/api/users/engineer-names", {
+    method: "GET",
+  });
+  if (!env.success) throw new Error(env.message || "Failed to fetch engineer names");
+  return Array.isArray(env.data) ? env.data : [];
+}
+
 export async function apiUserCreate(input: {
   name: string;
   email: string;
