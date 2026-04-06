@@ -354,7 +354,7 @@ export default function ErpApp({
                   setSelectedTicket(t);
                   setTicketDetailTab(user.role === "ENGINEER" ? "jobcard" : "overview");
                   setTicketDetailLogisticsStage(
-                    t.status === "DISPATCHED" || t.status === "CLOSED"
+                    t.status === "DISPATCHED" || t.status === "INSTALLATION_DONE" || t.status === "CLOSED"
                       ? "dispatch"
                       : t.status === "UNDER_DISPATCH"
                         ? "under_dispatch"
@@ -382,7 +382,7 @@ export default function ErpApp({
                   const nextTab = opts?.tab || (user.role === "ENGINEER" ? "jobcard" : "overview");
                   setTicketDetailTab(nextTab);
                   setTicketDetailLogisticsStage(
-                    t.status === "DISPATCHED" || t.status === "CLOSED"
+                    t.status === "DISPATCHED" || t.status === "INSTALLATION_DONE" || t.status === "CLOSED"
                       ? "dispatch"
                       : t.status === "UNDER_DISPATCH"
                         ? "under_dispatch"

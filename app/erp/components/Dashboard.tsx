@@ -19,7 +19,9 @@ export default function Dashboard({
   onOpenTickets: (preset?: { status?: string; priority?: string }) => void;
 }) {
   const isCustomer = String(user.role || "").toUpperCase() === "CUSTOMER";
-  const open = tickets.filter((t) => t.status !== "CLOSED").length;
+  const inward = tickets.filter((t) =>
+    ["CREATED", "PICKUP_SCHEDULED", "IN_TRANSIT"].includes(String(t.status || "").toUpperCase()),
+  ).length;
   const closed = tickets.filter((t) => t.status === "CLOSED").length;
   const breached = tickets.filter((t) => t.slaStatus === "BREACHED").length;
   const high = tickets.filter((t) => t.priority === "HIGH" && t.status !== "CLOSED").length;
@@ -104,9 +106,9 @@ export default function Dashboard({
           <div className="kpi-grid">
             {[
               {
-                label: "Open Tickets",
-                value: open,
-                sub: "Active service requests",
+                label: "Inward Stage",
+                value: inward,
+                sub: "Created / Pickup / In transit",
                 color: "#6b3a1f",
                 Icon: LuTicket,
                 onClick: () => onOpenTickets({ status: "OPEN" }),

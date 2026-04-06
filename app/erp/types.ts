@@ -84,6 +84,7 @@ export type TicketStatus =
   | "UNDER_REPAIRED"
   | "UNDER_DISPATCH"
   | "DISPATCHED"
+  | "INSTALLATION_DONE"
   | "CLOSED";
 
 export interface Ticket {

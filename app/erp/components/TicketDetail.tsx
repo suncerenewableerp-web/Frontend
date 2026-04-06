@@ -9,6 +9,8 @@ import {
   apiSchedulePickup,
   apiScheduleDispatch,
   apiUnderDispatchSave,
+  apiDispatchApprove,
+  apiTicketApproveInstallationDone,
   apiSlaSettingsGet,
   apiSlaSettingsUpdate,
   apiTicketJobCardGet,
@@ -264,7 +266,7 @@ export default function TicketDetail({
   const [statusError, setStatusError] = useState("");
   const currentIdx = STATUS_ORDER.indexOf(ticket.status);
   const canSeeStatusUpdate = useMemo(() => {
-    if (roleName !== "ADMIN" && roleName !== "ENGINEER" && roleName !== "SALES") return false;
+    if (roleName !== "ADMIN" && roleName !== "SALES") return false;
     return canAccess(roles, user.role, "tickets", "edit");
   }, [roles, user.role, roleName]);
   const statusUpdatesLocked = ticket.status === "CLOSED";
@@ -276,14 +278,16 @@ export default function TicketDetail({
         canAccess(roles, user.role, "logistics", "create"))
     );
   }, [roles, user.role, ticket.status, roleName]);
+
   const canEditSla = useMemo(() => {
     if (roleName !== "ADMIN" && roleName !== "SALES") return false;
     return canAccess(roles, user.role, "sla", "edit");
   }, [roles, user.role, roleName]);
   const canEditJobCard = useMemo(() => {
+    if (roleName !== "ENGINEER") return false;
     const can = canAccess(roles, user.role, "jobcard", "edit");
     if (!can) return false;
-    if (roleName === "ENGINEER" && ticket.status === "CLOSED") return false;
+    if (ticket.status !== "UNDER_REPAIRED") return false;
     return true;
   }, [roles, user.role, roleName, ticket.status]);
 
@@ -356,6 +360,7 @@ export default function TicketDetail({
       UNDER_REPAIRED: "Under Repaired",
       UNDER_DISPATCH: "Under Dispatch",
       DISPATCHED: "Dispatched",
+      INSTALLATION_DONE: "Installation Done",
       CLOSED: "Closed",
     };
     return map[s] || String(s).replace(/_/g, " ");
@@ -476,17 +481,26 @@ export default function TicketDetail({
 
   const [logisticsStage, setLogisticsStage] = useState<"pickup" | "under_dispatch" | "dispatch">(() => {
     if (initialLogisticsStage) return initialLogisticsStage;
-    return ticket.status === "UNDER_DISPATCH" || ticket.status === "DISPATCHED" || ticket.status === "CLOSED"
+    return ticket.status === "UNDER_DISPATCH" ||
+      ticket.status === "DISPATCHED" ||
+      ticket.status === "INSTALLATION_DONE" ||
+      ticket.status === "CLOSED"
       ? "dispatch"
       : "pickup";
   });
 
   const [, setPickupLogistics] = useState<BackendLogistics | null>(null);
-  const [, setDispatchLogistics] = useState<BackendLogistics | null>(null);
+  const [dispatchLogistics, setDispatchLogistics] = useState<BackendLogistics | null>(null);
+  const dispatchApprovedForSales =
+    roleName === "SALES" ? Boolean(dispatchLogistics?.billing?.dispatchApproved) : true;
+  const canSeeDispatchStage =
+    roleName === "ADMIN" || (roleName === "SALES" && dispatchApprovedForSales);
   const [logisticsLoading, setLogisticsLoading] = useState(false);
   const [logisticsSaving, setLogisticsSaving] = useState(false);
   const [logisticsAdvancing, setLogisticsAdvancing] = useState(false);
   const [underDispatchSaving, setUnderDispatchSaving] = useState(false);
+  const [dispatchApprovalSaving, setDispatchApprovalSaving] = useState(false);
+  const [dispatchApprovalError, setDispatchApprovalError] = useState("");
   const [logisticsError, setLogisticsError] = useState("");
   const [logisticsSavedMsg, setLogisticsSavedMsg] = useState("");
 
@@ -534,6 +548,9 @@ export default function TicketDetail({
   const [customerPickupLoading, setCustomerPickupLoading] = useState(false);
   const [customerPickupError, setCustomerPickupError] = useState("");
   const [customerPickupSavedMsg, setCustomerPickupSavedMsg] = useState("");
+  const [installationApproving, setInstallationApproving] = useState(false);
+  const [installationError, setInstallationError] = useState("");
+  const [installationSavedMsg, setInstallationSavedMsg] = useState("");
   const [pickupDocuments, setPickupDocuments] = useState<string[]>([]);
   const [pickupDocFile, setPickupDocFile] = useState<File | null>(null);
   const [pickupDocUploading, setPickupDocUploading] = useState(false);
@@ -713,6 +730,49 @@ export default function TicketDetail({
   }, [activeTab, ticket.id, ticket.customerAddress, canEditLogistics]);
 
   useEffect(() => {
+    if (roleName !== "SALES") return;
+    if (!canEditLogistics) return;
+    if (dispatchApprovedForSales) return;
+    if (logisticsStage !== "dispatch") return;
+    setLogisticsStage("under_dispatch");
+  }, [roleName, canEditLogistics, dispatchApprovedForSales, logisticsStage]);
+
+  useEffect(() => {
+    if (activeTab !== "logistics") return;
+    if (roleName !== "SALES") return;
+    if (!canEditLogistics) return;
+    if (dispatchApprovedForSales) return;
+
+    let cancelled = false;
+    const tick = () => {
+      if (cancelled) return;
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      apiLogisticsByTicket(ticket.id)
+        .then((rows) => {
+          if (cancelled) return;
+          const dispatch =
+            rows.find((r) => String(r?.type || "").toUpperCase() === "DELIVERY") || null;
+          setDispatchLogistics(dispatch);
+          if (Boolean(dispatch?.billing?.dispatchApproved)) {
+            setLogisticsError("");
+            setLogisticsSavedMsg("Admin approved dispatch.");
+            setLogisticsStage("dispatch");
+          }
+        })
+        .catch(() => {
+          // Ignore polling errors; the primary fetch shows errors.
+        });
+    };
+
+    tick();
+    const interval = setInterval(tick, 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [activeTab, roleName, canEditLogistics, dispatchApprovedForSales, ticket.id]);
+
+  useEffect(() => {
     queueMicrotask(() => setNewStatus(ticket.status));
   }, [ticket.status]);
 
@@ -818,9 +878,16 @@ export default function TicketDetail({
     pickupAdvanceUnlocked &&
     !pickupDirty;
 
-  const canAdvanceToClosed =
+  const canAdvanceToInstallationDone =
     canEditLogistics &&
     ticket.status === "DISPATCHED" &&
+    Boolean(dispatchBaseline) &&
+    dispatchAdvanceUnlocked &&
+    !dispatchDirty;
+
+  const canAdvanceToClosed =
+    canEditLogistics &&
+    ticket.status === "INSTALLATION_DONE" &&
     Boolean(dispatchBaseline) &&
     dispatchAdvanceUnlocked &&
     !dispatchDirty;
@@ -947,7 +1014,8 @@ export default function TicketDetail({
     setJobSaving(true);
     setJobError("");
     setJobSavedMsg("");
-    apiTicketJobCardFinalize(ticket.id, decision)
+    const finalizedAt = String(jobCard.engineerFinalizedAt || "").trim() || toDateInputValue(new Date());
+    apiTicketJobCardFinalize(ticket.id, decision, finalizedAt)
       .then((saved) => {
         setJobCard(saved);
         setJobSavedMsg(decision === "REPAIRABLE" ? "Finalized as REPAIRABLE." : "Finalized as NOT REPAIRABLE (SCRAP).");
@@ -1191,10 +1259,22 @@ export default function TicketDetail({
 	                  }
 
                   if (newStatus === "DISPATCHED") {
+                    if (roleName === "SALES" && !dispatchApprovedForSales) {
+                      openLogistics(
+                        "under_dispatch",
+                        "Dispatch is waiting for Admin approval. Please ask Admin to approve, then you can proceed.",
+                      );
+                      return;
+                    }
                     openLogistics(
                       "dispatch",
                       "Please open Logistics and save dispatch details first (Save Dispatch).",
                     );
+                    return;
+                  }
+
+                  if (newStatus === "INSTALLATION_DONE") {
+                    await updateStatusAndShare(newStatus);
                     return;
                   }
 
@@ -1239,6 +1319,65 @@ export default function TicketDetail({
 
       {activeTab === "overview" && (
         <>
+          {roleName === "CUSTOMER" ? (
+            <div className="table-card" style={{ marginBottom: 16 }}>
+              <div className="table-header">
+                <div className="table-title">Installation</div>
+              </div>
+              <div style={{ padding: "14px 16px" }}>
+                {ticket.status === "DISPATCHED" ? (
+                  <>
+                    <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 10, lineHeight: 1.5 }}>
+                      Once the installation is completed at your site, please confirm it here. After confirmation,
+                      the ticket can be closed.
+                    </div>
+                    <button
+                      className="btn btn-accent btn-sm"
+                      type="button"
+                      disabled={installationApproving}
+                      onClick={() => {
+                        setInstallationApproving(true);
+                        setInstallationError("");
+                        setInstallationSavedMsg("");
+                        apiTicketApproveInstallationDone(ticket.id)
+                          .then((updated) => {
+                            onTicketUpdated(updated);
+                            setInstallationSavedMsg("Installation approved.");
+                          })
+                          .catch((e) =>
+                            setInstallationError(
+                              e instanceof Error ? e.message : "Failed to approve installation",
+                            ),
+                          )
+                          .finally(() => setInstallationApproving(false));
+                      }}
+                    >
+                      {installationApproving ? "Approving..." : "Installation Done"}
+                    </button>
+                  </>
+                ) : ticket.status === "INSTALLATION_DONE" || ticket.status === "CLOSED" ? (
+                  <div style={{ fontSize: 12, color: "var(--green)" }}>
+                    Installation confirmed.
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: "var(--text3)" }}>
+                    Installation confirmation will be available after dispatch.
+                  </div>
+                )}
+
+                {installationSavedMsg ? (
+                  <div style={{ marginTop: 10, fontSize: 12, color: "var(--green)" }}>
+                    {installationSavedMsg}
+                  </div>
+                ) : null}
+                {installationError ? (
+                  <div className="form-error" style={{ marginTop: 10 }}>
+                    {installationError}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           {canSeeCustomerContact ? (
             <div className="detail-grid" style={{ marginBottom: 14 }}>
               {[
@@ -1690,7 +1829,7 @@ export default function TicketDetail({
                   </div>
 
 	                  <div className="form-section">Job Assign To</div>
-	                  <div className="form-grid" style={{ gridTemplateColumns: "minmax(220px, 420px) 1fr" }}>
+	                  <div className="form-grid" style={{ gridTemplateColumns: "minmax(220px, 420px) minmax(180px, 260px) 1fr" }}>
 	                    <div className="form-group">
 	                      <label className="form-label">Engineer Name</label>
 	                      <NameCombobox
@@ -1703,6 +1842,18 @@ export default function TicketDetail({
 	                        }
 	                      />
 	                    </div>
+                      <div className="form-group">
+                        <label className="form-label">Update Date</label>
+                        <input
+                          className="form-input"
+                          type="date"
+                          value={jobCard.checkedByDate || ""}
+                          disabled={!canEditJobCard}
+                          onChange={(e) =>
+                            setJobCard((p) => (p ? { ...p, checkedByDate: e.target.value } : p))
+                          }
+                        />
+                      </div>
 	                  </div>
 
                   <div className="form-section">Diagnosis</div>
@@ -2113,6 +2264,21 @@ export default function TicketDetail({
 	                    {roleName === "ENGINEER" &&
 	                    String(ticket.status || "").toUpperCase() === "UNDER_REPAIRED" ? (
 	                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+	                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+	                          <span style={{ fontSize: 12, color: "var(--text3)" }}>Finalize date</span>
+	                          <input
+	                            className="form-input"
+	                            type="date"
+	                            value={jobCard.engineerFinalizedAt || toDateInputValue(new Date())}
+	                            disabled={jobSaving}
+	                            onChange={(e) =>
+	                              setJobCard((p) =>
+	                                p ? { ...p, engineerFinalizedAt: e.target.value } : p,
+	                              )
+	                            }
+	                            style={{ width: 160 }}
+	                          />
+	                        </div>
 	                        <button
 	                          className="btn btn-ghost btn-sm"
 	                          type="button"
@@ -2169,7 +2335,7 @@ export default function TicketDetail({
                       </div>
                     </div>
                     <div className="detail-card">
-                      <div className="detail-label">Checked Date</div>
+                      <div className="detail-label">Updated Date</div>
                       <div className="detail-value" style={{ fontFamily: "var(--mono)" }}>
                         {jobCard.checkedByDate || "—"}
                       </div>
@@ -3038,19 +3204,21 @@ export default function TicketDetail({
                   Under Dispatch
                 </div>
               ) : null}
-              <div
-                className={`tab ${logisticsStage === "dispatch" ? "active" : ""}`}
-                onClick={() => {
-                  if (canEditLogistics && ticket.status === "UNDER_REPAIRED") {
-                    setLogisticsStage("under_dispatch");
-                    setLogisticsError("Please complete Under Dispatch first, then schedule Dispatch.");
-                    return;
-                  }
-                  setLogisticsStage("dispatch");
-                }}
-              >
-                Dispatch
-              </div>
+              {canSeeDispatchStage ? (
+                <div
+                  className={`tab ${logisticsStage === "dispatch" ? "active" : ""}`}
+                  onClick={() => {
+                    if (canEditLogistics && ticket.status === "UNDER_REPAIRED") {
+                      setLogisticsStage("under_dispatch");
+                      setLogisticsError("Please complete Under Dispatch first, then schedule Dispatch.");
+                      return;
+                    }
+                    setLogisticsStage("dispatch");
+                  }}
+                >
+                  Dispatch
+                </div>
+              ) : null}
             </div>
 
             {logisticsLoading ? (
@@ -3272,6 +3440,7 @@ export default function TicketDetail({
                         disabled={underDispatchSaving || !dispatchBillingDirty}
                         onClick={() => {
                           setUnderDispatchSaving(true);
+                          setDispatchApprovalError("");
                           setLogisticsError("");
                           setLogisticsSavedMsg("");
                           apiUnderDispatchSave({
@@ -3289,11 +3458,18 @@ export default function TicketDetail({
 	                                rows.find((r) => String(r?.type || "").toUpperCase() === "DELIVERY") || null;
 	                              const invoiceSaved = Boolean(dispatch?.billing?.invoiceGenerated);
 	                              const paymentSaved = Boolean(dispatch?.billing?.paymentDone);
+                              const approved = Boolean(dispatch?.billing?.dispatchApproved);
                               setDispatchInvoiceGenerated(invoiceSaved);
                               setDispatchPaymentDone(paymentSaved);
                               setDispatchBillingBaseline({ invoiceGenerated: invoiceSaved, paymentDone: paymentSaved });
-                              setLogisticsSavedMsg("Under dispatch saved.");
-                              setLogisticsStage("dispatch");
+                              setDispatchLogistics(dispatch);
+                              if (roleName === "SALES" && !approved) {
+                                setLogisticsSavedMsg("Under dispatch saved. Waiting for Admin approval to dispatch.");
+                                setLogisticsStage("under_dispatch");
+                              } else {
+                                setLogisticsSavedMsg("Under dispatch saved.");
+                                setLogisticsStage("dispatch");
+                              }
                             })
                             .catch((e) =>
                               setLogisticsError(
@@ -3306,6 +3482,55 @@ export default function TicketDetail({
                         {underDispatchSaving ? "Saving..." : "Save Under Dispatch"}
                       </button>
                     </div>
+
+                    <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+                      <span className="tag">
+                        Admin Approval:{" "}
+                        {Boolean(dispatchLogistics?.billing?.dispatchApproved)
+                          ? "APPROVED"
+                          : dispatchLogistics?.billing?.dispatchApprovalRequestedAt
+                            ? "PENDING"
+                            : "—"}
+                      </span>
+                      {roleName === "SALES" && !dispatchApprovedForSales ? (
+                        <div style={{ fontSize: 12, color: "var(--text3)" }}>
+                          Dispatch will be available after Admin approval.
+                        </div>
+                      ) : null}
+                      {roleName === "ADMIN" && !Boolean(dispatchLogistics?.billing?.dispatchApproved) ? (
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          type="button"
+                          disabled={dispatchApprovalSaving}
+                          onClick={() => {
+                            setDispatchApprovalSaving(true);
+                            setDispatchApprovalError("");
+                            setLogisticsSavedMsg("");
+                            apiDispatchApprove(ticket.id)
+                              .then(() => apiLogisticsByTicket(ticket.id))
+                              .then((rows) => {
+                                const dispatch =
+                                  rows.find((r) => String(r?.type || "").toUpperCase() === "DELIVERY") || null;
+                                setDispatchLogistics(dispatch);
+                                setLogisticsSavedMsg("Dispatch approved.");
+                              })
+                              .catch((e) =>
+                                setDispatchApprovalError(
+                                  e instanceof Error ? e.message : "Failed to approve dispatch",
+                                ),
+                              )
+                              .finally(() => setDispatchApprovalSaving(false));
+                          }}
+                        >
+                          {dispatchApprovalSaving ? "Approving..." : "Approve Dispatch"}
+                        </button>
+                      ) : null}
+                    </div>
+                    {dispatchApprovalError ? (
+                      <div className="form-error" style={{ marginTop: 10 }}>
+                        {dispatchApprovalError}
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
                   <div style={{ marginTop: 16, fontSize: 12, color: "var(--text3)" }}>
@@ -3371,7 +3596,11 @@ export default function TicketDetail({
                       }}
                     >
                       <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5 }}>
-                        {canAdvanceToClosed ? (
+                        {ticket.status === "DISPATCHED" && canAdvanceToInstallationDone ? (
+                          <>
+                            You can move the ticket to <span className="tag">INSTALLATION DONE</span>.
+                          </>
+                        ) : ticket.status === "INSTALLATION_DONE" && canAdvanceToClosed ? (
                           <>
                             You can move the ticket to <span className="tag">CLOSED</span>.
                           </>
@@ -3379,18 +3608,31 @@ export default function TicketDetail({
                           <>Save dispatch to go to next step.</>
                         )}
                       </div>
-                      {dispatchAdvanceUnlocked ? (
+                      {dispatchAdvanceUnlocked && (ticket.status === "DISPATCHED" || ticket.status === "INSTALLATION_DONE") ? (
                         <button
                           className="btn btn-accent btn-sm"
-	                          disabled={logisticsAdvancing || !canAdvanceToClosed}
+	                          disabled={
+                              logisticsAdvancing ||
+                              (ticket.status === "DISPATCHED"
+                                ? !canAdvanceToInstallationDone
+                                : ticket.status === "INSTALLATION_DONE"
+                                  ? !canAdvanceToClosed
+                                  : true)
+                            }
 	                          onClick={() => {
 	                            setLogisticsAdvancing(true);
-	                            updateStatusAndShare("CLOSED")
+	                            updateStatusAndShare(
+                                ticket.status === "DISPATCHED" ? "INSTALLATION_DONE" : "CLOSED",
+                              )
 	                              .catch(() => {})
 	                              .finally(() => setLogisticsAdvancing(false));
 	                          }}
                         >
-                          {logisticsAdvancing ? "Updating..." : "Next → Closed"}
+                          {logisticsAdvancing
+                            ? "Updating..."
+                            : ticket.status === "DISPATCHED"
+                              ? "Next → Installation Done"
+                              : "Next → Closed"}
                         </button>
                       ) : null}
                     </div>

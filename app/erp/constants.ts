@@ -218,6 +218,7 @@ export const STATUS_ORDER: TicketStatus[] = [
   "UNDER_REPAIRED",
   "UNDER_DISPATCH",
   "DISPATCHED",
+  "INSTALLATION_DONE",
   "CLOSED",
 ];
 
@@ -228,6 +229,7 @@ export const STATUS_COLORS: Record<TicketStatus, string> = {
   UNDER_REPAIRED: "#ea580c",
   UNDER_DISPATCH: "#0ea5e9",
   DISPATCHED: "#16a34a",
+  INSTALLATION_DONE: "#0f766e",
   CLOSED: "#64748b",
 };
 

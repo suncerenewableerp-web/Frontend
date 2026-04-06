@@ -294,6 +294,11 @@ export type BackendLogistics = {
   billing?: {
     invoiceGenerated?: boolean;
     paymentDone?: boolean;
+    dispatchApprovalRequestedAt?: string | Date;
+    dispatchApprovalRequestedBy?: string;
+    dispatchApproved?: boolean;
+    dispatchApprovedAt?: string | Date;
+    dispatchApprovedBy?: string;
   };
   documents?: string[];
   createdAt?: string | Date;
@@ -505,6 +510,7 @@ function toTicket(t: BackendTicket): Ticket {
     if (s === "UNDER_REPAIRED") return "UNDER_REPAIRED";
     if (s === "UNDER_DISPATCH") return "UNDER_DISPATCH";
     if (s === "DISPATCHED") return "DISPATCHED";
+    if (s === "INSTALLATION_DONE") return "INSTALLATION_DONE";
     if (s === "CLOSED") return "CLOSED";
 
     // Legacy backend statuses (collapse into the single "Under repaired" stage)
@@ -705,12 +711,18 @@ export async function apiJobCardsList(): Promise<JobCardListRow[]> {
 export async function apiTicketJobCardFinalize(
   ticketId: string,
   decision: "REPAIRABLE" | "NOT_REPAIRABLE",
+  engineerFinalizedAt?: string,
 ): Promise<JobCard> {
+  const finalizedAtRaw = String(engineerFinalizedAt || "").trim();
+  const finalizedAt =
+    finalizedAtRaw && /^\d{4}-\d{2}-\d{2}$/.test(finalizedAtRaw)
+      ? `${finalizedAtRaw}T00:00:00.000Z`
+      : finalizedAtRaw || undefined;
   const env = await apiFetch<BackendJobCard>(
     `/api/tickets/${encodeURIComponent(ticketId)}/jobcard`,
     {
       method: "PUT",
-      body: JSON.stringify({ engineerFinalStatus: decision }),
+      body: JSON.stringify({ engineerFinalStatus: decision, ...(finalizedAt ? { engineerFinalizedAt: finalizedAt } : {}) }),
     },
   );
   if (!env.success) throw new Error(env.message || "Failed to finalize job card");
@@ -1065,6 +1077,24 @@ export async function apiUnderDispatchSave(input: {
   );
   if (!env.success) throw new Error(env.message || "Failed to save under-dispatch review");
   return { invoiceGenerated: Boolean(env.data?.invoiceGenerated), paymentDone: Boolean(env.data?.paymentDone) };
+}
+
+export async function apiDispatchApprove(ticketId: string): Promise<{ dispatchApproved: boolean }> {
+  const env = await apiFetch<{ dispatchApproved?: unknown }>("/api/logistics/approve-dispatch", {
+    method: "POST",
+    body: JSON.stringify({ ticketId }),
+  });
+  if (!env.success) throw new Error(env.message || "Failed to approve dispatch");
+  return { dispatchApproved: Boolean(env.data?.dispatchApproved ?? true) };
+}
+
+export async function apiTicketApproveInstallationDone(ticketId: string): Promise<Ticket> {
+  const env = await apiFetch<BackendTicket>(
+    `/api/tickets/${encodeURIComponent(ticketId)}/installation-done`,
+    { method: "POST" },
+  );
+  if (!env.success) throw new Error(env.message || "Failed to approve installation");
+  return toTicket(env.data);
 }
 
 export async function apiTicketPickupDetailsGet(ticketId: string): Promise<{
