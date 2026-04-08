@@ -1,6 +1,5 @@
-import ErpApp from "./ErpApp";
+import ErpMarketing from "./marketing";
 
 export default function ErpPage() {
-  return <ErpApp initialAuthView="login" />;
+  return <ErpMarketing />;
 }
-
