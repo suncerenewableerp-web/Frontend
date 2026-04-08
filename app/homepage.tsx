@@ -94,6 +94,10 @@ const GLOBAL_CSS = `
     .wg { grid-template-columns:1fr!important; }
     .sb-inner { flex-wrap:wrap!important; }
     .sb-item { width:50%!important;border-right:none!important;border-bottom:1px solid var(--border)!important; }
+    .nv { padding: 0 14px !important; height: 62px !important; }
+    .nv-r { gap: 8px !important; }
+    .nv-erp { padding: 8px 12px !important; font-size: 0.75rem !important; }
+    .nv-qt { padding: 9px 14px !important; font-size: 0.75rem !important; }
   }
 `;
 
@@ -319,6 +323,7 @@ function Navbar({ onOpen }: { onOpen: () => void }) {
 
   return (
     <nav
+      className="nv"
       style={{
         position: "fixed",
         top: 0,
@@ -392,9 +397,10 @@ function Navbar({ onOpen }: { onOpen: () => void }) {
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+      <div className="nv-r" style={{ display: "flex", gap: 10, alignItems: "center" }}>
         <a
           href="/erp"
+          className="nv-erp"
           style={{
             fontSize: "0.83rem",
             color: "var(--brown-mid)",
@@ -423,7 +429,7 @@ function Navbar({ onOpen }: { onOpen: () => void }) {
         </a>
         <button
           onClick={onOpen}
-          className="btn-dark"
+          className="btn-dark nv-qt"
           style={{ padding: "10px 22px", fontSize: "0.83rem" }}
         >
           Get a Quote →
