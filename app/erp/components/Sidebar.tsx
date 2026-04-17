@@ -32,7 +32,7 @@ export default function Sidebar({
       role="navigation"
       aria-label="Primary"
     >
-      <Link href="/" className="sidebar-header" aria-label="Go to home">
+      <Link href="/dashboard" className="sidebar-header" aria-label="Go to dashboard">
         <div className="logo-icon" aria-hidden>
           <LuSunMedium />
         </div>

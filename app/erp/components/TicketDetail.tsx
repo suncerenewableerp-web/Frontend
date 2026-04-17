@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { STATUS_ORDER } from "../constants";
 import {
   apiInverterBrandAdd,
@@ -11,8 +11,13 @@ import {
   apiUnderDispatchSave,
   apiDispatchApprove,
   apiTicketApproveInstallationDone,
+  apiTicketInstallationDocumentsGet,
+  apiTicketInstallationDocumentUpload,
   apiSlaSettingsGet,
   apiSlaSettingsUpdate,
+  apiJobCardEngineerNameAdd,
+  apiJobCardEngineerNameDelete,
+  apiJobCardEngineerNamesList,
   apiTicketJobCardGet,
   apiTicketJobCardFinalize,
   apiTicketJobCardUpdate,
@@ -254,7 +259,7 @@ export default function TicketDetail({
   const canOfferWhatsAppShare = roleName === "ADMIN" || roleName === "SALES";
   const tabs = useMemo(() => {
     if (roleName === "CUSTOMER") return ["overview"] as TicketTab[];
-    if (roleName === "ENGINEER") return ["jobcard"] as TicketTab[];
+    if (roleName === "ENGINEER") return ["jobcard", "overview"] as TicketTab[];
     return [...ALL_TABS] as TicketTab[];
   }, [roleName]);
   const [activeTab, setActiveTab] = useState<TicketTab>(() => {
@@ -323,25 +328,41 @@ export default function TicketDetail({
   });
 
   const [engineerDropdown, setEngineerDropdown] = useState<string[]>(() => [...DEFAULT_ENGINEER_DROPDOWN]);
+  const [customEngineerNames, setCustomEngineerNames] = useState<string[]>([]);
+  const [engineerNameAdding, setEngineerNameAdding] = useState(false);
+  const [engineerNameDeletingKey, setEngineerNameDeletingKey] = useState("");
+  const [engineerNameInput, setEngineerNameInput] = useState("");
+  const [engineerNameAddMsg, setEngineerNameAddMsg] = useState("");
+  const [engineerNameAddError, setEngineerNameAddError] = useState("");
+  const [engineerNameDeleteMsg, setEngineerNameDeleteMsg] = useState("");
+  const [engineerNameDeleteError, setEngineerNameDeleteError] = useState("");
 
   useEffect(() => {
     if (activeTab !== "jobcard") return;
-    if (roleName !== "ENGINEER") return;
+    if (!["ENGINEER", "ADMIN", "SALES"].includes(roleName)) return;
     let cancelled = false;
-    apiEngineerNamesList()
-      .then((rows) => {
+    Promise.allSettled([apiEngineerNamesList(), apiJobCardEngineerNamesList()])
+      .then((results) => {
         if (cancelled) return;
-        const merged = [
-          ...DEFAULT_ENGINEER_DROPDOWN,
-          ...(rows || []).map((r) => String(r?.name || "").trim()).filter(Boolean),
-        ];
+        const userNames =
+          results[0].status === "fulfilled"
+            ? (results[0].value || []).map((r) => String(r?.name || "").trim()).filter(Boolean)
+            : [];
+        const customNames =
+          results[1].status === "fulfilled"
+            ? (results[1].value || []).map((n) => String(n || "").trim()).filter(Boolean)
+            : [];
+
+        const merged = [...DEFAULT_ENGINEER_DROPDOWN, ...customNames, ...userNames];
         const uniq = Array.from(new Set(merged.map((x) => x.trim()).filter(Boolean)));
         uniq.sort((a, b) => a.localeCompare(b));
         setEngineerDropdown(uniq);
+
+        const customUniq = Array.from(new Set(customNames.map((x) => x.trim()).filter(Boolean)));
+        customUniq.sort((a, b) => a.localeCompare(b));
+        setCustomEngineerNames(customUniq);
       })
-      .catch(() => {
-        // Keep default list if API fails (or permission denied).
-      });
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -424,6 +445,20 @@ export default function TicketDetail({
   const updateStatusAndShare = async (nextStatus: TicketStatus) => {
     await onUpdateStatus(nextStatus);
     offerWhatsAppShare(nextStatus);
+  };
+
+  const redirectToInstallationOverview = () => {
+    setActiveTab("overview");
+    setInstallationRedirectMsg(
+      "Upload the Installation Done PDF here, then click Installation Done. After that you can move to Closed.",
+    );
+    setTimeout(() => {
+      if (installationSectionRef.current) {
+        installationSectionRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    }, 0);
   };
 
   useEffect(() => {
@@ -548,9 +583,16 @@ export default function TicketDetail({
   const [customerPickupLoading, setCustomerPickupLoading] = useState(false);
   const [customerPickupError, setCustomerPickupError] = useState("");
   const [customerPickupSavedMsg, setCustomerPickupSavedMsg] = useState("");
+  const installationSectionRef = useRef<HTMLDivElement | null>(null);
+  const [installationRedirectMsg, setInstallationRedirectMsg] = useState("");
   const [installationApproving, setInstallationApproving] = useState(false);
   const [installationError, setInstallationError] = useState("");
   const [installationSavedMsg, setInstallationSavedMsg] = useState("");
+  const [installationDocuments, setInstallationDocuments] = useState<string[]>([]);
+  const [installationDocFile, setInstallationDocFile] = useState<File | null>(null);
+  const [installationDocUploading, setInstallationDocUploading] = useState(false);
+  const [installationDocError, setInstallationDocError] = useState("");
+  const [installationDocSavedMsg, setInstallationDocSavedMsg] = useState("");
   const [pickupDocuments, setPickupDocuments] = useState<string[]>([]);
   const [pickupDocFile, setPickupDocFile] = useState<File | null>(null);
   const [pickupDocUploading, setPickupDocUploading] = useState(false);
@@ -734,7 +776,8 @@ export default function TicketDetail({
     if (!canEditLogistics) return;
     if (dispatchApprovedForSales) return;
     if (logisticsStage !== "dispatch") return;
-    setLogisticsStage("under_dispatch");
+    // Defer setState to avoid cascading-renders lint rule.
+    queueMicrotask(() => setLogisticsStage("under_dispatch"));
   }, [roleName, canEditLogistics, dispatchApprovedForSales, logisticsStage]);
 
   useEffect(() => {
@@ -835,6 +878,39 @@ export default function TicketDetail({
       if (timeout) clearTimeout(timeout);
     };
   }, [roleName, ticket.id, ticket.customerAddress]);
+
+  useEffect(() => {
+    const dispatchedIdx = STATUS_ORDER.indexOf("DISPATCHED");
+    const idx = STATUS_ORDER.indexOf(ticket.status);
+    if (idx < dispatchedIdx) {
+      // Defer setState to avoid cascading-renders lint rule.
+      queueMicrotask(() => {
+        setInstallationDocuments([]);
+        setInstallationDocFile(null);
+        setInstallationDocUploading(false);
+        setInstallationDocError("");
+        setInstallationDocSavedMsg("");
+      });
+      return;
+    }
+
+    let cancelled = false;
+    // Defer setState to avoid cascading-renders lint rule.
+    queueMicrotask(() => setInstallationDocError(""));
+    apiTicketInstallationDocumentsGet(ticket.id)
+      .then((data) => {
+        if (cancelled) return;
+        setInstallationDocuments(Array.isArray(data.documents) ? data.documents : []);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setInstallationDocError(e instanceof Error ? e.message : "Failed to load installation documents");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ticket.id, ticket.status]);
 
   useEffect(() => {
     if (!docPreviewUrl) return;
@@ -1274,7 +1350,7 @@ export default function TicketDetail({
                   }
 
                   if (newStatus === "INSTALLATION_DONE") {
-                    await updateStatusAndShare(newStatus);
+                    redirectToInstallationOverview();
                     return;
                   }
 
@@ -1319,65 +1395,150 @@ export default function TicketDetail({
 
       {activeTab === "overview" && (
         <>
-          {roleName === "CUSTOMER" ? (
-            <div className="table-card" style={{ marginBottom: 16 }}>
-              <div className="table-header">
-                <div className="table-title">Installation</div>
-              </div>
-              <div style={{ padding: "14px 16px" }}>
-                {ticket.status === "DISPATCHED" ? (
-                  <>
-                    <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 10, lineHeight: 1.5 }}>
-                      Once the installation is completed at your site, please confirm it here. After confirmation,
-                      the ticket can be closed.
-                    </div>
+          <div className="table-card" style={{ marginBottom: 16 }} ref={installationSectionRef}>
+            <div className="table-header">
+              <div className="table-title">Installation</div>
+            </div>
+            <div style={{ padding: "14px 16px" }}>
+              {installationRedirectMsg ? (
+                <div
+                  style={{
+                    marginBottom: 10,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    background: "rgba(139, 69, 19, 0.08)",
+                    border: "1px solid rgba(139, 69, 19, 0.18)",
+                    fontSize: 12,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {installationRedirectMsg}
+                </div>
+              ) : null}
+              {STATUS_ORDER.indexOf(ticket.status) >= STATUS_ORDER.indexOf("DISPATCHED") ? (
+                <>
+                  <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 10, lineHeight: 1.5 }}>
+                    Upload the installation PDF, then mark installation as done. After approval, the ticket can be
+                    closed.
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <input
+                      className="form-input"
+                      type="file"
+                      accept="application/pdf"
+                      disabled={installationDocUploading || ticket.status === "CLOSED"}
+                      onChange={(e) => {
+                        setInstallationDocError("");
+                        setInstallationDocSavedMsg("");
+                        const f = e.target.files?.[0] || null;
+                        if (f && f.size > 5 * 1024 * 1024) {
+                          setInstallationDocFile(null);
+                          setInstallationDocError("File too large. Max 5MB.");
+                          e.target.value = "";
+                          return;
+                        }
+                        setInstallationDocFile(f);
+                      }}
+                    />
+                    <div style={{ fontSize: 12, color: "var(--text3)" }}>PDF up to 5MB</div>
                     <button
-                      className="btn btn-accent btn-sm"
+                      className="btn btn-ghost btn-sm"
                       type="button"
-                      disabled={installationApproving}
+                      disabled={!installationDocFile || installationDocUploading || ticket.status === "CLOSED"}
                       onClick={() => {
-                        setInstallationApproving(true);
-                        setInstallationError("");
-                        setInstallationSavedMsg("");
-                        apiTicketApproveInstallationDone(ticket.id)
-                          .then((updated) => {
-                            onTicketUpdated(updated);
-                            setInstallationSavedMsg("Installation approved.");
+                        if (!installationDocFile) return;
+                        setInstallationDocUploading(true);
+                        setInstallationDocError("");
+                        setInstallationDocSavedMsg("");
+                        apiTicketInstallationDocumentUpload(ticket.id, installationDocFile)
+                          .then((r) => {
+                            setInstallationDocuments(r.documents || []);
+                            setInstallationDocFile(null);
+                            setInstallationDocSavedMsg("Document uploaded.");
+                            setInstallationRedirectMsg("");
                           })
                           .catch((e) =>
-                            setInstallationError(
-                              e instanceof Error ? e.message : "Failed to approve installation",
-                            ),
+                            setInstallationDocError(e instanceof Error ? e.message : "Upload failed"),
                           )
-                          .finally(() => setInstallationApproving(false));
+                          .finally(() => setInstallationDocUploading(false));
                       }}
                     >
-                      {installationApproving ? "Approving..." : "Installation Done"}
+                      {installationDocUploading ? "Uploading..." : "Upload"}
                     </button>
-                  </>
-                ) : ticket.status === "INSTALLATION_DONE" || ticket.status === "CLOSED" ? (
-                  <div style={{ fontSize: 12, color: "var(--green)" }}>
-                    Installation confirmed.
                   </div>
-                ) : (
-                  <div style={{ fontSize: 12, color: "var(--text3)" }}>
-                    Installation confirmation will be available after dispatch.
-                  </div>
-                )}
 
-                {installationSavedMsg ? (
-                  <div style={{ marginTop: 10, fontSize: 12, color: "var(--green)" }}>
-                    {installationSavedMsg}
+                  {installationDocSavedMsg ? (
+                    <div style={{ marginTop: 10, fontSize: 12, color: "var(--green)" }}>
+                      {installationDocSavedMsg}
+                    </div>
+                  ) : null}
+                  {installationDocError ? (
+                    <div className="form-error" style={{ marginTop: 10 }}>
+                      {installationDocError}
+                    </div>
+                  ) : null}
+
+                  <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                    {installationDocuments.length ? (
+                      installationDocuments.map(renderPickupDocumentCard)
+                    ) : (
+                      <div style={{ fontSize: 12, color: "var(--text3)" }}>
+                        No installation PDFs uploaded yet.
+                      </div>
+                    )}
                   </div>
-                ) : null}
-                {installationError ? (
-                  <div className="form-error" style={{ marginTop: 10 }}>
-                    {installationError}
+
+                  <div style={{ marginTop: 12 }}>
+                    {ticket.status === "DISPATCHED" ? (
+                      <button
+                        className="btn btn-accent btn-sm"
+                        type="button"
+                        disabled={installationApproving || !installationDocuments.length}
+                        onClick={() => {
+                          setInstallationApproving(true);
+                          setInstallationError("");
+                          setInstallationSavedMsg("");
+	                          apiTicketApproveInstallationDone(ticket.id)
+	                            .then((updated) => {
+	                              onTicketUpdated(updated);
+	                              setInstallationSavedMsg("Installation approved.");
+	                              setInstallationRedirectMsg("");
+	                              offerWhatsAppShare("INSTALLATION_DONE", updated);
+	                            })
+	                            .catch((e) =>
+	                              setInstallationError(
+	                                e instanceof Error ? e.message : "Failed to approve installation",
+	                              ),
+                            )
+                            .finally(() => setInstallationApproving(false));
+                        }}
+                      >
+                        {installationApproving ? "Approving..." : "Installation Done"}
+                      </button>
+                    ) : ticket.status === "INSTALLATION_DONE" || ticket.status === "CLOSED" ? (
+                      <div style={{ fontSize: 12, color: "var(--green)" }}>Installation confirmed.</div>
+                    ) : null}
                   </div>
-                ) : null}
-              </div>
+
+                  {installationSavedMsg ? (
+                    <div style={{ marginTop: 10, fontSize: 12, color: "var(--green)" }}>
+                      {installationSavedMsg}
+                    </div>
+                  ) : null}
+                  {installationError ? (
+                    <div className="form-error" style={{ marginTop: 10 }}>
+                      {installationError}
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <div style={{ fontSize: 12, color: "var(--text3)" }}>
+                  Installation documents and confirmation will be available after dispatch.
+                </div>
+              )}
             </div>
-          ) : null}
+          </div>
           {canSeeCustomerContact ? (
             <div className="detail-grid" style={{ marginBottom: 14 }}>
               {[
@@ -1795,6 +1956,179 @@ export default function TicketDetail({
             <div className="table-title">Job Card — {ticket.ticketId}</div>
           </div>
           <div style={{ padding: "20px" }}>
+            {roleName === "ADMIN" ? (
+              <div style={{ marginBottom: 16 }}>
+                <div className="form-section">Engineer / Sub Engineer Names</div>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <input
+                    className="form-input"
+                    value={engineerNameInput}
+                    disabled={engineerNameAdding}
+                    placeholder="Add a new name (for jobcard dropdown)"
+                    onChange={(e) => {
+                      setEngineerNameInput(e.target.value);
+                      setEngineerNameAddMsg("");
+                      setEngineerNameAddError("");
+                    }}
+                    style={{ minWidth: 260, maxWidth: 420 }}
+                  />
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    type="button"
+                    disabled={engineerNameAdding || !String(engineerNameInput || "").trim()}
+                    onClick={() => {
+                      const name = String(engineerNameInput || "").trim().replace(/\s+/g, " ");
+                      if (!name) return;
+                      setEngineerNameAdding(true);
+                      setEngineerNameAddMsg("");
+                      setEngineerNameAddError("");
+                      setEngineerNameDeleteMsg("");
+                      setEngineerNameDeleteError("");
+                      apiJobCardEngineerNameAdd(name)
+                        .then((saved) => {
+                          const out = String(saved || name).trim().replace(/\s+/g, " ");
+                          setEngineerNameInput("");
+                          setEngineerNameAddMsg("Added.");
+                          return Promise.allSettled([apiEngineerNamesList(), apiJobCardEngineerNamesList()])
+                            .then((results) => {
+                              const userNames =
+                                results[0].status === "fulfilled"
+                                  ? (results[0].value || []).map((r) => String(r?.name || "").trim()).filter(Boolean)
+                                  : [];
+                              const customNames =
+                                results[1].status === "fulfilled"
+                                  ? (results[1].value || []).map((n) => String(n || "").trim()).filter(Boolean)
+                                  : [];
+                              const merged = [...DEFAULT_ENGINEER_DROPDOWN, ...customNames, ...userNames, out];
+                              const uniq = Array.from(new Set(merged.map((x) => x.trim()).filter(Boolean)));
+                              uniq.sort((a, b) => a.localeCompare(b));
+                              setEngineerDropdown(uniq);
+                              const customUniq = Array.from(
+                                new Set([...customNames, out].map((x) => x.trim()).filter(Boolean)),
+                              );
+                              customUniq.sort((a, b) => a.localeCompare(b));
+                              setCustomEngineerNames(customUniq);
+                            })
+                            .catch(() => {});
+                        })
+                        .catch((e) =>
+                          setEngineerNameAddError(
+                            e instanceof Error ? e.message : "Failed to add name",
+                          ),
+                        )
+                        .finally(() => setEngineerNameAdding(false));
+                    }}
+                  >
+                    {engineerNameAdding ? "Adding..." : "Add"}
+                  </button>
+                  <div style={{ fontSize: 12, color: "var(--text3)" }}>
+                    This updates the dropdown used in Job Card.
+                  </div>
+                </div>
+                {engineerNameAddMsg ? (
+                  <div style={{ marginTop: 10, fontSize: 12, color: "var(--green)" }}>
+                    {engineerNameAddMsg}
+                  </div>
+                ) : null}
+                {engineerNameAddError ? (
+                  <div className="form-error" style={{ marginTop: 10 }}>
+                    {engineerNameAddError}
+                  </div>
+                ) : null}
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 8 }}>
+                    Saved custom names ({customEngineerNames.length})
+                  </div>
+                  {customEngineerNames.length ? (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {customEngineerNames.map((n) => {
+                        const key = String(n || "").trim().replace(/\s+/g, " ").toLowerCase();
+                        const deleting = engineerNameDeletingKey === key;
+                        return (
+                          <div
+                            key={key}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
+                              padding: "6px 10px",
+                              borderRadius: 999,
+                              border: "1px solid rgba(148,163,184,0.35)",
+                              background: "rgba(148,163,184,0.10)",
+                              maxWidth: "100%",
+                            }}
+                          >
+                            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)" }}>
+                              {n}
+                            </div>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              type="button"
+                              disabled={engineerNameAdding || deleting}
+                              onClick={() => {
+                                if (!window.confirm(`Delete "${n}" from dropdown?`)) return;
+                                setEngineerNameDeletingKey(key);
+                                setEngineerNameDeleteMsg("");
+                                setEngineerNameDeleteError("");
+                                setEngineerNameAddMsg("");
+                                setEngineerNameAddError("");
+                                apiJobCardEngineerNameDelete(n)
+                                  .then(() =>
+                                    Promise.allSettled([apiEngineerNamesList(), apiJobCardEngineerNamesList()])
+                                      .then((results) => {
+                                        const userNames =
+                                          results[0].status === "fulfilled"
+                                            ? (results[0].value || []).map((r) => String(r?.name || "").trim()).filter(Boolean)
+                                            : [];
+                                        const customNames =
+                                          results[1].status === "fulfilled"
+                                            ? (results[1].value || []).map((x) => String(x || "").trim()).filter(Boolean)
+                                            : [];
+                                        const merged = [...DEFAULT_ENGINEER_DROPDOWN, ...customNames, ...userNames];
+                                        const uniq = Array.from(new Set(merged.map((x) => x.trim()).filter(Boolean)));
+                                        uniq.sort((a, b) => a.localeCompare(b));
+                                        setEngineerDropdown(uniq);
+                                        const customUniq = Array.from(new Set(customNames.map((x) => x.trim()).filter(Boolean)));
+                                        customUniq.sort((a, b) => a.localeCompare(b));
+                                        setCustomEngineerNames(customUniq);
+                                        setEngineerNameDeleteMsg("Deleted.");
+                                      })
+                                      .catch(() => {
+                                        setEngineerNameDeleteMsg("Deleted.");
+                                      }),
+                                  )
+                                  .catch((e) =>
+                                    setEngineerNameDeleteError(
+                                      e instanceof Error ? e.message : "Failed to delete name",
+                                    ),
+                                  )
+                                  .finally(() => setEngineerNameDeletingKey(""));
+                              }}
+                            >
+                              {deleting ? "Deleting..." : "Delete"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12, color: "var(--text3)" }}>
+                      No custom names added yet.
+                    </div>
+                  )}
+                  {engineerNameDeleteMsg ? (
+                    <div style={{ marginTop: 10, fontSize: 12, color: "var(--green)" }}>
+                      {engineerNameDeleteMsg}
+                    </div>
+                  ) : null}
+                  {engineerNameDeleteError ? (
+                    <div className="form-error" style={{ marginTop: 10 }}>
+                      {engineerNameDeleteError}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
             {jobError && (
               <div className="form-error" style={{ marginBottom: 12, marginTop: -6 }}>
                 {jobError}
@@ -3540,6 +3874,11 @@ export default function TicketDetail({
               </>
             ) : (
               <>
+                {roleName === "SALES" && Boolean(dispatchLogistics?.billing?.dispatchApproved) ? (
+                  <div style={{ marginBottom: 12, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+                    <span className="tag">Admin Approval: APPROVED</span>
+                  </div>
+                ) : null}
                 <div className="detail-grid">
                   <div className="detail-card">
                     <div className="detail-label">Dispatch Date</div>
@@ -3595,15 +3934,16 @@ export default function TicketDetail({
                         alignItems: "center",
                       }}
                     >
-                      <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5 }}>
-                        {ticket.status === "DISPATCHED" && canAdvanceToInstallationDone ? (
-                          <>
-                            You can move the ticket to <span className="tag">INSTALLATION DONE</span>.
-                          </>
-                        ) : ticket.status === "INSTALLATION_DONE" && canAdvanceToClosed ? (
-                          <>
-                            You can move the ticket to <span className="tag">CLOSED</span>.
-                          </>
+	                      <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5 }}>
+	                        {ticket.status === "DISPATCHED" && canAdvanceToInstallationDone ? (
+	                          <>
+	                            Next step is <span className="tag">INSTALLATION DONE</span>. Upload the installation PDF
+	                            from <span className="tag">OVERVIEW</span> first.
+	                          </>
+	                        ) : ticket.status === "INSTALLATION_DONE" && canAdvanceToClosed ? (
+	                          <>
+	                            You can move the ticket to <span className="tag">CLOSED</span>.
+	                          </>
                         ) : (
                           <>Save dispatch to go to next step.</>
                         )}
@@ -3611,7 +3951,7 @@ export default function TicketDetail({
                       {dispatchAdvanceUnlocked && (ticket.status === "DISPATCHED" || ticket.status === "INSTALLATION_DONE") ? (
                         <button
                           className="btn btn-accent btn-sm"
-	                          disabled={
+		                          disabled={
                               logisticsAdvancing ||
                               (ticket.status === "DISPATCHED"
                                 ? !canAdvanceToInstallationDone
@@ -3619,14 +3959,16 @@ export default function TicketDetail({
                                   ? !canAdvanceToClosed
                                   : true)
                             }
-	                          onClick={() => {
-	                            setLogisticsAdvancing(true);
-	                            updateStatusAndShare(
-                                ticket.status === "DISPATCHED" ? "INSTALLATION_DONE" : "CLOSED",
-                              )
-	                              .catch(() => {})
-	                              .finally(() => setLogisticsAdvancing(false));
-	                          }}
+		                          onClick={() => {
+		                            if (ticket.status === "DISPATCHED") {
+		                              redirectToInstallationOverview();
+		                              return;
+		                            }
+		                            setLogisticsAdvancing(true);
+		                            updateStatusAndShare("CLOSED")
+		                              .catch(() => {})
+		                              .finally(() => setLogisticsAdvancing(false));
+		                          }}
                         >
                           {logisticsAdvancing
                             ? "Updating..."

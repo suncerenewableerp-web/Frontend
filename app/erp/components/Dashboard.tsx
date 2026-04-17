@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import type { Ticket, User } from "../types";
 import { PriorityBadge, SlaBadge, StatusBadge } from "./Badges";
 import { STATUS_COLORS } from "../constants";
-import { LuCircleCheck, LuSiren, LuTicket, LuTriangleAlert } from "react-icons/lu";
+import { LuCircleCheck, LuShieldAlert, LuSiren, LuTicket, LuTriangleAlert } from "react-icons/lu";
+import { apiPendingDispatchApprovalsList, type PendingDispatchApprovalTicket } from "../api";
 
 export default function Dashboard({
   user,
@@ -15,10 +17,14 @@ export default function Dashboard({
   user: User;
   tickets: Ticket[];
   onNav: (p: string) => void;
-  onViewTicket: (t: Ticket) => void;
+  onViewTicket: (
+    t: Ticket,
+    opts?: { tab?: "overview" | "jobcard" | "logistics" | "sla"; logisticsStage?: "pickup" | "under_dispatch" | "dispatch" },
+  ) => void;
   onOpenTickets: (preset?: { status?: string; priority?: string }) => void;
 }) {
   const isCustomer = String(user.role || "").toUpperCase() === "CUSTOMER";
+  const isAdmin = String(user.role || "").toUpperCase() === "ADMIN";
   const inward = tickets.filter((t) =>
     ["CREATED", "PICKUP_SCHEDULED", "IN_TRANSIT"].includes(String(t.status || "").toUpperCase()),
   ).length;
@@ -33,6 +39,45 @@ export default function Dashboard({
     statusCounts[t.status] = (statusCounts[t.status] || 0) + 1;
   });
   const maxCount = Math.max(...Object.values(statusCounts), 1);
+
+  const [approvalPending, setApprovalPending] = useState<PendingDispatchApprovalTicket[]>([]);
+  const [approvalErr, setApprovalErr] = useState("");
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+
+    const tick = () => {
+      if (cancelled) return;
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      apiPendingDispatchApprovalsList()
+        .then((r) => {
+          if (cancelled) return;
+          setApprovalPending(r.tickets || []);
+          setApprovalErr("");
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          setApprovalPending([]);
+          setApprovalErr(e instanceof Error ? e.message : "Failed to load approval pending tickets");
+        });
+    };
+
+    tick();
+    const interval = setInterval(tick, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isAdmin]);
+
+  const approvalPendingTickets = useMemo(() => {
+    const byId = new Map<string, Ticket>();
+    tickets.forEach((t) => byId.set(t.id, t));
+    return (approvalPending || [])
+      .map((p) => ({ p, t: byId.get(p.ticketDbId) || null }))
+      .filter((x) => x.t);
+  }, [approvalPending, tickets]);
 
   return (
     <div className="content">
@@ -113,6 +158,18 @@ export default function Dashboard({
                 Icon: LuTicket,
                 onClick: () => onOpenTickets({ status: "OPEN" }),
               },
+              ...(isAdmin
+                ? [
+                    {
+                      label: "Approval Pending",
+                      value: approvalPending.length,
+                      sub: "Dispatch approvals waiting",
+                      color: "#7c3aed",
+                      Icon: LuShieldAlert,
+                      onClick: () => onOpenTickets({ status: "APPROVAL_PENDING" }),
+                    },
+                  ]
+                : []),
               {
                 label: "High Priority",
                 value: high,
@@ -157,6 +214,71 @@ export default function Dashboard({
               </button>
             ))}
           </div>
+
+          {isAdmin ? (
+            <div className="table-card" style={{ marginBottom: 16 }}>
+              <div className="table-header">
+                <div className="table-title">Approval Pending</div>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => onOpenTickets({ status: "APPROVAL_PENDING" })}
+                >
+                  View All →
+                </button>
+              </div>
+              <div style={{ padding: "12px 16px", fontSize: 12, color: "var(--text3)" }}>
+                {approvalErr
+                  ? approvalErr
+                  : approvalPending.length
+                    ? `${approvalPending.length} tickets waiting for dispatch approval`
+                    : "No approvals pending."}
+              </div>
+              {approvalPendingTickets.length ? (
+                <div className="scroll-x">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Ticket ID</th>
+                        <th>Customer</th>
+                        <th>Invoice</th>
+                        <th>Payment</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {approvalPendingTickets.slice(0, 8).map(({ p, t }) => (
+                        <tr key={p.ticketDbId}>
+                          <td>
+                            <button
+                              type="button"
+                              className="td-mono table-link"
+                              onClick={() =>
+                                onViewTicket(t as Ticket, { tab: "logistics", logisticsStage: "under_dispatch" })
+                              }
+                              title="Open under-dispatch logistics"
+                            >
+                              {p.ticketId}
+                            </button>
+                          </td>
+                          <td>{p.customer}</td>
+                          <td style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
+                            {p.invoiceGenerated ? "YES" : "NO"}
+                          </td>
+                          <td style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
+                            {p.paymentDone ? "YES" : "NO"}
+                          </td>
+                          <td>
+                            <StatusBadge status={(t as Ticket).status} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="two-col">
             <div className="table-card">
               <div className="table-header">

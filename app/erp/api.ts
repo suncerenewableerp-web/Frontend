@@ -1019,6 +1019,41 @@ export async function apiInverterBrandAdd(name: string): Promise<string> {
   return String(env.data?.name || name || "");
 }
 
+export async function apiJobCardEngineerNamesList(): Promise<string[]> {
+  const env = await apiFetch<unknown>("/api/settings/jobcard-engineers", { method: "GET" });
+  if (!env.success) throw new Error(env.message || "Failed to fetch jobcard engineer names");
+  return Array.isArray(env.data)
+    ? (env.data as unknown[]).map((x) => String(x || "")).filter(Boolean)
+    : [];
+}
+
+export async function apiJobCardEngineerNameAdd(name: string): Promise<string> {
+  const env = await apiFetch<{ name?: unknown }>("/api/settings/jobcard-engineers", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+  if (!env.success) throw new Error(env.message || "Failed to add jobcard engineer name");
+  return String(env.data?.name || name || "");
+}
+
+function toJobCardEngineerKey(input: string): string | null {
+  const raw = String(input || "").trim();
+  if (!raw) return null;
+  const collapsed = raw.replace(/\s+/g, " ").trim();
+  if (!collapsed) return null;
+  return collapsed.toLowerCase();
+}
+
+export async function apiJobCardEngineerNameDelete(nameOrKey: string): Promise<string> {
+  const key = toJobCardEngineerKey(nameOrKey);
+  if (!key) throw new Error("Name is required");
+  const env = await apiFetch<{ name?: unknown }>(`/api/settings/jobcard-engineers/${encodeURIComponent(key)}`, {
+    method: "DELETE",
+  });
+  if (!env.success) throw new Error(env.message || "Failed to delete jobcard engineer name");
+  return String(env.data?.name || "");
+}
+
 export async function apiSchedulePickup(input: {
   ticketId: string;
   pickupDate: string; // YYYY-MM-DD
@@ -1097,6 +1132,65 @@ export async function apiTicketApproveInstallationDone(ticketId: string): Promis
   return toTicket(env.data);
 }
 
+export async function apiTicketInstallationDocumentsGet(ticketId: string): Promise<{ documents: string[] }> {
+  const env = await apiFetch<{ documents?: unknown }>(
+    `/api/tickets/${encodeURIComponent(ticketId)}/installation-documents`,
+    { method: "GET" },
+  );
+  if (!env.success) throw new Error(env.message || "Failed to fetch installation documents");
+
+  const toUrl = (d: unknown): string => {
+    if (!d) return "";
+    if (typeof d === "string") return d;
+    if (typeof d === "object") {
+      const rec = d as Record<string, unknown>;
+      if (typeof rec.url === "string") return rec.url;
+    }
+    return String(d);
+  };
+
+  const raw = env.data?.documents;
+  const docs = Array.isArray(raw)
+    ? raw
+        .map(toUrl)
+        .map((x) => String(x || "").trim())
+        .filter(Boolean)
+    : [];
+  return { documents: docs };
+}
+
+export async function apiTicketInstallationDocumentUpload(
+  ticketId: string,
+  file: File,
+): Promise<{ documents: string[] }> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const env = await apiFetch<{ documents?: unknown }>(
+    `/api/tickets/${encodeURIComponent(ticketId)}/installation-documents`,
+    { method: "POST", body: fd },
+  );
+  if (!env.success) throw new Error(env.message || "Failed to upload installation document");
+
+  const toUrl = (d: unknown): string => {
+    if (!d) return "";
+    if (typeof d === "string") return d;
+    if (typeof d === "object") {
+      const rec = d as Record<string, unknown>;
+      if (typeof rec.url === "string") return rec.url;
+    }
+    return String(d);
+  };
+
+  const raw = env.data?.documents;
+  const docs = Array.isArray(raw)
+    ? raw
+        .map(toUrl)
+        .map((x) => String(x || "").trim())
+        .filter(Boolean)
+    : [];
+  return { documents: docs };
+}
+
 export async function apiTicketPickupDetailsGet(ticketId: string): Promise<{
   pickupDate: string; // YYYY-MM-DD or ""
   pickupLocation: string;
@@ -1161,6 +1255,86 @@ export async function apiLogisticsByTicket(ticketId: string): Promise<BackendLog
   );
   if (!env.success) throw new Error(env.message || "Failed to fetch logistics");
   return Array.isArray(env.data) ? env.data : [];
+}
+
+export type PendingDispatchApprovalTicket = {
+  ticketDbId: string;
+  ticketId: string;
+  status: string;
+  customer: string;
+  requestedAt: string | null;
+  invoiceGenerated: boolean;
+  paymentDone: boolean;
+};
+
+export async function apiPendingDispatchApprovalsList(): Promise<{
+  count: number;
+  tickets: PendingDispatchApprovalTicket[];
+}> {
+  const env = await apiFetch<{ count?: unknown; tickets?: unknown }>(
+    "/api/logistics/pending-dispatch-approvals",
+    { method: "GET" },
+  );
+  if (!env.success) throw new Error(env.message || "Failed to fetch approval pending tickets");
+
+  const rowsRaw = env.data?.tickets;
+  const rows: PendingDispatchApprovalTicket[] = Array.isArray(rowsRaw)
+    ? (rowsRaw as unknown[]).map((r) => {
+        const obj = r && typeof r === "object" ? (r as Record<string, unknown>) : {};
+        return {
+          ticketDbId: String(obj.ticketDbId || ""),
+          ticketId: String(obj.ticketId || ""),
+          status: String(obj.status || ""),
+          customer: String(obj.customer || "—"),
+          requestedAt: obj.requestedAt ? String(obj.requestedAt) : null,
+          invoiceGenerated: Boolean(obj.invoiceGenerated),
+          paymentDone: Boolean(obj.paymentDone),
+        };
+      })
+    : [];
+
+  const clean = rows.filter((r) => r.ticketDbId && r.ticketId);
+  return { count: clean.length, tickets: clean };
+}
+
+export type ApprovedDispatchApprovalTicket = {
+  ticketDbId: string;
+  ticketId: string;
+  status: string;
+  customer: string;
+  approvedAt: string | null;
+  invoiceGenerated: boolean;
+  paymentDone: boolean;
+};
+
+export async function apiApprovedDispatchApprovalsList(): Promise<{
+  count: number;
+  tickets: ApprovedDispatchApprovalTicket[];
+}> {
+  const env = await apiFetch<{ count?: unknown; tickets?: unknown }>(
+    "/api/logistics/approved-dispatch-approvals",
+    { method: "GET" },
+  );
+  if (!env.success) throw new Error(env.message || "Failed to fetch approved tickets");
+
+  const rowsRaw = env.data?.tickets;
+  const rows: ApprovedDispatchApprovalTicket[] = Array.isArray(rowsRaw)
+    ? (rowsRaw as unknown[]).map((r) => {
+        const obj = r && typeof r === "object" ? (r as Record<string, unknown>) : {};
+        return {
+          ticketDbId: String(obj.ticketDbId || ""),
+          ticketId: String(obj.ticketId || ""),
+          status: String(obj.status || ""),
+          customer: String(obj.customer || "—"),
+          approvedAt: obj.approvedAt ? String(obj.approvedAt) : null,
+          invoiceGenerated: Boolean(obj.invoiceGenerated),
+          paymentDone: Boolean(obj.paymentDone),
+        };
+      })
+    : [];
+
+  const clean = rows.filter((r) => r.ticketDbId && r.ticketId);
+  return { count: clean.length, tickets: clean };
 }
 
 export async function apiReportsGet(params?: { months?: number }): Promise<ReportsData> {

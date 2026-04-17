@@ -6,7 +6,12 @@ import type { RoleDefinition, Ticket, TicketStatus, User } from "../types";
 import { canAccess } from "../utils";
 import { EngineerOutcomeBadge, PriorityBadge, SlaBadge, StatusBadge } from "./Badges";
 import { LuSearch, LuTicket } from "react-icons/lu";
-import { apiJobCardsList, type JobCardListRow } from "../api";
+import {
+  apiApprovedDispatchApprovalsList,
+  apiJobCardsList,
+  apiPendingDispatchApprovalsList,
+  type JobCardListRow,
+} from "../api";
 
 const INWARD_STATUSES: TicketStatus[] = ["CREATED", "PICKUP_SCHEDULED", "IN_TRANSIT"];
 const OUTWARD_STATUSES: TicketStatus[] = ["UNDER_DISPATCH", "DISPATCHED", "INSTALLATION_DONE"];
@@ -84,16 +89,30 @@ export default function TicketsList({
   tickets: Ticket[];
   initialStatusFilter?: string;
   initialPriorityFilter?: string;
-  onView: (t: Ticket, opts?: { tab?: "overview" | "jobcard" | "logistics" | "sla" }) => void;
+  onView: (
+    t: Ticket,
+    opts?: {
+      tab?: "overview" | "jobcard" | "logistics" | "sla";
+      logisticsStage?: "pickup" | "under_dispatch" | "dispatch";
+      notify?: string;
+    },
+  ) => void;
   onNew: () => void;
 }) {
   const roleNorm = String(user.role || "").toUpperCase();
   const isEngineer = roleNorm === "ENGINEER";
+  const isAdmin = roleNorm === "ADMIN";
+  const isSales = roleNorm === "SALES";
+  const canSeeAllTab = (isAdmin || isSales) && !isEngineer;
   const normalizedInitialStatus = String(initialStatusFilter || "").toUpperCase().trim();
 
-  const initialTab: "inward" | "repaired" | "outward" | "closed" =
+  const initialTab: "all" | "inward" | "repaired" | "outward" | "approval_pending" | "closed" =
     isEngineer
       ? "repaired"
+      : canSeeAllTab && !normalizedInitialStatus
+        ? "all"
+      : normalizedInitialStatus === "APPROVAL_PENDING"
+        ? "approval_pending"
       : normalizedInitialStatus === "CLOSED"
         ? "closed"
         : normalizedInitialStatus === "UNDER_REPAIRED"
@@ -107,15 +126,16 @@ export default function TicketsList({
       ? "ALL"
       : normalizedInitialStatus &&
           normalizedInitialStatus !== "OPEN" &&
+          normalizedInitialStatus !== "APPROVAL_PENDING" &&
           normalizedInitialStatus !== "CLOSED"
         ? normalizedInitialStatus
         : "ALL";
 
   const canLoadJobCards = canAccess(roles, user.role, "jobcard", "view") && roleNorm !== "CUSTOMER";
 
-  const [ticketsTab, setTicketsTab] = useState<"inward" | "repaired" | "outward" | "closed">(
-    initialTab,
-  );
+  const [ticketsTab, setTicketsTab] = useState<
+    "all" | "inward" | "repaired" | "outward" | "approval_pending" | "approved_by_admin" | "closed"
+  >(initialTab);
   const [repairedTab, setRepairedTab] = useState<"all" | "repairable" | "not_repairable">("all");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState(safeInitialStatusFilter);
@@ -126,6 +146,68 @@ export default function TicketsList({
 
   const [jobCards, setJobCards] = useState<JobCardListRow[]>([]);
   const [jobCardsError, setJobCardsError] = useState("");
+
+  const [approvalPendingIds, setApprovalPendingIds] = useState<string[]>([]);
+  const [approvalPendingError, setApprovalPendingError] = useState("");
+
+  const [approvedByAdminIds, setApprovedByAdminIds] = useState<string[]>([]);
+  const [approvedByAdminError, setApprovedByAdminError] = useState("");
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    const tick = () => {
+      if (cancelled) return;
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      apiPendingDispatchApprovalsList()
+        .then((r) => {
+          if (cancelled) return;
+          setApprovalPendingIds((r.tickets || []).map((x) => x.ticketDbId).filter(Boolean));
+          setApprovalPendingError("");
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          setApprovalPendingIds([]);
+          setApprovalPendingError(
+            e instanceof Error ? e.message : "Failed to load approval pending tickets",
+          );
+        });
+    };
+    tick();
+    const interval = setInterval(tick, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isSales) return;
+    let cancelled = false;
+    const tick = () => {
+      if (cancelled) return;
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      apiApprovedDispatchApprovalsList()
+        .then((r) => {
+          if (cancelled) return;
+          setApprovedByAdminIds((r.tickets || []).map((x) => x.ticketDbId).filter(Boolean));
+          setApprovedByAdminError("");
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          setApprovedByAdminIds([]);
+          setApprovedByAdminError(
+            e instanceof Error ? e.message : "Failed to load approved tickets",
+          );
+        });
+    };
+    tick();
+    const interval = setInterval(tick, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isSales]);
 
   useEffect(() => {
     if (!canLoadJobCards) return;
@@ -179,8 +261,20 @@ export default function TicketsList({
     () => tickets.filter((t) => OUTWARD_STATUSES.includes(t.status)),
     [tickets],
   );
+  const approvalPendingTickets = useMemo(() => {
+    const set = new Set(approvalPendingIds);
+    return tickets.filter((t) => set.has(t.id));
+  }, [tickets, approvalPendingIds]);
+  const approvedByAdminTickets = useMemo(() => {
+    const set = new Set(approvedByAdminIds);
+    return tickets.filter((t) => set.has(t.id));
+  }, [tickets, approvedByAdminIds]);
   const closedTickets = useMemo(() => tickets.filter((t) => t.status === "CLOSED"), [tickets]);
 
+  const allCount = useMemo(
+    () => tickets.filter((t) => matchesDateFilter(t.createdAt, dateFilter)).length,
+    [tickets, dateFilter],
+  );
   const inwardCount = useMemo(
     () => inwardTickets.filter((t) => matchesDateFilter(t.createdAt, dateFilter)).length,
     [inwardTickets, dateFilter],
@@ -192,6 +286,14 @@ export default function TicketsList({
   const outwardCount = useMemo(
     () => outwardTickets.filter((t) => matchesDateFilter(t.createdAt, dateFilter)).length,
     [outwardTickets, dateFilter],
+  );
+  const approvalPendingCount = useMemo(
+    () => approvalPendingTickets.filter((t) => matchesDateFilter(t.createdAt, dateFilter)).length,
+    [approvalPendingTickets, dateFilter],
+  );
+  const approvedByAdminCount = useMemo(
+    () => approvedByAdminTickets.filter((t) => matchesDateFilter(t.createdAt, dateFilter)).length,
+    [approvedByAdminTickets, dateFilter],
   );
   const closedCount = useMemo(
     () => closedTickets.filter((t) => matchesDateFilter(t.createdAt, dateFilter)).length,
@@ -212,11 +314,23 @@ export default function TicketsList({
   }, [canLoadJobCards, repairedTickets, engineerFinalByTicketId, dateFilter]);
 
   const baseTickets = useMemo(() => {
+    if (ticketsTab === "all") return tickets;
     if (ticketsTab === "inward") return inwardTickets;
     if (ticketsTab === "repaired") return repairedTickets;
     if (ticketsTab === "outward") return outwardTickets;
+    if (ticketsTab === "approval_pending") return approvalPendingTickets;
+    if (ticketsTab === "approved_by_admin") return approvedByAdminTickets;
     return closedTickets;
-  }, [ticketsTab, inwardTickets, repairedTickets, outwardTickets, closedTickets]);
+  }, [
+    ticketsTab,
+    tickets,
+    inwardTickets,
+    repairedTickets,
+    outwardTickets,
+    approvalPendingTickets,
+    approvedByAdminTickets,
+    closedTickets,
+  ]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -253,14 +367,18 @@ export default function TicketsList({
   const showingTo = Math.min(startIndex + PAGE_SIZE, rows.length);
 
   const statusFilterLabel =
-    ticketsTab === "inward"
+    ticketsTab === "all"
+      ? "All Status"
+      : ticketsTab === "inward"
       ? "All Inward Status"
       : ticketsTab === "outward"
         ? "All Outward Status"
         : "All Status";
 
   const statusOptions: TicketStatus[] =
-    ticketsTab === "inward"
+    ticketsTab === "all"
+      ? STATUS_ORDER
+      : ticketsTab === "inward"
       ? STATUS_ORDER.filter((s) => INWARD_STATUSES.includes(s))
       : ticketsTab === "outward"
         ? STATUS_ORDER.filter((s) => OUTWARD_STATUSES.includes(s))
@@ -287,6 +405,19 @@ export default function TicketsList({
 
       <div className="table-card">
         <div className="tabs" style={{ marginBottom: 0 }}>
+          {canSeeAllTab ? (
+            <div
+              className={`tab ${ticketsTab === "all" ? "active" : ""}`}
+              onClick={() => {
+                setTicketsTab("all");
+                setStatusFilter("ALL");
+                setRepairedTab("all");
+                setPage(1);
+              }}
+            >
+              All Tickets ({allCount})
+            </div>
+          ) : null}
           {!isEngineer ? (
             <div
               className={`tab ${ticketsTab === "inward" ? "active" : ""}`}
@@ -322,6 +453,34 @@ export default function TicketsList({
           >
             Outward ({outwardCount})
           </div>
+          {isAdmin ? (
+            <div
+              className={`tab ${ticketsTab === "approval_pending" ? "active" : ""}`}
+              onClick={() => {
+                setTicketsTab("approval_pending");
+                setStatusFilter("ALL");
+                setRepairedTab("all");
+                setPage(1);
+              }}
+              title={approvalPendingError ? approvalPendingError : undefined}
+            >
+              Approval Pending ({approvalPendingCount})
+            </div>
+          ) : null}
+          {isSales ? (
+            <div
+              className={`tab ${ticketsTab === "approved_by_admin" ? "active" : ""}`}
+              onClick={() => {
+                setTicketsTab("approved_by_admin");
+                setStatusFilter("ALL");
+                setRepairedTab("all");
+                setPage(1);
+              }}
+              title={approvedByAdminError ? approvedByAdminError : undefined}
+            >
+              Approved by Admin ({approvedByAdminCount})
+            </div>
+          ) : null}
           <div
             className={`tab ${ticketsTab === "closed" ? "active" : ""}`}
             onClick={() => {
@@ -443,6 +602,18 @@ export default function TicketsList({
             )}
           </div>
         ) : null}
+        {ticketsTab === "approved_by_admin" ? (
+          <div style={{ padding: "12px 20px 0" }}>
+            <div style={{ fontSize: 12, color: "var(--text3)" }}>
+              These tickets are approved by Admin for dispatch. Click Ticket ID to open Logistics → Dispatch.
+            </div>
+            {approvedByAdminError ? (
+              <div className="form-error" style={{ marginTop: 10 }}>
+                {approvedByAdminError}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="scroll-x">
           <table>
@@ -495,7 +666,17 @@ export default function TicketsList({
                           onClick={() =>
                             onView(
                               t,
-                              ticketsTab === "repaired" && canLoadJobCards ? { tab: "jobcard" } : undefined,
+                              ticketsTab === "approval_pending"
+                                ? { tab: "logistics" }
+                                : ticketsTab === "approved_by_admin"
+                                  ? {
+                                      tab: "logistics",
+                                      logisticsStage: "dispatch",
+                                      notify: "Admin approved dispatch. Dispatch tab opened.",
+                                    }
+                                : ticketsTab === "repaired" && canLoadJobCards
+                                  ? { tab: "jobcard" }
+                                  : undefined,
                             )
                           }
                           title="View ticket"

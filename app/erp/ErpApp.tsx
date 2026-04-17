@@ -155,7 +155,7 @@ export default function ErpApp({
     setSidebarOpen(false);
     notify(`Welcome back, ${u.name.split(" ")[0]}!`);
     await Promise.allSettled([loadTickets(), loadUsers()]);
-    router.push("/erp");
+    router.push("/dashboard");
   };
 
   const handleLogout = () => {
@@ -189,7 +189,7 @@ export default function ErpApp({
     setAuthView("login");
     notify(`Welcome to Sunce ERP, ${u.name.split(" ")[0]}! 🎉`);
     await Promise.allSettled([loadTickets(), loadUsers()]);
-    router.push("/erp");
+    router.push("/dashboard");
   };
 
   const handleNewTicket = async (input: TicketCreateInput) => {
@@ -311,7 +311,7 @@ export default function ErpApp({
                 >
                   ☰
                 </button>
-                <Link href="/" className="topbar-home" aria-label="Go to home">
+                <Link href="/dashboard" className="topbar-home" aria-label="Go to dashboard">
                   <LuSunMedium />
                 </Link>
                 <div className="topbar-title">{getPageTitle()}</div>
@@ -350,17 +350,20 @@ export default function ErpApp({
                 user={user}
                 tickets={tickets}
                 onNav={setPage}
-                onViewTicket={(t) => {
+                onViewTicket={(t, opts) => {
                   setSelectedTicket(t);
-                  setTicketDetailTab(user.role === "ENGINEER" ? "jobcard" : "overview");
+                  const nextTab = opts?.tab || (user.role === "ENGINEER" ? "jobcard" : "overview");
+                  setTicketDetailTab(nextTab);
                   setTicketDetailLogisticsStage(
-                    t.status === "DISPATCHED" || t.status === "INSTALLATION_DONE" || t.status === "CLOSED"
-                      ? "dispatch"
-                      : t.status === "UNDER_DISPATCH"
-                        ? "under_dispatch"
-                        : t.status === "UNDER_REPAIRED" && user.role !== "ENGINEER" && user.role !== "CUSTOMER"
+                    opts?.logisticsStage
+                      ? opts.logisticsStage
+                      : t.status === "DISPATCHED" || t.status === "INSTALLATION_DONE" || t.status === "CLOSED"
+                        ? "dispatch"
+                        : t.status === "UNDER_DISPATCH"
                           ? "under_dispatch"
-                          : "pickup",
+                          : t.status === "UNDER_REPAIRED" && user.role !== "ENGINEER" && user.role !== "CUSTOMER"
+                            ? "under_dispatch"
+                            : "pickup",
                   );
                   setPage("ticket_detail");
                 }}
@@ -381,14 +384,17 @@ export default function ErpApp({
                   setSelectedTicket(t);
                   const nextTab = opts?.tab || (user.role === "ENGINEER" ? "jobcard" : "overview");
                   setTicketDetailTab(nextTab);
+                  if (opts?.notify) notify(opts.notify);
                   setTicketDetailLogisticsStage(
-                    t.status === "DISPATCHED" || t.status === "INSTALLATION_DONE" || t.status === "CLOSED"
-                      ? "dispatch"
-                      : t.status === "UNDER_DISPATCH"
-                        ? "under_dispatch"
-                        : t.status === "UNDER_REPAIRED" && user.role !== "ENGINEER" && user.role !== "CUSTOMER"
+                    opts?.logisticsStage
+                      ? opts.logisticsStage
+                      : t.status === "DISPATCHED" || t.status === "INSTALLATION_DONE" || t.status === "CLOSED"
+                        ? "dispatch"
+                        : t.status === "UNDER_DISPATCH"
                           ? "under_dispatch"
-                          : "pickup",
+                          : t.status === "UNDER_REPAIRED" && user.role !== "ENGINEER" && user.role !== "CUSTOMER"
+                            ? "under_dispatch"
+                            : "pickup",
                   );
                   setPage("ticket_detail");
                 }}
