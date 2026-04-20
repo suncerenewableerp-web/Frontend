@@ -25,6 +25,8 @@ import {
   apiTicketPickupDocumentUpload,
   apiTicketGet,
   apiEngineerNamesList,
+  apiTicketOnsiteAssign,
+  apiTicketOnsiteJobCardUpdate,
   apiUpdateTicketDetails,
   apiUpdateTicketFaultDescription,
   type BackendLogistics,
@@ -252,6 +254,7 @@ export default function TicketDetail({
   initialLogisticsStage?: "pickup" | "under_dispatch" | "dispatch";
 }) {
   const roleName = String(user.role || "").toUpperCase();
+  const isOnsite = String(ticket.serviceType || "").toUpperCase() === "ONSITE";
   const canShowWarranty = roleName !== "CUSTOMER";
   const canShowHeaderBadges = roleName !== "CUSTOMER";
   const canUploadPickupDocs = roleName === "ADMIN" || roleName === "SALES";
@@ -259,9 +262,10 @@ export default function TicketDetail({
   const canOfferWhatsAppShare = roleName === "ADMIN" || roleName === "SALES";
   const tabs = useMemo(() => {
     if (roleName === "CUSTOMER") return ["overview"] as TicketTab[];
+    if (isOnsite) return ["overview"] as TicketTab[];
     if (roleName === "ENGINEER") return ["jobcard", "overview"] as TicketTab[];
     return [...ALL_TABS] as TicketTab[];
-  }, [roleName]);
+  }, [roleName, isOnsite]);
   const [activeTab, setActiveTab] = useState<TicketTab>(() => {
     const desired = (initialTab || "overview") as TicketTab;
     return tabs.includes(desired) ? desired : tabs[0];
@@ -295,6 +299,20 @@ export default function TicketDetail({
     if (ticket.status !== "UNDER_REPAIRED") return false;
     return true;
   }, [roles, user.role, roleName, ticket.status]);
+
+  const canManageOnsiteBooking = isOnsite && (roleName === "ADMIN" || roleName === "SALES");
+  const canWorkOnsiteBooking = isOnsite && roleName === "ENGINEER";
+
+  const [onsiteAssigning, setOnsiteAssigning] = useState(false);
+  const [onsiteAssignError, setOnsiteAssignError] = useState("");
+  const [onsiteAssignMsg, setOnsiteAssignMsg] = useState("");
+
+  const [onsiteEngineerName, setOnsiteEngineerName] = useState(() => ticket.onsiteEngineerName || "");
+  const [onsiteVisitDate, setOnsiteVisitDate] = useState(() => ticket.onsiteVisitDate || "");
+  const [onsiteRemark, setOnsiteRemark] = useState(() => ticket.onsiteRemark || "");
+  const [onsiteClosing, setOnsiteClosing] = useState(false);
+  const [onsiteError, setOnsiteError] = useState("");
+  const [onsiteSavedMsg, setOnsiteSavedMsg] = useState("");
 
   const canManageBrandList =
     roleName === "ADMIN" || roleName === "SALES";
@@ -338,8 +356,10 @@ export default function TicketDetail({
   const [engineerNameDeleteError, setEngineerNameDeleteError] = useState("");
 
   useEffect(() => {
-    if (activeTab !== "jobcard") return;
-    if (!["ENGINEER", "ADMIN", "SALES"].includes(roleName)) return;
+    const shouldLoad =
+      (activeTab === "jobcard" && ["ENGINEER", "ADMIN", "SALES"].includes(roleName)) ||
+      (isOnsite && roleName === "ENGINEER");
+    if (!shouldLoad) return;
     let cancelled = false;
     Promise.allSettled([apiEngineerNamesList(), apiJobCardEngineerNamesList()])
       .then((results) => {
@@ -366,7 +386,7 @@ export default function TicketDetail({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, roleName]);
+  }, [activeTab, roleName, isOnsite]);
 
   const [waOpen, setWaOpen] = useState(false);
   const [waTitle, setWaTitle] = useState("Share on WhatsApp");
@@ -1249,9 +1269,9 @@ export default function TicketDetail({
         </div>
       </div>
 
-      <TicketTimeline currentStatus={ticket.status} />
+      {!isOnsite ? <TicketTimeline currentStatus={ticket.status} /> : null}
 
-      {canSeeStatusUpdate && (
+      {canSeeStatusUpdate && !isOnsite && (
         <div className="table-card" style={{ marginBottom: 16 }}>
           <div className="table-header">
             <div className="table-title">Update Status</div>
@@ -1395,7 +1415,190 @@ export default function TicketDetail({
 
       {activeTab === "overview" && (
         <>
-          <div className="table-card" style={{ marginBottom: 16 }} ref={installationSectionRef}>
+          {isOnsite ? (
+            <div className="table-card" style={{ marginBottom: 16 }}>
+              <div className="table-header">
+                <div className="table-title">On-site Repair (Offline Booking)</div>
+              </div>
+              <div style={{ padding: "16px 20px" }}>
+                <div className="detail-grid" style={{ marginBottom: 14 }}>
+                  <div className="detail-card">
+                    <div className="detail-label">Stage</div>
+                    <div className="detail-value">
+                      {ticket.status === "CREATED"
+                        ? "Created"
+                        : ticket.status === "UNDER_REPAIRED"
+                          ? "Assigned to Engineer"
+                          : ticket.status === "CLOSED"
+                            ? "Closed"
+                            : ticket.status.replace(/_/g, " ")}
+                    </div>
+                  </div>
+                  <div className="detail-card">
+                    <div className="detail-label">Engineer</div>
+                    <div className="detail-value">
+                      {ticket.onsiteEngineerName
+                        ? ticket.onsiteEngineerName
+                        : ticket.assignedEngineer && ticket.assignedEngineer !== "-"
+                          ? ticket.assignedEngineer
+                          : "—"}
+                    </div>
+                  </div>
+                  {ticket.onsiteVisitDate ? (
+                    <div className="detail-card">
+                      <div className="detail-label">Visit Date</div>
+                      <div className="detail-value">{ticket.onsiteVisitDate}</div>
+                    </div>
+                  ) : null}
+                  {ticket.onsiteRemark ? (
+                    <div className="detail-card">
+                      <div className="detail-label">Remark</div>
+                      <div className="detail-value">{ticket.onsiteRemark}</div>
+                    </div>
+                  ) : null}
+                </div>
+
+                {onsiteAssignMsg ? (
+                  <div style={{ marginBottom: 10, fontSize: 12, color: "var(--green)" }}>
+                    {onsiteAssignMsg}
+                  </div>
+                ) : null}
+                {onsiteAssignError ? (
+                  <div className="form-error" style={{ marginBottom: 10 }}>
+                    {onsiteAssignError}
+                  </div>
+                ) : null}
+                {onsiteSavedMsg ? (
+                  <div style={{ marginBottom: 10, fontSize: 12, color: "var(--green)" }}>
+                    {onsiteSavedMsg}
+                  </div>
+                ) : null}
+                {onsiteError ? (
+                  <div className="form-error" style={{ marginBottom: 10 }}>
+                    {onsiteError}
+                  </div>
+                ) : null}
+
+                {canManageOnsiteBooking && ticket.status !== "CLOSED" ? (
+                  ticket.status === "CREATED" ? (
+                    <div>
+                      <div className="form-section">Assign to Engineer</div>
+                      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                        <button
+                          className="btn btn-accent btn-sm"
+                          type="button"
+                          disabled={onsiteAssigning}
+                          onClick={() => {
+                            setOnsiteAssigning(true);
+                            setOnsiteAssignError("");
+                            setOnsiteAssignMsg("");
+                            apiTicketOnsiteAssign(ticket.id)
+                              .then((updated) => {
+                                onTicketUpdated(updated);
+                                setOnsiteAssignMsg("Assigned to engineer.");
+                              })
+                              .catch((e) =>
+                                setOnsiteAssignError(e instanceof Error ? e.message : "Failed to assign engineer"),
+                              )
+                              .finally(() => setOnsiteAssigning(false));
+                          }}
+                        >
+                          {onsiteAssigning ? "Assigning..." : "Assign to Engineer"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12, color: "var(--text3)" }}>
+                      Ticket is assigned. Waiting for engineer to complete on-site repair.
+                    </div>
+                  )
+                ) : null}
+
+                {canWorkOnsiteBooking && ticket.status === "UNDER_REPAIRED" ? (
+                  <div style={{ marginTop: 14 }}>
+                    <div className="form-section">Engineer Job Details</div>
+                    <div
+                      className="form-grid"
+                      style={{
+                        gridTemplateColumns: "minmax(220px, 360px) minmax(180px, 280px)",
+                      }}
+                    >
+                      <div className="form-group">
+                        <label className="form-label">Engineer</label>
+                        <NameCombobox
+                          value={onsiteEngineerName}
+                          disabled={onsiteClosing}
+                          options={engineerDropdown}
+                          placeholder="Select engineer name"
+                          onChange={(v) => {
+                            setOnsiteEngineerName(v);
+                            setOnsiteError("");
+                            setOnsiteSavedMsg("");
+                          }}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Date</label>
+                        <DatePicker
+                          value={onsiteVisitDate}
+                          onChange={(next) => {
+                            setOnsiteVisitDate(next);
+                            setOnsiteError("");
+                            setOnsiteSavedMsg("");
+                          }}
+                          placeholder="Select date"
+                        />
+                      </div>
+                      <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+                        <label className="form-label">Remark</label>
+                        <textarea
+                          className="form-textarea"
+                          rows={2}
+                          value={onsiteRemark}
+                          onChange={(e) => {
+                            setOnsiteRemark(e.target.value);
+                            setOnsiteError("");
+                            setOnsiteSavedMsg("");
+                          }}
+                          placeholder="Enter remark..."
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 12, display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                      <button
+                        className="btn btn-accent btn-sm"
+                        type="button"
+                        disabled={onsiteClosing}
+                        onClick={() => {
+                          setOnsiteClosing(true);
+                          setOnsiteError("");
+                          setOnsiteSavedMsg("");
+                          apiTicketOnsiteJobCardUpdate(ticket.id, {
+                            ...(onsiteEngineerName.trim() ? { engineerName: onsiteEngineerName.trim() } : {}),
+                            ...(onsiteVisitDate ? { visitDate: onsiteVisitDate } : {}),
+                            remark: onsiteRemark,
+                            markRepaired: true,
+                          })
+                            .then((updated) => {
+                              onTicketUpdated(updated);
+                              setOnsiteSavedMsg("Marked as done and closed.");
+                            })
+                            .catch((e) => setOnsiteError(e instanceof Error ? e.message : "Failed to close ticket"))
+                            .finally(() => setOnsiteClosing(false));
+                        }}
+                      >
+                        {onsiteClosing ? "Closing..." : "Mark as Done"}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {!isOnsite ? (
+            <div className="table-card" style={{ marginBottom: 16 }} ref={installationSectionRef}>
             <div className="table-header">
               <div className="table-title">Installation</div>
             </div>
@@ -1538,7 +1741,8 @@ export default function TicketDetail({
                 </div>
               )}
             </div>
-          </div>
+            </div>
+          ) : null}
           {canSeeCustomerContact ? (
             <div className="detail-grid" style={{ marginBottom: 14 }}>
               {[
@@ -1570,10 +1774,15 @@ export default function TicketDetail({
               <div className="detail-card">
                 <div className="detail-label">Warranty</div>
                 <div className="detail-value">
-                  <Badge
-                    label={ticket.warrantyStatus ? "In Warranty" : "Out of Warranty"}
-                    color={ticket.warrantyStatus ? "#16a34a" : "#c0392b"}
-                  />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <Badge
+                      label={ticket.warrantyStatus ? "In Warranty" : "Out of Warranty"}
+                      color={ticket.warrantyStatus ? "#16a34a" : "#c0392b"}
+                    />
+                    <div style={{ fontSize: 12, color: "var(--text3)", fontFamily: "var(--mono)" }}>
+                      {ticket.warrantyEndDate ? `Valid up to: ${ticket.warrantyEndDate}` : "Valid up to: —"}
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : null}

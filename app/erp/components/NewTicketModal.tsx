@@ -341,6 +341,7 @@ export default function NewTicketModal({
     inverterLocation: "",
     faultDescription: "",
     errorCode: "",
+    onsiteRepairing: false,
     priority: "MEDIUM" as "LOW" | "MEDIUM" | "HIGH",
     warrantyStatus: false,
     warrantyEndDate: "",
@@ -441,6 +442,9 @@ export default function NewTicketModal({
     setBrandOpen(false);
     setBulkBrandOpen(false);
     setBulkBrandSearch("");
+    if (next === "bulk") {
+      setForm((p) => ({ ...p, onsiteRepairing: false }));
+    }
   };
 
   const activateBulkTicket = (idx: number) => {
@@ -555,6 +559,7 @@ export default function NewTicketModal({
     onSubmit({
       capacity,
       faultDescription,
+      ...(form.onsiteRepairing ? { serviceType: "ONSITE" } : {}),
       customerName: form.customerName.trim() || undefined,
       customerCompany: form.customerCompany.trim() || undefined,
       inverterMake: form.inverterMake.trim() || undefined,
@@ -693,6 +698,21 @@ export default function NewTicketModal({
 
           {mode === "single" ? (
             <>
+              <div className="form-section">Service Type</div>
+              <div style={{ marginBottom: 14 }}>
+                <button
+                  type="button"
+                  className={form.onsiteRepairing ? "btn btn-accent btn-sm" : "btn btn-ghost btn-sm"}
+                  disabled={loading}
+                  onClick={() => set("onsiteRepairing", !form.onsiteRepairing)}
+                >
+                  On-site Repairing
+                </button>
+                <div style={{ marginTop: 8, fontSize: 12, color: "var(--text3)" }}>
+                  Select this if you want an engineer to visit the company site and repair the inverter (offline booking).
+                </div>
+              </div>
+
               <div className="form-section">Customer Information</div>
               <div className="form-grid">
                 <div className="form-group">
@@ -1366,7 +1386,9 @@ export default function NewTicketModal({
             {loading
               ? "Creating..."
               : mode === "single"
-                ? "Create Ticket →"
+                ? form.onsiteRepairing
+                  ? "Create Offline Booking →"
+                  : "Create Ticket →"
                 : `Create ${bulkItems.length} Ticket${bulkItems.length === 1 ? "" : "s"} →`}
           </button>
         </div>

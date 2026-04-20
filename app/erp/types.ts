@@ -87,9 +87,12 @@ export type TicketStatus =
   | "INSTALLATION_DONE"
   | "CLOSED";
 
+export type TicketServiceType = "STANDARD" | "ONSITE";
+
 export interface Ticket {
   id: string;
   ticketId: string;
+  serviceType?: TicketServiceType;
   customer: string;
   customerName?: string;
   customerCompany?: string;
@@ -110,6 +113,10 @@ export interface Ticket {
   status: TicketStatus;
   warrantyStatus: boolean;
   warrantyEndDate?: string; // YYYY-MM-DD (derived from inverter.warrantyEnd)
+  onsiteEngineerName?: string;
+  onsiteVisitDate?: string; // YYYY-MM-DD
+  onsiteRemark?: string;
+  onsiteMarkedRepairedAt?: string; // YYYY-MM-DD
   assignedEngineer: string;
   createdAt: string;
   slaStatus: "MET" | "BREACHED" | "AT_RISK";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import type { IconType } from "react-icons";
 import {
   LuChartBar,
@@ -35,7 +35,7 @@ const GLOBAL_CSS = `
   ::-webkit-scrollbar-thumb { background: var(--brown-light); border-radius: 3px; }
 
   .rv { opacity: 0; transform: translateY(32px); transition: opacity 0.75s cubic-bezier(.22,1,.36,1), transform 0.75s cubic-bezier(.22,1,.36,1); }
-  .rv.in { opacity: 1; transform: translateY(0); }
+  .rv.in, .rv[data-rv="in"] { opacity: 1; transform: translateY(0); }
 
   .btn-dark { display:inline-flex;align-items:center;gap:8px;background:var(--brown);color:var(--cream);padding:13px 28px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:0.88rem;font-weight:600;letter-spacing:0.03em;text-decoration:none;border:none;cursor:pointer;transition:background 0.2s,transform 0.18s,box-shadow 0.2s;box-shadow:0 2px 12px rgba(44,26,14,0.18); }
   .btn-dark:hover { background:var(--brown-mid);transform:translateY(-1px);box-shadow:0 6px 20px rgba(44,26,14,0.22); }
@@ -103,16 +103,44 @@ const GLOBAL_CSS = `
 
 function useReveal() {
   useEffect(() => {
-    const els = document.querySelectorAll<HTMLElement>(".rv");
+    const observed = new WeakSet<Element>();
+
     const obs = new IntersectionObserver(
-      (entries) =>
+      (entries) => {
         entries.forEach((e) => {
-          if (e.isIntersecting) e.target.classList.add("in");
-        }),
+          if (!e.isIntersecting) return;
+          const el = e.target as HTMLElement;
+          el.dataset.rv = "in";
+          obs.unobserve(el);
+        });
+      },
       { threshold: 0.1 }
     );
-    els.forEach((el) => obs.observe(el));
-    return () => obs.disconnect();
+
+    const ensureObserved = (el: HTMLElement) => {
+      if (observed.has(el)) return;
+      observed.add(el);
+      obs.observe(el);
+    };
+
+    document.querySelectorAll<HTMLElement>(".rv").forEach(ensureObserved);
+
+    const mo = new MutationObserver((muts) => {
+      for (const m of muts) {
+        m.addedNodes.forEach((n) => {
+          if (!(n instanceof HTMLElement)) return;
+          if (n.classList.contains("rv")) ensureObserved(n);
+          n.querySelectorAll?.<HTMLElement>(".rv").forEach(ensureObserved);
+        });
+      }
+    });
+
+    mo.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      mo.disconnect();
+      obs.disconnect();
+    };
   }, []);
 }
 
@@ -401,6 +429,7 @@ function Navbar({ onOpen }: { onOpen: () => void }) {
         <a
           href="/erp"
           className="nv-erp"
+          suppressHydrationWarning
           style={{
             fontSize: "0.83rem",
             color: "var(--brown-mid)",
@@ -425,7 +454,7 @@ function Navbar({ onOpen }: { onOpen: () => void }) {
             el.style.color = "var(--brown-mid)";
           }}
         >
-          {ERP_ICON} Sunce ERP
+          {ERP_ICON} Inverter Services
         </a>
         <button
           onClick={onOpen}
@@ -453,12 +482,6 @@ function Hero({ onOpen }: { onOpen: () => void }) {
     transition: `opacity 0.9s cubic-bezier(.22,1,.36,1) ${d}s, transform 0.9s cubic-bezier(.22,1,.36,1) ${d}s`,
   });
 
-  const fadeR = (d: number): CSSProperties => ({
-    opacity: loaded ? 1 : 0,
-    transform: loaded ? "none" : "translateX(40px) scale(0.97)",
-    transition: `opacity 1s cubic-bezier(.22,1,.36,1) ${d}s, transform 1s cubic-bezier(.22,1,.36,1) ${d}s`,
-  });
-
   const stats: Array<{ Icon: IconType; val: string; label: string }> = [
     { Icon: LuTicket, val: "500+", label: "Plants Serviced" },
     { Icon: LuStar, val: "5.0", label: "Google Rating" },
@@ -470,7 +493,7 @@ function Hero({ onOpen }: { onOpen: () => void }) {
     <section
       style={{
         minHeight: "100vh",
-        background: "var(--cream)",
+        backgroundColor: "#000",
         display: "flex",
         alignItems: "center",
         padding: "90px 6vw 60px",
@@ -481,59 +504,37 @@ function Hero({ onOpen }: { onOpen: () => void }) {
       <div
         style={{
           position: "absolute",
-          left: "-140px",
-          top: "10%",
-          width: 420,
-          height: 420,
-          borderRadius: "50%",
-          border: "1px solid rgba(44,26,14,0.06)",
+          inset: 0,
+          backgroundImage: "url('/hero.webp')",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+          transform: "scale(1.02)",
+          filter: "contrast(1.1) saturate(1.08) brightness(1.03)",
+          willChange: "transform",
           pointerEvents: "none",
         }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          left: "-90px",
-          top: "18%",
-          width: 280,
-          height: 280,
-          borderRadius: "50%",
-          border: "1px solid rgba(44,26,14,0.04)",
-          pointerEvents: "none",
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          right: "38%",
-          bottom: "-60px",
-          width: 280,
-          height: 280,
-          borderRadius: "50%",
-          border: "1px solid rgba(181,130,26,0.08)",
-          pointerEvents: "none",
-        }}
+        aria-hidden="true"
       />
       <div
         style={{
           position: "absolute",
           inset: 0,
-          backgroundImage:
-            "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E\")",
+          background:
+            "linear-gradient(90deg, rgba(240,235,224,0.92) 0%, rgba(240,235,224,0.72) 48%, rgba(240,235,224,0.12) 74%, rgba(240,235,224,0) 100%)",
           pointerEvents: "none",
-          opacity: 0.6,
         }}
+        aria-hidden="true"
       />
 
       <div
         className="hg"
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: "60px",
+          gridTemplateColumns: "1fr",
           alignItems: "center",
           width: "100%",
-          maxWidth: 1200,
+          maxWidth: 1080,
           margin: "0 auto",
         }}
       >
@@ -649,129 +650,455 @@ function Hero({ onOpen }: { onOpen: () => void }) {
             </div>
           </div>
         </div>
+      </div>
+    </section>
+  );
+}
 
-        <div className="hi" style={{ ...fadeR(0.3), position: "relative", zIndex: 2 }}>
+function CuttingEdgeIntro() {
+  const navy = "#233E99";
+
+  const goToProducts = () => {
+    document.getElementById("products")?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  return (
+    <section style={{ background: "#fff", padding: "96px 6vw 0", overflow: "hidden" }}>
+      <div className="rv" style={{ maxWidth: 1120, margin: "0 auto", textAlign: "center" }}>
+        <h2
+          style={{
+            fontFamily: "'Outfit', sans-serif",
+            fontSize: "clamp(1.85rem, 3.2vw, 2.6rem)",
+            fontWeight: 800,
+            color: navy,
+            lineHeight: 1.2,
+            margin: "0 auto",
+          }}
+        >
+          Sunce&apos;s Cutting-Edge Solutions: Elevating Human Life and Industry
+          with Expert Solar Inverter Services
+        </h2>
+        <p
+          style={{
+            margin: "18px auto 0",
+            maxWidth: 980,
+            fontSize: "1rem",
+            lineHeight: 1.9,
+            color: "rgba(44,26,14,0.72)",
+          }}
+        >
+          At Sunce, we provide expert services like{" "}
+          <em>Solar Inverter Maintenance</em>, <em>Solar Inverter Repair</em>, and{" "}
+          <em>Solar Inverter AMC</em> to enhance industries and improve lives. With
+          a focus on innovation and technology, our skilled Solar Inverter
+          Technicians deliver reliable solutions for{" "}
+          <em>Solar Inverter Breakdown</em> and other needs. Trust us for
+          cutting-edge Solar Inverter Repair &amp; Services in India designed to
+          drive progress and ensure long-term value.
+        </p>
+      </div>
+
+      <div
+        className="cg"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1.08fr 0.92fr",
+          gap: "70px",
+          alignItems: "start",
+          maxWidth: 1200,
+          margin: "70px auto 0",
+          paddingBottom: 96,
+        }}
+      >
+        <div className="rv" style={{ position: "relative" }}>
           <div
+            aria-hidden="true"
             style={{
               position: "absolute",
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%,-50%)",
-              width: "108%",
-              height: "108%",
-              borderRadius: "28px",
-              border: "1.5px solid rgba(181,130,26,0.18)",
+              left: "-76px",
+              top: "-6px",
+              writingMode: "vertical-rl",
+              transform: "rotate(180deg)",
+              fontFamily: "'Outfit', sans-serif",
+              fontWeight: 800,
+              fontSize: "clamp(4.2rem, 6vw, 6.2rem)",
+              letterSpacing: "0.14em",
+              color: "rgba(44,26,14,0.06)",
+              userSelect: "none",
               pointerEvents: "none",
-              zIndex: 0,
+              lineHeight: 1,
             }}
-          />
+          >
+            SUNCE
+          </div>
           <div
             style={{
-              position: "absolute",
-              bottom: -16,
-              right: -16,
-              width: "100%",
-              height: "100%",
-              borderRadius: 24,
-              background: "var(--cream-dark)",
-              border: "1px solid var(--border)",
-              zIndex: 0,
-            }}
-          />
-          <div
-            style={{
-              position: "relative",
-              zIndex: 1,
-              borderRadius: 24,
+              background: "#fff",
+              borderRadius: 0,
               overflow: "hidden",
-              boxShadow: "0 24px 64px rgba(44,26,14,0.18)",
-              aspectRatio: "4/5",
+              boxShadow: "0 18px 55px rgba(44,26,14,0.12)",
+              border: "1px solid rgba(44,26,14,0.08)",
             }}
           >
             <img
-              src="/hero.jpeg"
-              alt="Sunce Solar Hero"
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                display: "block",
-                filter: "sepia(0.08) saturate(0.92)",
-              }}
+              src="/findmoreaboutus.webp"
+              alt="Find out more about us"
+              style={{ width: "100%", height: "auto", display: "block" }}
               onError={(e) => {
-                const el = e.currentTarget as HTMLImageElement;
-                el.style.display = "none";
-                if (el.parentElement) {
-                  el.parentElement.style.background = "var(--cream-dark)";
-                  el.parentElement.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:1.2rem;font-weight:800;letter-spacing:.12em;opacity:0.35">SUNCE</div>`;
-                }
+                (e.currentTarget as HTMLImageElement).style.display = "none";
               }}
             />
+            <div style={{ height: 10, background: navy }} />
+          </div>
+        </div>
+
+        <div className="rv" style={{ paddingTop: 10 }}>
+          <div
+            style={{
+              fontSize: "0.78rem",
+              fontWeight: 800,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              color: navy,
+              marginBottom: 10,
+            }}
+          >
+            Get to know us
+          </div>
+          <h3
+            style={{
+              fontSize: "clamp(2rem, 3.1vw, 2.8rem)",
+              fontWeight: 900,
+              letterSpacing: "-0.02em",
+              color: "#0b1220",
+              lineHeight: 1.12,
+              margin: "0 0 16px",
+            }}
+          >
+            Find Out More About Us
+          </h3>
+          <p style={{ fontSize: "0.98rem", color: "rgba(44,26,14,0.62)", lineHeight: 1.9, marginBottom: 18 }}>
+            At Sunce, established in 2016 by three visionary technocrats, we
+            believe in redefining the way businesses and products are developed.
+            Our unique approach focuses on a market-pull orientation rather than
+            a technology-push model. By gaining in-depth market insights before
+            creating technology solutions, we ensure customer satisfaction and
+            market readiness for our products.
+          </p>
+          <p style={{ fontSize: "0.98rem", color: "rgba(44,26,14,0.62)", lineHeight: 1.9, marginBottom: 26 }}>
+            Whether it&apos;s Solar Inverter Maintenance, Solar Inverter Repair,
+            or handling a sudden Solar Inverter Breakdown, our services are
+            tailored to meet market demands effectively.
+          </p>
+          <p style={{ fontSize: "0.98rem", color: "rgba(44,26,14,0.62)", lineHeight: 1.9, marginBottom: 26 }}>
+            Our commercial mindset drives our mission at Sunce. We bring together
+            entrepreneurial thinkers with exceptional technical expertise and
+            business acumen. With over 350 skilled professionals, we&apos;ve
+            developed comprehensive capabilities in product development and
+            business growth.
+          </p>
+          <button type="button" className="btn-dark" onClick={goToProducts} style={{ padding: "14px 28px" }}>
+            Explore Now
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const PRODUCT_CARDS = [
+  { title: "SNet Portable String Monitoring", img: "/1.png" },
+  { title: "SNet Lora", img: "/2.png" },
+  { title: "SNet IoT Gateway", img: "/3.png" },
+] as const;
+
+function ProductsShowcase({ onOpen }: { onOpen: () => void }) {
+  const products = PRODUCT_CARDS;
+
+  const [active, setActive] = useState(1);
+  const len = products.length;
+  const prev = (active - 1 + len) % len;
+  const next = (active + 1) % len;
+
+  const navy = "#0c3b5c";
+
+  const Card = useCallback(
+    ({
+      item,
+      variant,
+      onClick,
+    }: {
+      item: (typeof PRODUCT_CARDS)[number];
+      variant: "left" | "center" | "right";
+      onClick: () => void;
+    }) => {
+      const isCenter = variant === "center";
+      return (
+        <button
+          type="button"
+          onClick={onClick}
+          className="rv"
+          aria-label={isCenter ? item.title : `Focus ${item.title}`}
+          style={{
+            width: "100%",
+            display: "block",
+            border: "none",
+            padding: 0,
+            background: "transparent",
+            color: "inherit",
+            textAlign: "left",
+            cursor: isCenter ? "default" : "pointer",
+          }}
+        >
+          <div
+            style={{
+              borderRadius: 0,
+              overflow: "hidden",
+              border: isCenter ? "none" : "1px solid rgba(12,59,92,0.12)",
+              background: isCenter ? navy : "#f6f8fb",
+              boxShadow: isCenter
+                ? "0 26px 70px rgba(12,59,92,0.28)"
+                : "0 14px 40px rgba(44,26,14,0.10)",
+              transform: isCenter ? "translateY(-6px)" : "none",
+              transition: "transform 0.25s ease, box-shadow 0.25s ease",
+            }}
+          >
             <div
               style={{
-                position: "absolute",
-                inset: 0,
-                background:
-                  "linear-gradient(to top, rgba(44,26,14,0.45) 0%, transparent 50%)",
-                pointerEvents: "none",
+                height: 210,
+                display: "grid",
+                placeItems: "center",
+                background: "#fff",
+                margin: isCenter ? "28px 28px 0" : "22px 22px 0",
+                border: "1px solid rgba(44,26,14,0.08)",
               }}
-            />
+            >
+              <img
+                src={item.img}
+                alt={item.title}
+                style={{
+                  maxWidth: "86%",
+                  maxHeight: "86%",
+                  objectFit: "contain",
+                  display: "block",
+                }}
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                }}
+              />
+            </div>
             <div
               style={{
-                position: "absolute",
-                bottom: 22,
-                left: 22,
-                background: "rgba(240,235,224,0.92)",
-                backdropFilter: "blur(12px)",
-                border: "1px solid rgba(44,26,14,0.12)",
-                borderRadius: 14,
-                padding: "12px 18px",
+                padding: isCenter ? "18px 28px 24px" : "16px 22px 22px",
+                color: isCenter ? "#fff" : "#0b1220",
+                minHeight: 66,
                 display: "flex",
-                alignItems: "center",
-                gap: 11,
+                alignItems: "flex-end",
               }}
             >
               <div
                 style={{
-                  width: 38,
-                  height: 38,
-                  background: "var(--brown)",
-                  borderRadius: 10,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
+                  fontSize: "0.78rem",
+                  fontWeight: 800,
+                  letterSpacing: "0.02em",
+                  opacity: isCenter ? 0.95 : 0.78,
                 }}
               >
-                <LuSunMedium size={20} color="var(--cream)" />
-              </div>
-              <div>
-                <div
-                  style={{
-                    fontFamily: "'Cormorant Garamond', serif",
-                    fontSize: "1rem",
-                    fontWeight: 700,
-                    color: "var(--brown)",
-                    lineHeight: 1.2,
-                  }}
-                >
-                  Certified Inverter Doctors
-                </div>
-                <div
-                  style={{
-                    fontSize: "0.65rem",
-                    color: "var(--brown-light)",
-                    fontWeight: 600,
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                    marginTop: 1,
-                  }}
-                >
-                  Pan India · Since 2017
-                </div>
+                {item.title}
               </div>
             </div>
           </div>
+        </button>
+      );
+    },
+    [navy]
+  );
+
+  return (
+    <section
+      id="products"
+      style={{
+        background:
+          "linear-gradient(180deg, #ffffff 0%, #ffffff 44%, #f2f7fb 100%)",
+        padding: "0 0 110px",
+      }}
+    >
+      <div
+        style={{
+          background: "linear-gradient(180deg, #14181e 0%, #0c0f14 100%)",
+          color: "#fff",
+          borderTop: "1px solid rgba(255,255,255,0.06)",
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        <div
+          className="rv"
+          style={{
+            maxWidth: 1200,
+            margin: "0 auto",
+            padding: "22px 6vw",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+            gap: 0,
+          }}
+        >
+          {[
+            { val: "15+", label: "Team Experience" },
+            { val: "500 MW+", label: "Utility Size Capacity" },
+            { val: "200 MW+", label: "Rooftop Capacity" },
+            { val: "40+", label: "Customer Service Base" },
+            { val: "25+", label: "Team Size" },
+          ].map((s, i) => (
+            <div
+              key={i}
+              style={{
+                textAlign: "center",
+                borderRight:
+                  i < 4 ? "1px solid rgba(255,255,255,0.14)" : "none",
+                padding: "4px 10px",
+              }}
+            >
+              <div style={{ fontSize: "1.25rem", fontWeight: 900, letterSpacing: "-0.01em" }}>
+                {s.val}
+              </div>
+              <div
+                style={{
+                  fontSize: "0.62rem",
+                  opacity: 0.7,
+                  marginTop: 3,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  fontWeight: 700,
+                }}
+              >
+                {s.label}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "92px 6vw 0" }}>
+        <div className="rv" style={{ textAlign: "center" }}>
+          <div
+            style={{
+              fontSize: "0.68rem",
+              fontWeight: 900,
+              letterSpacing: "0.16em",
+              textTransform: "uppercase",
+              color: "rgba(12,59,92,0.75)",
+              marginBottom: 10,
+            }}
+          >
+            Latest Products
+          </div>
+          <h2
+            style={{
+              fontFamily: "'Outfit', sans-serif",
+              fontSize: "clamp(2rem, 3.4vw, 2.9rem)",
+              fontWeight: 900,
+              color: "#0b1220",
+              lineHeight: 1.1,
+              margin: "0 0 34px",
+            }}
+          >
+            Our Products &amp; Services
+          </h2>
+        </div>
+
+        <div
+          className="rv sg"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1.1fr 1fr",
+            gap: 26,
+            alignItems: "stretch",
+          }}
+        >
+          <Card item={products[prev]} variant="left" onClick={() => setActive(prev)} />
+          <Card item={products[active]} variant="center" onClick={() => setActive(active)} />
+          <Card item={products[next]} variant="right" onClick={() => setActive(next)} />
+        </div>
+
+        <div
+          className="wg"
+          style={{
+            marginTop: 74,
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 36,
+            alignItems: "center",
+          }}
+        >
+          <div
+            className="rv"
+            style={{
+              background: navy,
+              color: "#fff",
+              padding: "34px 34px 30px",
+              boxShadow: "0 28px 70px rgba(12,59,92,0.25)",
+            }}
+          >
+            <div style={{ fontSize: "0.68rem", fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", opacity: 0.85 }}>
+              Why choose us
+            </div>
+            <h3 style={{ margin: "10px 0 8px", fontSize: "1.5rem", fontWeight: 900, lineHeight: 1.12 }}>
+              Solar Inverter Repair Service
+            </h3>
+            <p style={{ margin: "0 0 18px", opacity: 0.9, fontSize: "0.86rem", lineHeight: 1.75 }}>
+              We do all makes &amp; out of warranty. Experience unmatched expertise in inverter repairs for all leading brands, ensuring optimal performance and extended longevity.
+            </p>
+            <div style={{ marginTop: 16, fontSize: "0.78rem", fontWeight: 800, opacity: 0.95 }}>
+              Package Includes:
+            </div>
+            <ul style={{ margin: "10px 0 22px 18px", padding: 0, lineHeight: 1.85, opacity: 0.9, fontSize: "0.84rem" }}>
+              <li>All kinds of string inverter</li>
+              <li>Central inverter</li>
+              <li>SCADA System</li>
+              <li>Expert Guidance</li>
+            </ul>
+            <button
+              type="button"
+              onClick={onOpen}
+              style={{
+                background: "#1f3f8f",
+                color: "#fff",
+                border: "none",
+                borderRadius: 8,
+                padding: "12px 18px",
+                fontWeight: 800,
+                fontSize: "0.78rem",
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                cursor: "pointer",
+              }}
+            >
+              Contact Us
+            </button>
+          </div>
+
+	          <div className="rv" style={{ display: "flex", justifyContent: "center" }}>
+	            <div
+	              style={{
+	                width: "100%",
+	                maxWidth: 520,
+	                background: "#fff",
+	                border: "1px solid rgba(44,26,14,0.1)",
+	                boxShadow: "0 16px 50px rgba(44,26,14,0.10)",
+	                overflow: "hidden",
+	                aspectRatio: "16/9",
+	              }}
+	            >
+	              <img
+	                src="/4.webp"
+	                alt="Sunce repair workshop"
+	                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+	                onError={(e) => {
+	                  (e.currentTarget as HTMLImageElement).style.display = "none";
+	                }}
+	              />
+	            </div>
+	          </div>
         </div>
       </div>
     </section>
@@ -873,7 +1200,7 @@ const SERVICES: Array<{
 
 function Services() {
   return (
-    <section style={{ background: "var(--cream-mid)", padding: "110px 6vw" }}>
+    <section id="services" style={{ background: "var(--cream-mid)", padding: "110px 6vw" }}>
       <div className="rv" style={{ textAlign: "center", marginBottom: 60 }}>
         <span className="slabel">What We Do</span>
         <h2
@@ -1074,12 +1401,13 @@ function Footer() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14 }}>
         <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.05rem", fontWeight: 700, color: "var(--brown)" }}>Sunce Renewables Pvt. Ltd.</span>
         <a href="/erp"
+          suppressHydrationWarning
           style={{ fontSize: "0.82rem", color: "var(--gold)", fontWeight: 600, textDecoration: "none", display: "flex", alignItems: "center", gap: 6, transition: "color 0.2s" }}
           onMouseEnter={(e) => (e.currentTarget as HTMLAnchorElement).style.color = "var(--gold-light)"}
           onMouseLeave={(e) => (e.currentTarget as HTMLAnchorElement).style.color = "var(--gold)"}>
-          {ERP_ICON} Sunce ERP Platform ↗
+          {ERP_ICON} Inverter Services ↗
         </a>
-        <span style={{ fontSize: "0.78rem", color: "var(--brown-light)", opacity: 0.65 }}>© {new Date().getFullYear()} Sunce Renewables · NOIDA, India</span>
+        <span suppressHydrationWarning style={{ fontSize: "0.78rem", color: "var(--brown-light)", opacity: 0.65 }}>© {new Date().getFullYear()} Sunce Renewables · NOIDA, India</span>
       </div>
     </footer>
   );
@@ -1110,11 +1438,11 @@ export default function HomePage() {
       {open && <WAModal onClose={() => setOpen(false)} />}
       <Navbar onOpen={() => setOpen(true)} />
       <Hero onOpen={() => setOpen(true)} />
+      <CuttingEdgeIntro />
+      <ProductsShowcase onOpen={() => setOpen(true)} />
       <Ticker />
-      <Services />
       <About />
       <WhyUs />
-      <Projects />
       <CTA onOpen={() => setOpen(true)} />
       <Footer />
       <button className="waf" onClick={() => setOpen(true)} title="Chat on WhatsApp">

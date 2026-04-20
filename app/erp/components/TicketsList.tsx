@@ -26,6 +26,12 @@ function toLocalMidnight(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
+function isOnsiteTicket(t: Ticket): boolean {
+  return String(t.serviceType || "")
+    .trim()
+    .toUpperCase() === "ONSITE";
+}
+
 function parseLocalDateOnly(yyyyMmDd: string): Date | null {
   const raw = String(yyyyMmDd || "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
@@ -106,13 +112,23 @@ export default function TicketsList({
   const canSeeAllTab = (isAdmin || isSales) && !isEngineer;
   const normalizedInitialStatus = String(initialStatusFilter || "").toUpperCase().trim();
 
-  const initialTab: "all" | "inward" | "repaired" | "outward" | "approval_pending" | "closed" =
+  const initialTab:
+    | "all"
+    | "inward"
+    | "repaired"
+    | "offline_booking"
+    | "approved_by_admin"
+    | "outward"
+    | "approval_pending"
+    | "closed" =
     isEngineer
       ? "repaired"
       : canSeeAllTab && !normalizedInitialStatus
         ? "all"
       : normalizedInitialStatus === "APPROVAL_PENDING"
         ? "approval_pending"
+      : normalizedInitialStatus === "APPROVED_BY_ADMIN"
+        ? "approved_by_admin"
       : normalizedInitialStatus === "CLOSED"
         ? "closed"
         : normalizedInitialStatus === "UNDER_REPAIRED"
@@ -127,6 +143,7 @@ export default function TicketsList({
       : normalizedInitialStatus &&
           normalizedInitialStatus !== "OPEN" &&
           normalizedInitialStatus !== "APPROVAL_PENDING" &&
+          normalizedInitialStatus !== "APPROVED_BY_ADMIN" &&
           normalizedInitialStatus !== "CLOSED"
         ? normalizedInitialStatus
         : "ALL";
@@ -134,7 +151,14 @@ export default function TicketsList({
   const canLoadJobCards = canAccess(roles, user.role, "jobcard", "view") && roleNorm !== "CUSTOMER";
 
   const [ticketsTab, setTicketsTab] = useState<
-    "all" | "inward" | "repaired" | "outward" | "approval_pending" | "approved_by_admin" | "closed"
+    | "all"
+    | "inward"
+    | "repaired"
+    | "offline_booking"
+    | "outward"
+    | "approval_pending"
+    | "approved_by_admin"
+    | "closed"
   >(initialTab);
   const [repairedTab, setRepairedTab] = useState<"all" | "repairable" | "not_repairable">("all");
   const [search, setSearch] = useState("");
@@ -253,12 +277,19 @@ export default function TicketsList({
   }, [jobCards]);
 
   const inwardTickets = useMemo(
-    () => tickets.filter((t) => INWARD_STATUSES.includes(t.status)),
+    () => tickets.filter((t) => !isOnsiteTicket(t) && INWARD_STATUSES.includes(t.status)),
     [tickets],
   );
-  const repairedTickets = useMemo(() => tickets.filter((t) => t.status === "UNDER_REPAIRED"), [tickets]);
+  const repairedTickets = useMemo(
+    () => tickets.filter((t) => !isOnsiteTicket(t) && t.status === "UNDER_REPAIRED"),
+    [tickets],
+  );
+  const offlineBookingTickets = useMemo(
+    () => tickets.filter((t) => isOnsiteTicket(t) && t.status !== "CLOSED"),
+    [tickets],
+  );
   const outwardTickets = useMemo(
-    () => tickets.filter((t) => OUTWARD_STATUSES.includes(t.status)),
+    () => tickets.filter((t) => !isOnsiteTicket(t) && OUTWARD_STATUSES.includes(t.status)),
     [tickets],
   );
   const approvalPendingTickets = useMemo(() => {
@@ -282,6 +313,10 @@ export default function TicketsList({
   const repairedCount = useMemo(
     () => repairedTickets.filter((t) => matchesDateFilter(t.createdAt, dateFilter)).length,
     [repairedTickets, dateFilter],
+  );
+  const offlineBookingCount = useMemo(
+    () => offlineBookingTickets.filter((t) => matchesDateFilter(t.createdAt, dateFilter)).length,
+    [offlineBookingTickets, dateFilter],
   );
   const outwardCount = useMemo(
     () => outwardTickets.filter((t) => matchesDateFilter(t.createdAt, dateFilter)).length,
@@ -317,6 +352,7 @@ export default function TicketsList({
     if (ticketsTab === "all") return tickets;
     if (ticketsTab === "inward") return inwardTickets;
     if (ticketsTab === "repaired") return repairedTickets;
+    if (ticketsTab === "offline_booking") return offlineBookingTickets;
     if (ticketsTab === "outward") return outwardTickets;
     if (ticketsTab === "approval_pending") return approvalPendingTickets;
     if (ticketsTab === "approved_by_admin") return approvedByAdminTickets;
@@ -326,6 +362,7 @@ export default function TicketsList({
     tickets,
     inwardTickets,
     repairedTickets,
+    offlineBookingTickets,
     outwardTickets,
     approvalPendingTickets,
     approvedByAdminTickets,
@@ -442,17 +479,32 @@ export default function TicketsList({
           >
             Under Progress ({repairedCount})
           </div>
-          <div
-            className={`tab ${ticketsTab === "outward" ? "active" : ""}`}
-            onClick={() => {
-              setTicketsTab("outward");
-              setStatusFilter("ALL");
-              setRepairedTab("all");
-              setPage(1);
-            }}
-          >
-            Outward ({outwardCount})
-          </div>
+          {roleNorm !== "CUSTOMER" ? (
+            <div
+              className={`tab ${ticketsTab === "offline_booking" ? "active" : ""}`}
+              onClick={() => {
+                setTicketsTab("offline_booking");
+                setStatusFilter("ALL");
+                setRepairedTab("all");
+                setPage(1);
+              }}
+            >
+              Offline Booking ({offlineBookingCount})
+            </div>
+          ) : null}
+          {!isSales ? (
+            <div
+              className={`tab ${ticketsTab === "outward" ? "active" : ""}`}
+              onClick={() => {
+                setTicketsTab("outward");
+                setStatusFilter("ALL");
+                setRepairedTab("all");
+                setPage(1);
+              }}
+            >
+              Outward ({outwardCount})
+            </div>
+          ) : null}
           {isAdmin ? (
             <div
               className={`tab ${ticketsTab === "approval_pending" ? "active" : ""}`}
@@ -479,6 +531,19 @@ export default function TicketsList({
               title={approvedByAdminError ? approvedByAdminError : undefined}
             >
               Approved by Admin ({approvedByAdminCount})
+            </div>
+          ) : null}
+          {isSales ? (
+            <div
+              className={`tab ${ticketsTab === "outward" ? "active" : ""}`}
+              onClick={() => {
+                setTicketsTab("outward");
+                setStatusFilter("ALL");
+                setRepairedTab("all");
+                setPage(1);
+              }}
+            >
+              Outward ({outwardCount})
             </div>
           ) : null}
           <div

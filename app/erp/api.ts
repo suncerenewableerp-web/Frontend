@@ -243,6 +243,7 @@ type BackendTicket = {
   _id?: string;
   id?: string;
   ticketId?: string;
+  serviceType?: string;
   customer?: { name?: string; company?: string; phone?: string; email?: string; address?: string };
   createdBy?: BackendUser | string;
   inverter?: {
@@ -251,6 +252,12 @@ type BackendTicket = {
     serialNo?: string;
     capacity?: string;
     warrantyEnd?: string | Date;
+  };
+  onsite?: {
+    engineerName?: string;
+    visitDate?: string | Date;
+    remark?: string;
+    markedRepairedAt?: string | Date;
   };
   issue?: { description?: string; priority?: string; errorCode?: string };
   status?: string;
@@ -549,9 +556,17 @@ function toTicket(t: BackendTicket): Ticket {
   const createdByEmail =
     t?.createdBy && typeof t.createdBy === "object" ? String((t.createdBy as BackendUser)?.email || "") : "";
 
+  const serviceType =
+    String(t?.serviceType || "")
+      .trim()
+      .toUpperCase() === "ONSITE"
+      ? "ONSITE"
+      : "STANDARD";
+
   return {
     id: String(t?._id || t?.id || ""),
     ticketId: String(t?.ticketId || ""),
+    serviceType,
     customer: customerDisplay,
     customerName,
     customerCompany,
@@ -572,6 +587,10 @@ function toTicket(t: BackendTicket): Ticket {
     status: normalizeTicketStatus(t?.status),
     warrantyStatus: isInWarranty(t?.inverter?.warrantyEnd) || Boolean(t?.warrantyStatus),
     warrantyEndDate: toDateInput(t?.inverter?.warrantyEnd),
+    onsiteEngineerName: t?.onsite?.engineerName ? String(t.onsite.engineerName) : undefined,
+    onsiteVisitDate: toDateInput(t?.onsite?.visitDate),
+    onsiteRemark: t?.onsite?.remark ? String(t.onsite.remark) : undefined,
+    onsiteMarkedRepairedAt: toDateInput(t?.onsite?.markedRepairedAt),
     assignedEngineer: String(assignedEngineer),
     createdAt: String(t?.createdAt ? String(t.createdAt).slice(0, 10) : ""),
     slaStatus: toSlaStatus(t?.slaStatus),
@@ -741,6 +760,7 @@ export type TicketCreateInput = {
   // Client requirement: only these two are mandatory
   capacity: string;
   faultDescription: string;
+  serviceType?: "STANDARD" | "ONSITE";
   customerName?: string;
   customerCompany?: string;
   inverterLocation?: string;
@@ -780,6 +800,12 @@ function ticketCreatePayloadFromInput(input: TicketCreateInput, ticketId: string
   const serialNumber = String(input.serialNumber || "").trim();
   const faultDescription = String(input.faultDescription || "").trim();
   const errorCode = String(input.errorCode || "").trim();
+  const serviceType =
+    String(input.serviceType || "")
+      .trim()
+      .toUpperCase() === "ONSITE"
+      ? "ONSITE"
+      : "";
 
   let warrantyEnd: string | undefined;
   if (input.warrantyEndDate) {
@@ -793,6 +819,7 @@ function ticketCreatePayloadFromInput(input: TicketCreateInput, ticketId: string
 
   return {
     ticketId,
+    ...(serviceType ? { serviceType } : {}),
     ...(customerName || customerCompany || inverterLocation
       ? {
           customer: {
@@ -851,6 +878,30 @@ export async function apiUpdateTicketStatus(
     body: JSON.stringify({ status }),
   });
   if (!env.success) throw new Error(env.message || "Failed to update ticket");
+  return toTicket(env.data);
+}
+
+export async function apiTicketOnsiteAssign(ticketId: string, engineerId?: string | null): Promise<Ticket> {
+  const payload: Record<string, any> = {};
+  const id = String(engineerId || "").trim();
+  if (id) payload.engineerId = id;
+  const env = await apiFetch<BackendTicket>(`/api/tickets/${encodeURIComponent(ticketId)}/onsite/assign`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!env.success) throw new Error(env.message || "Failed to assign engineer");
+  return toTicket(env.data);
+}
+
+export async function apiTicketOnsiteJobCardUpdate(
+  ticketId: string,
+  input: { engineerName?: string; visitDate?: string; remark?: string; markRepaired?: boolean },
+): Promise<Ticket> {
+  const env = await apiFetch<BackendTicket>(`/api/tickets/${encodeURIComponent(ticketId)}/onsite/jobcard`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+  if (!env.success) throw new Error(env.message || "Failed to save on-site job details");
   return toTicket(env.data);
 }
 
