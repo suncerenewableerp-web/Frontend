@@ -39,8 +39,10 @@ import Notification from "./components/Notification";
 
 export default function ErpApp({
   initialAuthView = "login",
+  bootMode = "auth",
 }: {
   initialAuthView?: "login" | "signup";
+  bootMode?: "auth" | "dashboard";
 }) {
   const router = useRouter();
   const [authView, setAuthView] = useState<"login" | "signup">(initialAuthView);
@@ -65,6 +67,7 @@ export default function ErpApp({
   const [bootError, setBootError] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
 
   const notify = (msg: string) => setNotification(msg);
 
@@ -149,13 +152,9 @@ export default function ErpApp({
 
   const handleLogin = async (email: string, password: string) => {
     const { user: u } = await apiLogin({ email, password });
-    setUser(u);
-    setPage("dashboard");
-    setSelectedTicket(null);
-    setSidebarOpen(false);
+    setRedirecting(true);
     notify(`Welcome back, ${u.name.split(" ")[0]}!`);
-    await Promise.allSettled([loadTickets(), loadUsers()]);
-    router.push("/dashboard");
+    router.replace("/dashboard");
   };
 
   const handleLogout = () => {
@@ -183,13 +182,9 @@ export default function ErpApp({
   };
 
   const handleFinishSignup = async (u: User) => {
-    setUser(u);
-    setPage("dashboard");
-    setSelectedTicket(null);
-    setAuthView("login");
+    setRedirecting(true);
     notify(`Welcome to Sunce ERP, ${u.name.split(" ")[0]}! 🎉`);
-    await Promise.allSettled([loadTickets(), loadUsers()]);
-    router.push("/dashboard");
+    router.replace("/dashboard");
   };
 
   const handleNewTicket = async (input: TicketCreateInput) => {
@@ -260,7 +255,25 @@ export default function ErpApp({
 
   return (
     <>
-      {!user ? (
+      {bootMode === "dashboard" && !hydrated ? (
+        <div
+          className="erp-root"
+          style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}
+        >
+          <div style={{ fontSize: 14, color: "var(--text2)" }}>
+            Loading dashboard…
+          </div>
+        </div>
+      ) : redirecting ? (
+        <div
+          className="erp-root"
+          style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}
+        >
+          <div style={{ fontSize: 14, color: "var(--text2)" }}>
+            Redirecting to dashboard…
+          </div>
+        </div>
+      ) : !user ? (
         authView === "signup" ? (
           <SignupScreen
             roles={roles}
@@ -301,7 +314,9 @@ export default function ErpApp({
           />
           <div className="main">
             <div className="topbar">
-              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}
+              >
                 <button
                   className="sidebar-toggle"
                   aria-controls="erp-sidebar"
@@ -311,7 +326,11 @@ export default function ErpApp({
                 >
                   ☰
                 </button>
-                <Link href="/dashboard" className="topbar-home" aria-label="Go to dashboard">
+                <Link
+                  href="/dashboard"
+                  className="topbar-home"
+                  aria-label="Go to dashboard"
+                >
                   <LuSunMedium />
                 </Link>
                 <div className="topbar-title">{getPageTitle()}</div>
@@ -352,16 +371,21 @@ export default function ErpApp({
                 onNav={setPage}
                 onViewTicket={(t, opts) => {
                   setSelectedTicket(t);
-                  const nextTab = opts?.tab || (user.role === "ENGINEER" ? "jobcard" : "overview");
+                  const nextTab =
+                    opts?.tab || (user.role === "ENGINEER" ? "jobcard" : "overview");
                   setTicketDetailTab(nextTab);
                   setTicketDetailLogisticsStage(
                     opts?.logisticsStage
                       ? opts.logisticsStage
-                      : t.status === "DISPATCHED" || t.status === "INSTALLATION_DONE" || t.status === "CLOSED"
+                      : t.status === "DISPATCHED" ||
+                          t.status === "INSTALLATION_DONE" ||
+                          t.status === "CLOSED"
                         ? "dispatch"
                         : t.status === "UNDER_DISPATCH"
                           ? "under_dispatch"
-                          : t.status === "UNDER_REPAIRED" && user.role !== "ENGINEER" && user.role !== "CUSTOMER"
+                          : t.status === "UNDER_REPAIRED" &&
+                              user.role !== "ENGINEER" &&
+                              user.role !== "CUSTOMER"
                             ? "under_dispatch"
                             : "pickup",
                   );
@@ -382,17 +406,22 @@ export default function ErpApp({
                 initialPriorityFilter={ticketsListPreset?.priority}
                 onView={(t, opts) => {
                   setSelectedTicket(t);
-                  const nextTab = opts?.tab || (user.role === "ENGINEER" ? "jobcard" : "overview");
+                  const nextTab =
+                    opts?.tab || (user.role === "ENGINEER" ? "jobcard" : "overview");
                   setTicketDetailTab(nextTab);
                   if (opts?.notify) notify(opts.notify);
                   setTicketDetailLogisticsStage(
                     opts?.logisticsStage
                       ? opts.logisticsStage
-                      : t.status === "DISPATCHED" || t.status === "INSTALLATION_DONE" || t.status === "CLOSED"
+                      : t.status === "DISPATCHED" ||
+                          t.status === "INSTALLATION_DONE" ||
+                          t.status === "CLOSED"
                         ? "dispatch"
                         : t.status === "UNDER_DISPATCH"
                           ? "under_dispatch"
-                          : t.status === "UNDER_REPAIRED" && user.role !== "ENGINEER" && user.role !== "CUSTOMER"
+                          : t.status === "UNDER_REPAIRED" &&
+                              user.role !== "ENGINEER" &&
+                              user.role !== "CUSTOMER"
                             ? "under_dispatch"
                             : "pickup",
                   );

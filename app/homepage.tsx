@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useModal } from "./components/ModalContext";
 import type { IconType } from "react-icons";
 import {
   LuChartBar,
@@ -15,71 +16,19 @@ import {
   LuWrench,
 } from "react-icons/lu";
 
-const WHATSAPP_NUMBER = "916361991349";
 
 const GLOBAL_CSS = `
-  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600;1,700&family=Outfit:wght@300;400;500;600&display=swap');
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  :root {
-    --cream: #f0ebe0; --cream-dark: #e8e0d0; --cream-mid: #ede5d6;
-    --brown: #2c1a0e; --brown-mid: #4a2e18; --brown-light: #7a5c3e;
-    --gold: #b5821a; --gold-light: #d4a043; --gold-warm: #e8a917;
-    --border: rgba(44,26,14,0.1); --border-mid: rgba(44,26,14,0.18);
-    --wa: #25D366;
-  }
-  html { scroll-behavior: smooth; }
-  body { background: var(--cream); color: var(--brown); font-family: 'Outfit', sans-serif; overflow-x: hidden; }
-  ::selection { background: var(--gold-warm); color: var(--brown); }
-  ::-webkit-scrollbar { width: 5px; }
-  ::-webkit-scrollbar-track { background: var(--cream-dark); }
-  ::-webkit-scrollbar-thumb { background: var(--brown-light); border-radius: 3px; }
-
-  .rv { opacity: 0; transform: translateY(32px); transition: opacity 0.75s cubic-bezier(.22,1,.36,1), transform 0.75s cubic-bezier(.22,1,.36,1); }
-  .rv.in, .rv[data-rv="in"] { opacity: 1; transform: translateY(0); }
-
-  .btn-dark { display:inline-flex;align-items:center;gap:8px;background:var(--brown);color:var(--cream);padding:13px 28px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:0.88rem;font-weight:600;letter-spacing:0.03em;text-decoration:none;border:none;cursor:pointer;transition:background 0.2s,transform 0.18s,box-shadow 0.2s;box-shadow:0 2px 12px rgba(44,26,14,0.18); }
-  .btn-dark:hover { background:var(--brown-mid);transform:translateY(-1px);box-shadow:0 6px 20px rgba(44,26,14,0.22); }
-  .btn-outline-dark { display:inline-flex;align-items:center;gap:8px;background:transparent;color:var(--brown);padding:12px 26px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:0.88rem;font-weight:500;letter-spacing:0.03em;text-decoration:none;border:1.5px solid var(--border-mid);cursor:pointer;transition:border-color 0.2s,background 0.2s; }
-  .btn-outline-dark:hover { border-color:var(--brown-light);background:rgba(44,26,14,0.04); }
-  .btn-wa { display:inline-flex;align-items:center;justify-content:center;gap:10px;background:var(--wa);color:#fff;padding:14px 32px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:0.92rem;font-weight:600;border:none;cursor:pointer;transition:background 0.2s,transform 0.18s,box-shadow 0.2s;box-shadow:0 4px 16px rgba(37,211,102,0.35);text-decoration:none; }
-  .btn-wa:hover { background:#1ebe5d;transform:translateY(-1px);box-shadow:0 8px 24px rgba(37,211,102,0.4); }
-  .btn-wa:disabled { opacity:0.45;cursor:not-allowed;transform:none; }
-
-  .slabel { display:inline-flex;align-items:center;gap:7px;background:rgba(181,130,26,0.1);border:1px solid rgba(181,130,26,0.28);color:var(--gold);padding:5px 14px;border-radius:50px;font-size:0.72rem;font-weight:600;letter-spacing:0.13em;text-transform:uppercase;margin-bottom:16px; }
-  .slabel::before { content:'';width:6px;height:6px;border-radius:50%;background:var(--gold-warm);display:inline-block; }
-  .gi { font-style:italic;color:var(--gold);font-weight:600;text-decoration:underline;text-decoration-color:rgba(181,130,26,0.4);text-underline-offset:5px; }
-
-  .sc { background:#fff;border:1px solid var(--border);border-radius:16px;overflow:hidden;transition:transform 0.35s cubic-bezier(.22,1,.36,1),box-shadow 0.35s,border-color 0.25s; }
-  .sc:hover { transform:translateY(-6px);box-shadow:0 20px 50px rgba(44,26,14,0.12);border-color:rgba(181,130,26,0.3); }
-  .sc:hover .sc-img { transform:scale(1.05); }
-  .sc-img { width:100%;height:100%;object-fit:cover;object-position:center;display:block;transition:transform 0.55s cubic-bezier(.22,1,.36,1); }
-  .sc-img.contain { object-fit:contain; transform:none!important; }
-  .wc { padding:28px 24px;border-radius:14px;border:1px solid var(--border);background:#fff;transition:box-shadow 0.3s,border-color 0.25s,transform 0.3s; }
-  .wc:hover { box-shadow:0 10px 32px rgba(44,26,14,0.09);border-color:rgba(181,130,26,0.25);transform:translateY(-3px); }
-  .mi { border-radius:14px;overflow:hidden;background:var(--cream-dark); }
-  .mi img { width:100%;height:100%;object-fit:cover;object-position:center;display:block;transition:transform 0.55s cubic-bezier(.22,1,.36,1),filter 0.3s;filter:sepia(0.1) saturate(0.9); }
-  .mi:hover img { transform:scale(1.06);filter:sepia(0) saturate(1); }
-
-  @keyframes tick { 0% { transform:translateX(0); } 100% { transform:translateX(-50%); } }
-  .tk-track { display:flex;animation:tick 30s linear infinite;white-space:nowrap; }
-
-  .fi { width:100%;background:var(--cream);border:1px solid var(--border-mid);border-radius:10px;padding:13px 16px;color:var(--brown);font-family:'Outfit',sans-serif;font-size:0.92rem;outline:none;transition:border-color 0.2s,background 0.2s; }
-  .fi:focus { border-color:var(--gold);background:#fff; }
-  .fi::placeholder { color:rgba(44,26,14,0.3); }
-  textarea.fi { resize:vertical;min-height:100px; }
-
-  /* Modal */
-  .mo { position:fixed;inset:0;z-index:1100;background:rgba(44,26,14,0.6);backdrop-filter:blur(7px);display:flex;align-items:center;justify-content:center;padding:20px;animation:mofade 0.2s ease; }
-  .mb { background:var(--cream);border-radius:22px;border:1px solid var(--border-mid);padding:40px 36px;width:100%;max-width:460px;box-shadow:0 30px 80px rgba(44,26,14,0.28);position:relative;animation:moup 0.26s cubic-bezier(.22,1,.36,1); }
-  @keyframes mofade { from{opacity:0} to{opacity:1} }
-  @keyframes moup { from{opacity:0;transform:translateY(28px)} to{opacity:1;transform:translateY(0)} }
-  .mc { position:absolute;top:14px;right:16px;background:rgba(44,26,14,0.07);border:none;cursor:pointer;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1rem;color:var(--brown-light);transition:background 0.2s,color 0.2s; }
-  .mc:hover { background:rgba(44,26,14,0.14);color:var(--brown); }
-
-  /* Floating WA */
-  .waf { position:fixed;bottom:28px;right:28px;z-index:1000;width:58px;height:58px;border-radius:50%;background:var(--wa);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 24px rgba(37,211,102,0.45);cursor:pointer;border:none;transition:transform 0.2s,box-shadow 0.2s;animation:wapulse 2.5s infinite; }
-  .waf:hover { transform:scale(1.1);box-shadow:0 10px 32px rgba(37,211,102,0.55); }
-  @keyframes wapulse { 0%,100%{box-shadow:0 6px 24px rgba(37,211,102,0.45)} 50%{box-shadow:0 6px 34px rgba(37,211,102,0.7)} }
+  .gi { font-style: normal; color: var(--gold-warm); }
+  .slabel { display: block; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.15em; text-transform: uppercase; color: var(--gold-site); margin-bottom: 12px; }
+  .sc { background: #fff; border: 1px solid var(--border-site); border-radius: 14px; overflow: hidden; transition: transform 0.4s cubic-bezier(.22,1,.36,1), box-shadow 0.4s; }
+  .sc:hover { transform: translateY(-8px); box-shadow: 0 20px 45px rgba(44,26,14,0.1); }
+  .sc-img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.6s cubic-bezier(.22,1,.36,1); }
+  .sc:hover .sc-img { transform: scale(1.06); }
+  .mi { border-radius: 14px; overflow: hidden; border: 1px solid var(--border-site); background: var(--cream-dark); }
+  .mi img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.6s cubic-bezier(.22,1,.36,1); }
+  .mi:hover img { transform: scale(1.05); }
+  .wc { background: #fff; border: 1px solid var(--border-site); border-radius: 14px; padding: 32px 28px; transition: all 0.3s; }
+  .wc:hover { border-color: var(--gold-warm); transform: translateY(-4px); box-shadow: 0 12px 30px rgba(44,26,14,0.06); }
 
   @media (max-width:900px) {
     .dn-m { display:none!important; }
@@ -144,331 +93,8 @@ function useReveal() {
   }, []);
 }
 
-const WA_SVG = (size = 24, color = "white") => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
-  </svg>
-);
-
-const ERP_ICON = (
-  <svg
-    width="13"
-    height="13"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <rect x="3" y="3" width="7" height="7" />
-    <rect x="14" y="3" width="7" height="7" />
-    <rect x="3" y="14" width="7" height="7" />
-    <rect x="14" y="14" width="7" height="7" />
-  </svg>
-);
-
-type WAFormState = { name: string; phone: string; message: string };
-
-function WAModal({ onClose }: { onClose: () => void }) {
-  const [form, setForm] = useState<WAFormState>({
-    name: "",
-    phone: "",
-    message: "",
-  });
-
-  const valid = form.name.trim() && form.phone.trim() && form.message.trim();
-
-  const handleSend = () => {
-    const text = `Hello Sunce Renewables! 👋\n\n*Name:* ${form.name}\n*Phone:* ${form.phone}\n*Message:* ${form.message}`;
-    window.open(
-      `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`,
-      "_blank"
-    );
-    onClose();
-  };
-
-  const fields: Array<{
-    label: string;
-    key: keyof Pick<WAFormState, "name" | "phone">;
-    placeholder: string;
-    type: string;
-  }> = [
-    {
-      label: "Your Name",
-      key: "name",
-      placeholder: "Enter your full name",
-      type: "text",
-    },
-    {
-      label: "Phone Number",
-      key: "phone",
-      placeholder: "+91 XXXXX XXXXX",
-      type: "tel",
-    },
-  ];
-
-  return (
-    <div
-      className="mo"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="mb">
-        <button className="mc" onClick={onClose}>
-          ✕
-        </button>
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 14,
-            marginBottom: 28,
-          }}
-        >
-          <div
-            style={{
-              width: 50,
-              height: 50,
-              borderRadius: 14,
-              background: "#25D366",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            {WA_SVG(26)}
-          </div>
-          <div>
-            <h3
-              style={{
-                fontFamily: "'Cormorant Garamond', serif",
-                fontSize: "1.45rem",
-                fontWeight: 700,
-                color: "var(--brown)",
-                lineHeight: 1.15,
-              }}
-            >
-              Chat on WhatsApp
-            </h3>
-            <p
-              style={{
-                fontSize: "0.76rem",
-                color: "var(--brown-light)",
-                marginTop: 2,
-              }}
-            >
-              Fill your details — WhatsApp opens instantly
-            </p>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {fields.map((f) => (
-            <div key={f.key}>
-              <label
-                style={{
-                  fontSize: "0.68rem",
-                  color: "var(--gold)",
-                  fontWeight: 700,
-                  letterSpacing: "0.1em",
-                  textTransform: "uppercase",
-                  display: "block",
-                  marginBottom: 6,
-                }}
-              >
-                {f.label} *
-              </label>
-              <input
-                className="fi"
-                type={f.type}
-                placeholder={f.placeholder}
-                value={form[f.key]}
-                onChange={(e) =>
-                  setForm({ ...form, [f.key]: e.target.value })
-                }
-              />
-            </div>
-          ))}
-          <div>
-            <label
-              style={{
-                fontSize: "0.68rem",
-                color: "var(--gold)",
-                fontWeight: 700,
-                letterSpacing: "0.1em",
-                textTransform: "uppercase",
-                display: "block",
-                marginBottom: 6,
-              }}
-            >
-              Your Message *
-            </label>
-            <textarea
-              className="fi"
-              placeholder="Tell us about your solar project or service requirement..."
-              value={form.message}
-              onChange={(e) => setForm({ ...form, message: e.target.value })}
-            />
-          </div>
-
-          <button
-            className="btn-wa"
-            onClick={handleSend}
-            disabled={!valid}
-            style={{ marginTop: 4, width: "100%" }}
-          >
-            {WA_SVG(20)}
-            Send on WhatsApp
-          </button>
-          <p
-            style={{
-              fontSize: "0.7rem",
-              color: "var(--brown-light)",
-              textAlign: "center",
-              lineHeight: 1.5,
-            }}
-          >
-            Opens WhatsApp with your message pre-filled
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Navbar({ onOpen }: { onOpen: () => void }) {
-  const [scrolled, setScrolled] = useState(false);
-
-  useEffect(() => {
-    const fn = () => setScrolled(window.scrollY > 50);
-    window.addEventListener("scroll", fn);
-    return () => window.removeEventListener("scroll", fn);
-  }, []);
-
-  return (
-    <nav
-      className="nv"
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 999,
-        height: 68,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "0 5vw",
-        background: scrolled
-          ? "rgba(240,235,224,0.94)"
-          : "rgba(240,235,224,0.8)",
-        backdropFilter: "blur(18px)",
-        borderBottom: `1px solid ${
-          scrolled ? "rgba(44,26,14,0.12)" : "transparent"
-        }`,
-        transition: "border-color 0.4s,background 0.4s",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-        <div
-          style={{
-            width: 40,
-            height: 40,
-            background: "#f0ebe0",
-            border: "1.5px solid rgba(44,26,14,0.15)",
-            borderRadius: 10,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            overflow: "hidden",
-          }}
-        >
-          <img
-            src="/logo.jpg"
-            alt="Sunce"
-            style={{ width: 32, height: 32, objectFit: "contain" }}
-            onError={(e) => {
-              const t = e.currentTarget;
-              t.style.display = "none";
-              if (t.parentElement)
-                t.parentElement.innerHTML = `<span style="font-size:0.82rem;font-weight:800;letter-spacing:.06em">SR</span>`;
-            }}
-          />
-        </div>
-        <div>
-          <div
-            style={{
-              fontFamily: "'Cormorant Garamond', serif",
-              fontSize: "1.1rem",
-              fontWeight: 700,
-              color: "var(--brown)",
-              lineHeight: 1.15,
-            }}
-          >
-            Sunce Renewables
-          </div>
-          <div
-            style={{
-              fontSize: "0.58rem",
-              color: "var(--brown-light)",
-              letterSpacing: "0.16em",
-              textTransform: "uppercase",
-              fontWeight: 600,
-            }}
-          >
-            Solar Energy Solutions
-          </div>
-        </div>
-      </div>
-
-      <div className="nv-r" style={{ display: "flex", gap: 10, alignItems: "center" }}>
-        <a
-          href="/erp"
-          className="nv-erp"
-          suppressHydrationWarning
-          style={{
-            fontSize: "0.83rem",
-            color: "var(--brown-mid)",
-            fontWeight: 600,
-            textDecoration: "none",
-            padding: "9px 18px",
-            border: "1.5px solid var(--border-mid)",
-            borderRadius: 8,
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            transition: "border-color 0.2s,color 0.2s",
-          }}
-          onMouseEnter={(e) => {
-            const el = e.currentTarget as HTMLAnchorElement;
-            el.style.borderColor = "var(--gold)";
-            el.style.color = "var(--brown)";
-          }}
-          onMouseLeave={(e) => {
-            const el = e.currentTarget as HTMLAnchorElement;
-            el.style.borderColor = "var(--border-mid)";
-            el.style.color = "var(--brown-mid)";
-          }}
-        >
-          {ERP_ICON} Inverter Services
-        </a>
-        <button
-          onClick={onOpen}
-          className="btn-dark nv-qt"
-          style={{ padding: "10px 22px", fontSize: "0.83rem" }}
-        >
-          Get a Quote →
-        </button>
-      </div>
-    </nav>
-  );
-}
-
-function Hero({ onOpen }: { onOpen: () => void }) {
+function Hero() {
+  const { openWAModal } = useModal();
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -582,7 +208,7 @@ function Hero({ onOpen }: { onOpen: () => void }) {
               marginBottom: 52,
             }}
           >
-            <button onClick={onOpen} className="btn-dark">
+            <button onClick={openWAModal} className="btn-dark">
               Get a Free Quote →
             </button>
           </div>
@@ -812,7 +438,8 @@ const PRODUCT_CARDS = [
   { title: "SNet IoT Gateway", img: "/3.png" },
 ] as const;
 
-function ProductsShowcase({ onOpen }: { onOpen: () => void }) {
+function ProductsShowcase() {
+  const { openWAModal } = useModal();
   const products = PRODUCT_CARDS;
 
   const [active, setActive] = useState(1);
@@ -1059,7 +686,7 @@ function ProductsShowcase({ onOpen }: { onOpen: () => void }) {
             </ul>
             <button
               type="button"
-              onClick={onOpen}
+              onClick={openWAModal}
               style={{
                 background: "#1f3f8f",
                 color: "#fff",
@@ -1356,98 +983,35 @@ function Projects() {
   );
 }
 
-function CTA({ onOpen }: { onOpen: () => void }) {
+
+
+
+function CTA() {
+  const { openWAModal } = useModal();
   return (
-    <section style={{ background: "var(--brown)", padding: "100px 6vw", position: "relative", overflow: "hidden" }}>
-      <div style={{ position: "absolute", right: "-80px", top: "-80px", width: 320, height: 320, borderRadius: "50%", border: "1px solid rgba(181,130,26,0.12)", pointerEvents: "none" }} />
-      <div style={{ position: "absolute", left: "40%", bottom: "-60px", width: 200, height: 200, borderRadius: "50%", border: "1px solid rgba(181,130,26,0.08)", pointerEvents: "none" }} />
-      <div className="rv" style={{ textAlign: "center", maxWidth: 620, margin: "0 auto" }}>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "rgba(181,130,26,0.15)", border: "1px solid rgba(181,130,26,0.3)", color: "var(--gold-warm)", padding: "5px 14px", borderRadius: 50, fontSize: "0.72rem", fontWeight: 600, letterSpacing: "0.13em", textTransform: "uppercase", marginBottom: 24 }}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--gold-warm)", display: "inline-block" }} /> Get In Touch
-        </span>
-        <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "clamp(2.2rem, 4.5vw, 3.8rem)", fontWeight: 700, color: "var(--cream)", lineHeight: 1.1, marginBottom: 18 }}>
-          Ready to Harness <em style={{ fontStyle: "italic", color: "var(--gold-warm)" }}>Solar Power?</em>
-        </h2>
-        <p style={{ fontSize: "1rem", color: "rgba(240,235,224,0.6)", lineHeight: 1.8, marginBottom: 42 }}>
-          Talk to our certified solar experts today. We&apos;ll design, deploy and maintain the perfect solution — at any scale.
-        </p>
-        <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
-          <button onClick={onOpen} className="btn-wa" style={{ width: "auto", padding: "14px 34px", fontSize: "0.95rem" }}>
-            {WA_SVG(20)} WhatsApp Us Now
-          </button>
-        </div>
-        <div style={{ marginTop: 52, display: "flex", justifyContent: "center", gap: 36, flexWrap: "wrap" }}>
-          {[
-            { Icon: LuMapPin, val: "Sector 63, NOIDA, UP 201309" },
-            { Icon: LuPhone, val: "0120 459 8196" },
-            { Icon: LuGlobe, val: "www.suncerenewable.com" },
-          ].map((c, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ display: "flex", alignItems: "center", opacity: 0.9 }}>
-                <c.Icon size={16} />
-              </span>
-              <span style={{ fontSize: "0.83rem", color: "rgba(240,235,224,0.55)", fontWeight: 500 }}>{c.val}</span>
-            </div>
-          ))}
-        </div>
+    <section style={{ padding: "80px 6vw", background: "#f0ebe0" }}>
+      <div className="rv" style={{ maxWidth: 1000, margin: "0 auto", textAlign: "center", background: "var(--brown)", padding: "60px 40px", borderRadius: 24, boxShadow: "0 20px 50px rgba(44,26,14,0.2)" }}>
+        <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "clamp(2rem, 4vw, 3rem)", color: "#fff", marginBottom: 20 }}>Ready to get started?</h2>
+        <p style={{ color: "rgba(255,255,255,0.8)", fontSize: "1.1rem", maxWidth: 600, margin: "0 auto 32px" }}>Contact our expert team today for a free consultation and quote for your solar inverter needs.</p>
+        <button onClick={openWAModal} className="btn-light" style={{ padding: "16px 36px", fontSize: "1rem" }}>Contact Us Now</button>
       </div>
     </section>
   );
 }
 
-function Footer() {
-  return (
-    <footer style={{ background: "var(--cream)", borderTop: "1px solid var(--border)", padding: "26px 6vw" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14 }}>
-        <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.05rem", fontWeight: 700, color: "var(--brown)" }}>Sunce Renewables Pvt. Ltd.</span>
-        <a href="/erp"
-          suppressHydrationWarning
-          style={{ fontSize: "0.82rem", color: "var(--gold)", fontWeight: 600, textDecoration: "none", display: "flex", alignItems: "center", gap: 6, transition: "color 0.2s" }}
-          onMouseEnter={(e) => (e.currentTarget as HTMLAnchorElement).style.color = "var(--gold-light)"}
-          onMouseLeave={(e) => (e.currentTarget as HTMLAnchorElement).style.color = "var(--gold)"}>
-          {ERP_ICON} Inverter Services ↗
-        </a>
-        <span suppressHydrationWarning style={{ fontSize: "0.78rem", color: "var(--brown-light)", opacity: 0.65 }}>© {new Date().getFullYear()} Sunce Renewables · NOIDA, India</span>
-      </div>
-    </footer>
-  );
-}
-
 export default function HomePage() {
   useReveal();
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    const s = document.createElement("style");
-    s.textContent = GLOBAL_CSS;
-    document.head.appendChild(s);
-    return () => {
-      document.head.removeChild(s);
-    };
-  }, []);
-
-  useEffect(() => {
-    document.body.style.overflow = open ? "hidden" : "";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [open]);
 
   return (
     <main>
-      {open && <WAModal onClose={() => setOpen(false)} />}
-      <Navbar onOpen={() => setOpen(true)} />
-      <Hero onOpen={() => setOpen(true)} />
-      <CuttingEdgeIntro />
-      <ProductsShowcase onOpen={() => setOpen(true)} />
+      <style dangerouslySetInnerHTML={{ __html: GLOBAL_CSS }} />
+      <Hero />
       <Ticker />
+      <CuttingEdgeIntro />
+      <ProductsShowcase />
       <About />
       <WhyUs />
-      <CTA onOpen={() => setOpen(true)} />
-      <Footer />
-      <button className="waf" onClick={() => setOpen(true)} title="Chat on WhatsApp">
-        {WA_SVG(28)}
-      </button>
+      <CTA />
     </main>
   );
 }

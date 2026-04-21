@@ -318,9 +318,10 @@ export default function HomePage() {
 
           <div className="hp-nav-links" style={{ display: "flex", gap: 36 }}>
             {[
+              ["/", "Home"],
+              ["/about", "About Us"],
+              ["/contact", "Contact"],
               ["#features", "Features"],
-              ["#how-it-works", "How It Works"],
-              ["#why-us", "Why Us"],
             ].map(([href, label]) => (
               <a
                 key={href}
@@ -1473,125 +1474,7 @@ export default function HomePage() {
             </div>
           </div>
         </div>
-
-        {/* ══════════════ FOOTER ══════════════ */}
-        <footer className="hp-footer" style={{ borderTop: "1px solid #e8e2d8", padding: "40px 72px" }}>
-          <div className="hp-footer-top" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 36 }}>
-            <div style={{ maxWidth: 280 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 8, background: "linear-gradient(135deg,#6b3a1f,#a0522d)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
-                  <div
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 7,
-                      background: "#fff",
-                      position: "relative",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <Image
-                      src="/logo.jpg"
-                      alt="Sunce ERP"
-                      fill
-                      sizes="28px"
-                      style={{ objectFit: "contain" }}
-                    />
-                  </div>
-                </div>
-                <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 18, fontWeight: 700, color: "#1a1612" }}>
-                  Sunce ERP
-                </div>
-              </div>
-              <p style={{ fontSize: 13, color: "#9c8e80", lineHeight: 1.65 }}>
-                India&apos;s service management platform built for solar inverter
-                companies.
-              </p>
-            </div>
-            <div className="hp-footer-cols" style={{ display: "flex", gap: 64 }}>
-              <div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: "#1a1612",
-                    letterSpacing: "0.8px",
-                    textTransform: "uppercase",
-                    marginBottom: 14,
-                    fontFamily: "'DM Mono',monospace",
-                  }}
-                >
-                  Product
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {[
-                    { href: "#features", label: "Features" },
-                    { href: "#how-it-works", label: "How It Works" },
-                    { href: "#why-us", label: "Why Us" },
-                  ].map((l) => (
-                    <a
-                      key={l.href}
-                      href={l.href}
-                      style={{
-                        fontSize: 13,
-                        color: "#9c8e80",
-                        textDecoration: "none",
-                        transition: "color .2s",
-                        width: "fit-content",
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.color = "#6b3a1f")}
-                      onMouseLeave={(e) => (e.currentTarget.style.color = "#9c8e80")}
-                    >
-                      {l.label}
-                    </a>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: "#1a1612",
-                    letterSpacing: "0.8px",
-                    textTransform: "uppercase",
-                    marginBottom: 14,
-                    fontFamily: "'DM Mono',monospace",
-                  }}
-                >
-                  Account
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {[
-                    { href: "/login", label: "Sign In" },
-                    { href: "/signup", label: "Create Account" },
-                  ].map((l) => (
-                    <Link
-                      key={l.href}
-                      href={l.href}
-                      style={{
-                        fontSize: 13,
-                        color: "#9c8e80",
-                        textDecoration: "none",
-                        transition: "color .2s",
-                        width: "fit-content",
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.color = "#6b3a1f")}
-                      onMouseLeave={(e) => (e.currentTarget.style.color = "#9c8e80")}
-                    >
-                      {l.label}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="hp-footer-bottom" style={{ borderTop: "1px solid #f0ebe3", paddingTop: 24, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ fontSize: 12, color: "#9c8e80" }}>
-              © 2026 Sunce ERP. All rights reserved.
-            </div>
-          </div>
-        </footer>
+        <div style={{ height: 60 }} />
       </div>
     </>
   );

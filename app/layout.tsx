@@ -11,7 +11,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Sunce ERP",
+  title: "Sunce Renewables - Solar Energy Solutions",
   description: "Solar service management portal",
   formatDetection: {
     telephone: false,
@@ -30,6 +30,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Sunce ERP" />
         <meta name="theme-color" content="#faf9f7" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
       </head>
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         {children}
