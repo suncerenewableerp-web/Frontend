@@ -145,7 +145,7 @@ export default function Navbar({ onOpen }: { onOpen?: () => void }) {
           </div>
           <Link href="/contact" style={{ fontSize: "0.83rem", color: "var(--brown-mid)", fontWeight: 600, textDecoration: "none", padding: "9px 16px", borderRadius: 8 }}>Contact</Link>
           <Link
-            href="/erp"
+            href="/login"
             className="nv-erp"
             style={{
               fontSize: "0.83rem",

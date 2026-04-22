@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 
 
 export default function Footer() {
@@ -23,11 +24,11 @@ export default function Footer() {
           <div className="ft-col">
             <h4>Quick Links</h4>
             <ul className="ft-links">
-              <li><a href="/">Home</a></li>
-              <li><a href="/about">About</a></li>
-              <li><a href="/terms-conditions">Terms & Conditions</a></li>
-              <li><a href="/privacy-policy">Privacy Policy</a></li>
-              <li><a href="/contact">Contact</a></li>
+              <li><Link href="/">Home</Link></li>
+              <li><Link href="/about">About</Link></li>
+              <li><Link href="/terms-conditions">Terms & Conditions</Link></li>
+              <li><Link href="/privacy-policy">Privacy Policy</Link></li>
+              <li><Link href="/contact">Contact</Link></li>
             </ul>
           </div>
 
@@ -35,11 +36,15 @@ export default function Footer() {
           <div className="ft-col">
             <h4>Services</h4>
             <ul className="ft-links">
-              <li><a href="/management">Management</a></li>
-              <li><a href="/career">Careers</a></li>
-              <li><a href="/products/snet-portable-string-monitoring-device">Products</a></li>
-              <li><a href="/erp">Services</a></li>
-              <li><a href="/Brochure-Sunce-Product.pdf" target="_blank">Brochure</a></li>
+              <li><Link href="/management">Management</Link></li>
+              <li><Link href="/career">Careers</Link></li>
+              <li><Link href="/products/snet-portable-string-monitoring-device">Products</Link></li>
+              <li><Link href="/login">Inverter Services</Link></li>
+              <li>
+                <Link href="/Brochure-Sunce-Product.pdf" target="_blank">
+                  Brochure
+                </Link>
+              </li>
             </ul>
           </div>
 

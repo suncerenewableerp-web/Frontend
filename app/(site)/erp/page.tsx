@@ -1,5 +1,5 @@
-import ErpMarketing from "../../erp/marketing";
+import { redirect } from "next/navigation";
 
 export default function ErpPage() {
-  return <ErpMarketing />;
+  redirect("/login");
 }

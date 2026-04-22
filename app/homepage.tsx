@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useModal } from "./components/ModalContext";
+import Link from "next/link";
 import type { IconType } from "react-icons";
 import {
   LuChartBar,
@@ -284,10 +285,6 @@ function Hero() {
 function CuttingEdgeIntro() {
   const navy = "#233E99";
 
-  const goToProducts = () => {
-    document.getElementById("products")?.scrollIntoView({ behavior: "smooth" });
-  };
-
   return (
     <section style={{ background: "#fff", padding: "96px 6vw 0", overflow: "hidden" }}>
       <div className="rv" style={{ maxWidth: 1120, margin: "0 auto", textAlign: "center" }}>
@@ -423,9 +420,103 @@ function CuttingEdgeIntro() {
             developed comprehensive capabilities in product development and
             business growth.
           </p>
-          <button type="button" className="btn-dark" onClick={goToProducts} style={{ padding: "14px 28px" }}>
-            Explore Now
-          </button>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <Link
+              href="/about"
+              className="btn-dark"
+              style={{
+                padding: "14px 28px",
+                borderRadius: 10,
+                background: "var(--brown)",
+                color: "#fff",
+                fontFamily: "'Outfit', sans-serif",
+                fontSize: "0.85rem",
+                fontWeight: 900,
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                boxShadow: "0 10px 22px rgba(44,26,14,0.20)",
+                transition: "transform .2s, box-shadow .2s, background .2s",
+                lineHeight: 1,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-1px)";
+                e.currentTarget.style.background = "rgba(44,26,14,0.96)";
+                e.currentTarget.style.boxShadow =
+                  "0 14px 30px rgba(44,26,14,0.26)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.background = "var(--brown)";
+                e.currentTarget.style.boxShadow =
+                  "0 10px 22px rgba(44,26,14,0.20)";
+              }}
+            >
+              Explore Now
+            </Link>
+            <Link
+              href="/login"
+              style={{
+                padding: "12px 18px",
+                borderRadius: 10,
+                border: "1.5px solid rgba(44,26,14,0.22)",
+                background: "transparent",
+                color: "rgba(44,26,14,0.86)",
+                fontFamily: "'Outfit', sans-serif",
+                fontSize: "0.85rem",
+                fontWeight: 700,
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                transition: "all .2s",
+                lineHeight: 1,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "rgba(44,26,14,0.42)";
+                e.currentTarget.style.background = "rgba(44,26,14,0.06)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "rgba(44,26,14,0.22)";
+                e.currentTarget.style.background = "transparent";
+              }}
+            >
+              Log In
+            </Link>
+            <Link
+              href="/signup"
+              style={{
+                padding: "12px 18px",
+                borderRadius: 10,
+                background: "linear-gradient(135deg,#6b3a1f,#8B4513)",
+                color: "#fff",
+                border: "none",
+                fontFamily: "'Outfit', sans-serif",
+                fontSize: "0.85rem",
+                fontWeight: 800,
+                cursor: "pointer",
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                boxShadow: "0 6px 18px rgba(107,58,31,.22)",
+                transition: "transform .2s, box-shadow .2s",
+                lineHeight: 1,
+                whiteSpace: "nowrap",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-1px)";
+                e.currentTarget.style.boxShadow =
+                  "0 10px 22px rgba(107,58,31,.28)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow =
+                  "0 6px 18px rgba(107,58,31,.22)";
+              }}
+            >
+              Raise a Ticket <span aria-hidden>→</span>
+            </Link>
+          </div>
         </div>
       </div>
     </section>
@@ -438,6 +529,99 @@ const PRODUCT_CARDS = [
   { title: "SNet IoT Gateway", img: "/3.png" },
 ] as const;
 
+type ProductCardItem = (typeof PRODUCT_CARDS)[number];
+
+function ProductsShowcaseCard({
+  item,
+  variant,
+  onClick,
+  navy,
+}: {
+  item: ProductCardItem;
+  variant: "left" | "center" | "right";
+  onClick: () => void;
+  navy: string;
+}) {
+  const isCenter = variant === "center";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rv"
+      aria-label={isCenter ? item.title : `Focus ${item.title}`}
+      style={{
+        width: "100%",
+        display: "block",
+        border: "none",
+        padding: 0,
+        background: "transparent",
+        color: "inherit",
+        textAlign: "left",
+        cursor: isCenter ? "default" : "pointer",
+      }}
+    >
+      <div
+        style={{
+          borderRadius: 0,
+          overflow: "hidden",
+          border: isCenter ? "none" : "1px solid rgba(12,59,92,0.12)",
+          background: isCenter ? navy : "#f6f8fb",
+          boxShadow: isCenter
+            ? "0 26px 70px rgba(12,59,92,0.28)"
+            : "0 14px 40px rgba(44,26,14,0.10)",
+          transform: isCenter ? "translateY(-6px)" : "none",
+          transition: "transform 0.25s ease, box-shadow 0.25s ease",
+        }}
+      >
+        <div
+          style={{
+            height: 210,
+            display: "grid",
+            placeItems: "center",
+            background: "#fff",
+            margin: isCenter ? "28px 28px 0" : "22px 22px 0",
+            border: "1px solid rgba(44,26,14,0.08)",
+          }}
+        >
+          <img
+            src={item.img}
+            alt={item.title}
+            style={{
+              maxWidth: "86%",
+              maxHeight: "86%",
+              objectFit: "contain",
+              display: "block",
+            }}
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = "none";
+            }}
+          />
+        </div>
+        <div
+          style={{
+            padding: isCenter ? "18px 28px 24px" : "16px 22px 22px",
+            color: isCenter ? "#fff" : "#0b1220",
+            minHeight: 66,
+            display: "flex",
+            alignItems: "flex-end",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "0.78rem",
+              fontWeight: 800,
+              letterSpacing: "0.02em",
+              opacity: isCenter ? 0.95 : 0.78,
+            }}
+          >
+            {item.title}
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
 function ProductsShowcase() {
   const { openWAModal } = useModal();
   const products = PRODUCT_CARDS;
@@ -448,98 +632,6 @@ function ProductsShowcase() {
   const next = (active + 1) % len;
 
   const navy = "#0c3b5c";
-
-  const Card = useCallback(
-    ({
-      item,
-      variant,
-      onClick,
-    }: {
-      item: (typeof PRODUCT_CARDS)[number];
-      variant: "left" | "center" | "right";
-      onClick: () => void;
-    }) => {
-      const isCenter = variant === "center";
-      return (
-        <button
-          type="button"
-          onClick={onClick}
-          className="rv"
-          aria-label={isCenter ? item.title : `Focus ${item.title}`}
-          style={{
-            width: "100%",
-            display: "block",
-            border: "none",
-            padding: 0,
-            background: "transparent",
-            color: "inherit",
-            textAlign: "left",
-            cursor: isCenter ? "default" : "pointer",
-          }}
-        >
-          <div
-            style={{
-              borderRadius: 0,
-              overflow: "hidden",
-              border: isCenter ? "none" : "1px solid rgba(12,59,92,0.12)",
-              background: isCenter ? navy : "#f6f8fb",
-              boxShadow: isCenter
-                ? "0 26px 70px rgba(12,59,92,0.28)"
-                : "0 14px 40px rgba(44,26,14,0.10)",
-              transform: isCenter ? "translateY(-6px)" : "none",
-              transition: "transform 0.25s ease, box-shadow 0.25s ease",
-            }}
-          >
-            <div
-              style={{
-                height: 210,
-                display: "grid",
-                placeItems: "center",
-                background: "#fff",
-                margin: isCenter ? "28px 28px 0" : "22px 22px 0",
-                border: "1px solid rgba(44,26,14,0.08)",
-              }}
-            >
-              <img
-                src={item.img}
-                alt={item.title}
-                style={{
-                  maxWidth: "86%",
-                  maxHeight: "86%",
-                  objectFit: "contain",
-                  display: "block",
-                }}
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = "none";
-                }}
-              />
-            </div>
-            <div
-              style={{
-                padding: isCenter ? "18px 28px 24px" : "16px 22px 22px",
-                color: isCenter ? "#fff" : "#0b1220",
-                minHeight: 66,
-                display: "flex",
-                alignItems: "flex-end",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: "0.78rem",
-                  fontWeight: 800,
-                  letterSpacing: "0.02em",
-                  opacity: isCenter ? 0.95 : 0.78,
-                }}
-              >
-                {item.title}
-              </div>
-            </div>
-          </div>
-        </button>
-      );
-    },
-    [navy]
-  );
 
   return (
     <section
@@ -642,9 +734,24 @@ function ProductsShowcase() {
             alignItems: "stretch",
           }}
         >
-          <Card item={products[prev]} variant="left" onClick={() => setActive(prev)} />
-          <Card item={products[active]} variant="center" onClick={() => setActive(active)} />
-          <Card item={products[next]} variant="right" onClick={() => setActive(next)} />
+          <ProductsShowcaseCard
+            item={products[prev]}
+            variant="left"
+            onClick={() => setActive(prev)}
+            navy={navy}
+          />
+          <ProductsShowcaseCard
+            item={products[active]}
+            variant="center"
+            onClick={() => setActive(active)}
+            navy={navy}
+          />
+          <ProductsShowcaseCard
+            item={products[next]}
+            variant="right"
+            onClick={() => setActive(next)}
+            navy={navy}
+          />
         </div>
 
         <div
