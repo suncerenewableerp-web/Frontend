@@ -161,7 +161,7 @@ export default function Navbar({ onOpen }: { onOpen?: () => void }) {
               transition: "border-color 0.2s,color 0.2s",
             }}
           >
-            {ERP_ICON} Inverter Services
+            {ERP_ICON} Solar Inverter Services
           </Link>
           {onOpen && (
             <button

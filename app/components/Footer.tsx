@@ -39,7 +39,7 @@ export default function Footer() {
               <li><Link href="/management">Management</Link></li>
               <li><Link href="/career">Careers</Link></li>
               <li><Link href="/products/snet-portable-string-monitoring-device">Products</Link></li>
-              <li><Link href="/login">Inverter Services</Link></li>
+              <li><Link href="/login">Solar Inverter Services</Link></li>
               <li>
                 <Link href="/Brochure-Sunce-Product.pdf" target="_blank">
                   Brochure

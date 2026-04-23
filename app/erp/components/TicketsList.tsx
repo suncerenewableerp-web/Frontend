@@ -105,14 +105,16 @@ export default function TicketsList({
   ) => void;
   onNew: () => void;
 }) {
-  const roleNorm = String(user.role || "").toUpperCase();
+  const roleNorm = String(user.role || "").trim().toUpperCase();
   const isEngineer = roleNorm === "ENGINEER";
   const isAdmin = roleNorm === "ADMIN";
   const isSales = roleNorm === "SALES";
+  const isCustomer = roleNorm === "CUSTOMER";
   const canSeeAllTab = (isAdmin || isSales) && !isEngineer;
   const normalizedInitialStatus = String(initialStatusFilter || "").toUpperCase().trim();
 
   const initialTab:
+    | "open"
     | "all"
     | "inward"
     | "repaired"
@@ -121,7 +123,11 @@ export default function TicketsList({
     | "outward"
     | "approval_pending"
     | "closed" =
-    isEngineer
+    isCustomer
+      ? normalizedInitialStatus === "CLOSED"
+        ? "closed"
+        : "open"
+      : isEngineer
       ? "repaired"
       : canSeeAllTab && !normalizedInitialStatus
         ? "all"
@@ -151,6 +157,7 @@ export default function TicketsList({
   const canLoadJobCards = canAccess(roles, user.role, "jobcard", "view") && roleNorm !== "CUSTOMER";
 
   const [ticketsTab, setTicketsTab] = useState<
+    | "open"
     | "all"
     | "inward"
     | "repaired"
@@ -176,6 +183,8 @@ export default function TicketsList({
 
   const [approvedByAdminIds, setApprovedByAdminIds] = useState<string[]>([]);
   const [approvedByAdminError, setApprovedByAdminError] = useState("");
+
+  const visibleTickets = tickets;
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -276,35 +285,48 @@ export default function TicketsList({
     return out;
   }, [jobCards]);
 
+  const openTickets = useMemo(
+    () => visibleTickets.filter((t) => t.status !== "CLOSED"),
+    [visibleTickets],
+  );
   const inwardTickets = useMemo(
-    () => tickets.filter((t) => !isOnsiteTicket(t) && INWARD_STATUSES.includes(t.status)),
-    [tickets],
+    () =>
+      visibleTickets.filter((t) => !isOnsiteTicket(t) && INWARD_STATUSES.includes(t.status)),
+    [visibleTickets],
   );
   const repairedTickets = useMemo(
-    () => tickets.filter((t) => !isOnsiteTicket(t) && t.status === "UNDER_REPAIRED"),
-    [tickets],
+    () => visibleTickets.filter((t) => !isOnsiteTicket(t) && t.status === "UNDER_REPAIRED"),
+    [visibleTickets],
   );
   const offlineBookingTickets = useMemo(
-    () => tickets.filter((t) => isOnsiteTicket(t) && t.status !== "CLOSED"),
-    [tickets],
+    () => visibleTickets.filter((t) => isOnsiteTicket(t) && t.status !== "CLOSED"),
+    [visibleTickets],
   );
   const outwardTickets = useMemo(
-    () => tickets.filter((t) => !isOnsiteTicket(t) && OUTWARD_STATUSES.includes(t.status)),
-    [tickets],
+    () =>
+      visibleTickets.filter((t) => !isOnsiteTicket(t) && OUTWARD_STATUSES.includes(t.status)),
+    [visibleTickets],
   );
   const approvalPendingTickets = useMemo(() => {
     const set = new Set(approvalPendingIds);
-    return tickets.filter((t) => set.has(t.id));
-  }, [tickets, approvalPendingIds]);
+    return visibleTickets.filter((t) => set.has(t.id));
+  }, [visibleTickets, approvalPendingIds]);
   const approvedByAdminTickets = useMemo(() => {
     const set = new Set(approvedByAdminIds);
-    return tickets.filter((t) => set.has(t.id));
-  }, [tickets, approvedByAdminIds]);
-  const closedTickets = useMemo(() => tickets.filter((t) => t.status === "CLOSED"), [tickets]);
+    return visibleTickets.filter((t) => set.has(t.id));
+  }, [visibleTickets, approvedByAdminIds]);
+  const closedTickets = useMemo(
+    () => visibleTickets.filter((t) => t.status === "CLOSED"),
+    [visibleTickets],
+  );
 
   const allCount = useMemo(
-    () => tickets.filter((t) => matchesDateFilter(t.createdAt, dateFilter)).length,
-    [tickets, dateFilter],
+    () => visibleTickets.filter((t) => matchesDateFilter(t.createdAt, dateFilter)).length,
+    [visibleTickets, dateFilter],
+  );
+  const openCount = useMemo(
+    () => openTickets.filter((t) => matchesDateFilter(t.createdAt, dateFilter)).length,
+    [openTickets, dateFilter],
   );
   const inwardCount = useMemo(
     () => inwardTickets.filter((t) => matchesDateFilter(t.createdAt, dateFilter)).length,
@@ -349,7 +371,8 @@ export default function TicketsList({
   }, [canLoadJobCards, repairedTickets, engineerFinalByTicketId, dateFilter]);
 
   const baseTickets = useMemo(() => {
-    if (ticketsTab === "all") return tickets;
+    if (ticketsTab === "open") return openTickets;
+    if (ticketsTab === "all") return visibleTickets;
     if (ticketsTab === "inward") return inwardTickets;
     if (ticketsTab === "repaired") return repairedTickets;
     if (ticketsTab === "offline_booking") return offlineBookingTickets;
@@ -359,7 +382,8 @@ export default function TicketsList({
     return closedTickets;
   }, [
     ticketsTab,
-    tickets,
+    visibleTickets,
+    openTickets,
     inwardTickets,
     repairedTickets,
     offlineBookingTickets,
@@ -372,17 +396,19 @@ export default function TicketsList({
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return baseTickets.filter((t) => {
+      const inverter = `${t.inverterMake} ${t.inverterModel}`.toLowerCase();
       const matchSearch =
         !q ||
         t.ticketId.toLowerCase().includes(q) ||
-        t.customer.toLowerCase().includes(q) ||
-        t.faultDescription.toLowerCase().includes(q);
+        inverter.includes(q) ||
+        t.faultDescription.toLowerCase().includes(q) ||
+        (!isCustomer && t.customer.toLowerCase().includes(q));
       const matchDate = matchesDateFilter(t.createdAt, dateFilter);
       const matchStatus = statusFilter === "ALL" ? true : t.status === statusFilter;
       const matchPriority = priorityFilter === "ALL" || t.priority === priorityFilter;
       return matchSearch && matchDate && matchStatus && matchPriority;
     });
-  }, [baseTickets, search, statusFilter, priorityFilter, dateFilter]);
+  }, [baseTickets, search, statusFilter, priorityFilter, dateFilter, isCustomer]);
 
   const filteredRepaired = useMemo(() => {
     if (ticketsTab !== "repaired" || !canLoadJobCards) return filtered;
@@ -406,6 +432,8 @@ export default function TicketsList({
   const statusFilterLabel =
     ticketsTab === "all"
       ? "All Status"
+      : ticketsTab === "open"
+      ? "All Status"
       : ticketsTab === "inward"
       ? "All Inward Status"
       : ticketsTab === "outward"
@@ -415,6 +443,8 @@ export default function TicketsList({
   const statusOptions: TicketStatus[] =
     ticketsTab === "all"
       ? STATUS_ORDER
+      : ticketsTab === "open"
+      ? STATUS_ORDER.filter((s) => s !== "CLOSED")
       : ticketsTab === "inward"
       ? STATUS_ORDER.filter((s) => INWARD_STATUSES.includes(s))
       : ticketsTab === "outward"
@@ -428,7 +458,11 @@ export default function TicketsList({
           <div className="page-title">Service Tickets</div>
           <div className="page-sub">
             {rows.length} tickets{" "}
-            {user.role === "ENGINEER" ? "assigned to you or in Under Repaired" : "found"}
+            {isCustomer
+              ? "found for your account"
+              : user.role === "ENGINEER"
+                ? "assigned to you or in Under Repaired"
+                : "found"}
           </div>
         </div>
         <div className="page-header-actions">
@@ -442,121 +476,150 @@ export default function TicketsList({
 
       <div className="table-card">
         <div className="tabs" style={{ marginBottom: 0 }}>
-          {canSeeAllTab ? (
-            <div
-              className={`tab ${ticketsTab === "all" ? "active" : ""}`}
-              onClick={() => {
-                setTicketsTab("all");
-                setStatusFilter("ALL");
-                setRepairedTab("all");
-                setPage(1);
-              }}
-            >
-              All Tickets ({allCount})
-            </div>
-          ) : null}
-          {!isEngineer ? (
-            <div
-              className={`tab ${ticketsTab === "inward" ? "active" : ""}`}
-              onClick={() => {
-                setTicketsTab("inward");
-                setStatusFilter("ALL");
-                setRepairedTab("all");
-                setPage(1);
-              }}
-            >
-              Inward Stage ({inwardCount})
-            </div>
-          ) : null}
-          <div
-            className={`tab ${ticketsTab === "repaired" ? "active" : ""}`}
-            onClick={() => {
-              setTicketsTab("repaired");
-              setStatusFilter("ALL");
-              setRepairedTab("all");
-              setPage(1);
-            }}
-          >
-            Under Progress ({repairedCount})
-          </div>
-          {roleNorm !== "CUSTOMER" ? (
-            <div
-              className={`tab ${ticketsTab === "offline_booking" ? "active" : ""}`}
-              onClick={() => {
-                setTicketsTab("offline_booking");
-                setStatusFilter("ALL");
-                setRepairedTab("all");
-                setPage(1);
-              }}
-            >
-              Offline Booking ({offlineBookingCount})
-            </div>
-          ) : null}
-          {!isSales ? (
-            <div
-              className={`tab ${ticketsTab === "outward" ? "active" : ""}`}
-              onClick={() => {
-                setTicketsTab("outward");
-                setStatusFilter("ALL");
-                setRepairedTab("all");
-                setPage(1);
-              }}
-            >
-              Outward ({outwardCount})
-            </div>
-          ) : null}
-          {isAdmin ? (
-            <div
-              className={`tab ${ticketsTab === "approval_pending" ? "active" : ""}`}
-              onClick={() => {
-                setTicketsTab("approval_pending");
-                setStatusFilter("ALL");
-                setRepairedTab("all");
-                setPage(1);
-              }}
-              title={approvalPendingError ? approvalPendingError : undefined}
-            >
-              Approval Pending ({approvalPendingCount})
-            </div>
-          ) : null}
-          {isSales ? (
-            <div
-              className={`tab ${ticketsTab === "approved_by_admin" ? "active" : ""}`}
-              onClick={() => {
-                setTicketsTab("approved_by_admin");
-                setStatusFilter("ALL");
-                setRepairedTab("all");
-                setPage(1);
-              }}
-              title={approvedByAdminError ? approvedByAdminError : undefined}
-            >
-              Approved by Admin ({approvedByAdminCount})
-            </div>
-          ) : null}
-          {isSales ? (
-            <div
-              className={`tab ${ticketsTab === "outward" ? "active" : ""}`}
-              onClick={() => {
-                setTicketsTab("outward");
-                setStatusFilter("ALL");
-                setRepairedTab("all");
-                setPage(1);
-              }}
-            >
-              Outward ({outwardCount})
-            </div>
-          ) : null}
-          <div
-            className={`tab ${ticketsTab === "closed" ? "active" : ""}`}
-            onClick={() => {
-              setTicketsTab("closed");
-              setStatusFilter("ALL");
-              setRepairedTab("all");
-              setPage(1);
-            }}
-          >
-            Closed Tickets ({closedCount})
-          </div>
+          {isCustomer ? (
+            <>
+              <div
+                className={`tab ${ticketsTab === "open" ? "active" : ""}`}
+                onClick={() => {
+                  setTicketsTab("open");
+                  setStatusFilter("ALL");
+                  setRepairedTab("all");
+                  setPage(1);
+                }}
+              >
+                My Tickets ({openCount})
+              </div>
+              <div
+                className={`tab ${ticketsTab === "closed" ? "active" : ""}`}
+                onClick={() => {
+                  setTicketsTab("closed");
+                  setStatusFilter("ALL");
+                  setRepairedTab("all");
+                  setPage(1);
+                }}
+              >
+                Closed ({closedCount})
+              </div>
+            </>
+          ) : (
+            <>
+              {canSeeAllTab ? (
+                <div
+                  className={`tab ${ticketsTab === "all" ? "active" : ""}`}
+                  onClick={() => {
+                    setTicketsTab("all");
+                    setStatusFilter("ALL");
+                    setRepairedTab("all");
+                    setPage(1);
+                  }}
+                >
+                  All Tickets ({allCount})
+                </div>
+              ) : null}
+              {!isEngineer ? (
+                <div
+                  className={`tab ${ticketsTab === "inward" ? "active" : ""}`}
+                  onClick={() => {
+                    setTicketsTab("inward");
+                    setStatusFilter("ALL");
+                    setRepairedTab("all");
+                    setPage(1);
+                  }}
+                >
+                  Inward Stage ({inwardCount})
+                </div>
+              ) : null}
+              <div
+                className={`tab ${ticketsTab === "repaired" ? "active" : ""}`}
+                onClick={() => {
+                  setTicketsTab("repaired");
+                  setStatusFilter("ALL");
+                  setRepairedTab("all");
+                  setPage(1);
+                }}
+              >
+                Under Progress ({repairedCount})
+              </div>
+              {roleNorm !== "CUSTOMER" ? (
+                <div
+                  className={`tab ${ticketsTab === "offline_booking" ? "active" : ""}`}
+                  onClick={() => {
+                    setTicketsTab("offline_booking");
+                    setStatusFilter("ALL");
+                    setRepairedTab("all");
+                    setPage(1);
+                  }}
+                >
+                  Offline Booking ({offlineBookingCount})
+                </div>
+              ) : null}
+              {!isSales ? (
+                <div
+                  className={`tab ${ticketsTab === "outward" ? "active" : ""}`}
+                  onClick={() => {
+                    setTicketsTab("outward");
+                    setStatusFilter("ALL");
+                    setRepairedTab("all");
+                    setPage(1);
+                  }}
+                >
+                  Outward ({outwardCount})
+                </div>
+              ) : null}
+              {isAdmin ? (
+                <div
+                  className={`tab ${ticketsTab === "approval_pending" ? "active" : ""}`}
+                  onClick={() => {
+                    setTicketsTab("approval_pending");
+                    setStatusFilter("ALL");
+                    setRepairedTab("all");
+                    setPage(1);
+                  }}
+                  title={approvalPendingError ? approvalPendingError : undefined}
+                >
+                  Approval Pending ({approvalPendingCount})
+                </div>
+              ) : null}
+              {isSales ? (
+                <div
+                  className={`tab ${ticketsTab === "approved_by_admin" ? "active" : ""}`}
+                  onClick={() => {
+                    setTicketsTab("approved_by_admin");
+                    setStatusFilter("ALL");
+                    setRepairedTab("all");
+                    setPage(1);
+                  }}
+                  title={approvedByAdminError ? approvedByAdminError : undefined}
+                >
+                  Approved by Admin ({approvedByAdminCount})
+                </div>
+              ) : null}
+              {isSales ? (
+                <div
+                  className={`tab ${ticketsTab === "outward" ? "active" : ""}`}
+                  onClick={() => {
+                    setTicketsTab("outward");
+                    setStatusFilter("ALL");
+                    setRepairedTab("all");
+                    setPage(1);
+                  }}
+                >
+                  Outward ({outwardCount})
+                </div>
+              ) : null}
+              <div
+                className={`tab ${ticketsTab === "closed" ? "active" : ""}`}
+                onClick={() => {
+                  setTicketsTab("closed");
+                  setStatusFilter("ALL");
+                  setRepairedTab("all");
+                  setPage(1);
+                }}
+              >
+                Closed Tickets ({closedCount})
+              </div>
+            </>
+          )}
         </div>
 
         <div className="table-header">
@@ -594,19 +657,21 @@ export default function TicketsList({
               </select>
             ) : null}
 
-            <select
-              className="select-filter"
-              value={priorityFilter}
-              onChange={(e) => {
-                setPriorityFilter(e.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="ALL">All Priority</option>
-              <option value="HIGH">HIGH</option>
-              <option value="MEDIUM">MEDIUM</option>
-              <option value="LOW">LOW</option>
-            </select>
+            {!isCustomer ? (
+              <select
+                className="select-filter"
+                value={priorityFilter}
+                onChange={(e) => {
+                  setPriorityFilter(e.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="ALL">All Priority</option>
+                <option value="HIGH">HIGH</option>
+                <option value="MEDIUM">MEDIUM</option>
+                <option value="LOW">LOW</option>
+              </select>
+            ) : null}
 
             <select
               className="select-filter"
@@ -682,26 +747,26 @@ export default function TicketsList({
 
         <div className="scroll-x">
           <table>
-            <thead>
-              <tr>
-                <th style={{ width: 70 }}>Sr No.</th>
-                <th>Ticket ID</th>
-                <th>Customer</th>
-                <th>Inverter</th>
-                <th>Fault</th>
-                <th>Priority</th>
-                <th>Status / SLA</th>
-                <th>Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr>
-                  <td colSpan={8}>
-                    <div className="empty-state">
-                      <div className="empty-icon" aria-hidden>
-                        <LuTicket />
-                      </div>
+	            <thead>
+	              <tr>
+	                <th style={{ width: 70 }}>Sr No.</th>
+	                <th>Ticket ID</th>
+	                {!isCustomer ? <th>Customer</th> : null}
+	                <th>Inverter</th>
+	                <th>Fault</th>
+	                <th>Priority</th>
+	                <th>Status / SLA</th>
+	                <th>Created</th>
+	              </tr>
+	            </thead>
+	            <tbody>
+	              {rows.length === 0 ? (
+	                <tr>
+	                  <td colSpan={isCustomer ? 7 : 8}>
+	                    <div className="empty-state">
+	                      <div className="empty-icon" aria-hidden>
+	                        <LuTicket />
+	                      </div>
                       <div className="empty-text">No tickets found</div>
                     </div>
                   </td>
@@ -746,15 +811,15 @@ export default function TicketsList({
                           }
                           title="View ticket"
                         >
-                          {t.ticketId}
-                        </button>
-                      </td>
-                      <td style={{ fontWeight: 500 }}>{t.customer}</td>
-                      <td>
-                        <span className="tag">
-                          {t.inverterMake} {t.inverterModel}
-                        </span>
-                      </td>
+	                          {t.ticketId}
+	                        </button>
+	                      </td>
+	                      {!isCustomer ? <td style={{ fontWeight: 500 }}>{t.customer}</td> : null}
+	                      <td>
+	                        <span className="tag">
+	                          {t.inverterMake} {t.inverterModel}
+	                        </span>
+	                      </td>
                       <td
                         style={{
                           maxWidth: 180,

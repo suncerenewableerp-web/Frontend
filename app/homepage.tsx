@@ -51,6 +51,24 @@ const GLOBAL_CSS = `
   }
 `;
 
+const SERVICES_ICON = (
+  <svg
+    width="13"
+    height="13"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <rect x="3" y="3" width="7" height="7" />
+    <rect x="14" y="3" width="7" height="7" />
+    <rect x="3" y="14" width="7" height="7" />
+    <rect x="14" y="14" width="7" height="7" />
+  </svg>
+);
+
 function useReveal() {
   useEffect(() => {
     const observed = new WeakSet<Element>();
@@ -212,6 +230,27 @@ function Hero() {
             <button onClick={openWAModal} className="btn-dark">
               Get a Free Quote →
             </button>
+            <Link
+              href="/login"
+              className="nv-erp"
+              style={{
+                fontSize: "0.83rem",
+                color: "var(--brown-mid)",
+                fontWeight: 600,
+                textDecoration: "none",
+                padding: "10px 18px",
+                border: "1.5px solid var(--border-mid)",
+                borderRadius: 8,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                transition: "border-color 0.2s,color 0.2s",
+                background: "rgba(240,235,224,0.55)",
+                backdropFilter: "blur(10px)",
+              }}
+            >
+              {SERVICES_ICON} Solar Inverter Services
+            </Link>
           </div>
           <div
             style={{

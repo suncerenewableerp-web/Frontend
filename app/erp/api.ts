@@ -91,7 +91,11 @@ function readAuthStorage():
     if (!parsed?.user || !parsed?.tokens?.accessToken || !parsed?.tokens?.refreshToken) {
       return null;
     }
-    memoryAuth = { user: parsed.user, tokens: parsed.tokens };
+    const normalizedUser: User = {
+      ...parsed.user,
+      role: String(parsed.user.role || "CUSTOMER").trim().toUpperCase(),
+    };
+    memoryAuth = { user: normalizedUser, tokens: parsed.tokens };
     return memoryAuth;
   } catch {
     return null;
@@ -366,7 +370,7 @@ const ROLE_UI: Record<string, { label: string; color: string }> = {
 };
 
 function toRoleDefinition(role: BackendRole): RoleDefinition {
-  const name = String(role?.name || "").toUpperCase();
+  const name = String(role?.name || "").trim().toUpperCase();
   const ui = ROLE_UI[name] || { label: name || "ROLE", color: "#8B4513" };
   return {
     id: name,
@@ -388,7 +392,7 @@ function toUser(user: BackendUser): User {
     id: String(user?._id || user?.id || ""),
     name: String(user?.name || ""),
     email: String(user?.email || ""),
-    role: roleName.toUpperCase(),
+    role: String(roleName || "CUSTOMER").trim().toUpperCase(),
   };
 }
 
