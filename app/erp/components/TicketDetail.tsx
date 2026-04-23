@@ -314,8 +314,7 @@ export default function TicketDetail({
   const [onsiteError, setOnsiteError] = useState("");
   const [onsiteSavedMsg, setOnsiteSavedMsg] = useState("");
 
-  const canManageBrandList =
-    roleName === "ADMIN" || roleName === "SALES";
+  const canManageBrandList = roleName === "ADMIN";
   const [knownBrands, setKnownBrands] = useState<string[]>([]);
   const [brandAddMsg, setBrandAddMsg] = useState("");
   const [brandAddError, setBrandAddError] = useState("");

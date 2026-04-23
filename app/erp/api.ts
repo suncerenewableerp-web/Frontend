@@ -1085,6 +1085,24 @@ export async function apiInverterBrandAdd(name: string): Promise<string> {
   return String(env.data?.name || name || "");
 }
 
+function toInverterBrandKey(input: string): string | null {
+  const raw = String(input || "").trim();
+  if (!raw) return null;
+  const collapsed = raw.replace(/\s+/g, " ").trim();
+  if (!collapsed) return null;
+  return collapsed.toLowerCase();
+}
+
+export async function apiInverterBrandDelete(nameOrKey: string): Promise<string> {
+  const key = toInverterBrandKey(nameOrKey);
+  if (!key) throw new Error("Brand name is required");
+  const env = await apiFetch<{ name?: unknown }>(`/api/settings/inverter-brands/${encodeURIComponent(key)}`, {
+    method: "DELETE",
+  });
+  if (!env.success) throw new Error(env.message || "Failed to delete inverter brand");
+  return String(env.data?.name || "");
+}
+
 export async function apiJobCardEngineerNamesList(): Promise<string[]> {
   const env = await apiFetch<unknown>("/api/settings/jobcard-engineers", { method: "GET" });
   if (!env.success) throw new Error(env.message || "Failed to fetch jobcard engineer names");

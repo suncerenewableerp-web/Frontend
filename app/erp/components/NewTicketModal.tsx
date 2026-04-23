@@ -1,9 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiInverterBrandsList, type TicketCreateInput } from "../api";
+import {
+  apiInverterBrandAdd,
+  apiInverterBrandDelete,
+  apiInverterBrandsList,
+  type TicketCreateInput,
+} from "../api";
 import DatePicker from "./DatePicker";
-import { LuSearch } from "react-icons/lu";
+import { LuPlus, LuSearch, LuTrash2 } from "react-icons/lu";
 
 const INVERTER_BRANDS = [
   "ABB",
@@ -53,6 +58,10 @@ const INVERTER_BRANDS = [
 ] as const;
 
 const OTHER_BRAND_VALUE = "OTHER";
+
+function toBrandKey(input: string): string {
+  return String(input || "").trim().replace(/\s+/g, " ").trim().toLowerCase();
+}
 
 const INVERTER_MODELS_RAW = `PVS50KWTL
 PVS100KWTL
@@ -419,6 +428,86 @@ export default function NewTicketModal({
     String(userRole || "").toUpperCase() === "ADMIN" ||
     String(userRole || "").toUpperCase() === "SALES";
 
+  const canManageBrandList = String(userRole || "").toUpperCase() === "ADMIN";
+  const [brandManageMsg, setBrandManageMsg] = useState("");
+  const [brandManageError, setBrandManageError] = useState("");
+  const [brandManageBusyKey, setBrandManageBusyKey] = useState<string>("");
+
+  const brandKeys = useMemo(() => {
+    const s = new Set<string>();
+    (brands || []).forEach((b) => {
+      const k = toBrandKey(String(b || ""));
+      if (k) s.add(k);
+    });
+    return s;
+  }, [brands]);
+
+  const addBrandToDropdown = async (rawName: string) => {
+    if (!canManageBrandList) return;
+    const name = String(rawName || "").trim().replace(/\s+/g, " ").trim();
+    const key = toBrandKey(name);
+    if (!key) return;
+    setBrandManageMsg("");
+    setBrandManageError("");
+    setBrandManageBusyKey(`add:${key}`);
+    try {
+      const savedName = await apiInverterBrandAdd(name);
+      setBrands((prev) => {
+        const next = Array.isArray(prev) ? [...prev] : [];
+        const saved = String(savedName || name).trim();
+        const savedKey = toBrandKey(saved);
+        if (savedKey && !next.some((b) => toBrandKey(String(b || "")) === savedKey)) {
+          next.push(saved);
+        }
+        next.sort((a, b) => String(a).localeCompare(String(b)));
+        return next;
+      });
+      setBrandManageMsg("Added to dropdown.");
+    } catch (e) {
+      setBrandManageError(e instanceof Error ? e.message : "Failed to add brand");
+    } finally {
+      setBrandManageBusyKey("");
+    }
+  };
+
+  const deleteBrandFromDropdown = async (rawNameOrKey: string) => {
+    if (!canManageBrandList) return;
+    const key = toBrandKey(rawNameOrKey);
+    if (!key) return;
+    setBrandManageMsg("");
+    setBrandManageError("");
+    setBrandManageBusyKey(`del:${key}`);
+    try {
+      const deletedName = await apiInverterBrandDelete(rawNameOrKey);
+      const deletedKey = toBrandKey(deletedName || rawNameOrKey);
+      setBrands((prev) => (Array.isArray(prev) ? prev.filter((b) => toBrandKey(String(b || "")) !== deletedKey) : []));
+      // If currently selected brand was deleted, clear it.
+      setBrandOption((prev) => {
+        if (toBrandKey(prev) === deletedKey) {
+          set("inverterMake", "");
+          return "";
+        }
+        return prev;
+      });
+      setBulkItems((prev) =>
+        (prev || []).map((it) => {
+          if (!it) return it;
+          const optKey = toBrandKey(String(it.brandOption || ""));
+          const makeKey = toBrandKey(String(it.inverterMake || ""));
+          if (optKey === deletedKey || makeKey === deletedKey) {
+            return { ...it, brandOption: "", inverterMake: "" };
+          }
+          return it;
+        }),
+      );
+      setBrandManageMsg("Deleted from dropdown.");
+    } catch (e) {
+      setBrandManageError(e instanceof Error ? e.message : "Failed to delete brand");
+    } finally {
+      setBrandManageBusyKey("");
+    }
+  };
+
   const set = (k: string, v: string | boolean) =>
     setForm((f) => ({ ...f, [k]: v }));
 
@@ -429,12 +518,30 @@ export default function NewTicketModal({
     return src.filter((b) => String(b).toLowerCase().includes(q));
   }, [brandSearch, brands]);
 
+  const brandAddCandidate = useMemo(() => {
+    if (!canManageBrandList) return null;
+    const name = String(brandSearch || "").trim().replace(/\s+/g, " ").trim();
+    const key = toBrandKey(name);
+    if (!key) return null;
+    if (brandKeys.has(key)) return null;
+    return { name, key };
+  }, [brandSearch, brandKeys, canManageBrandList]);
+
   const bulkFilteredBrands = useMemo(() => {
     const q = bulkBrandSearch.trim().toLowerCase();
     const src = (brands || []).map((b) => String(b || "")).filter(Boolean);
     if (!q) return src;
     return src.filter((b) => String(b).toLowerCase().includes(q));
   }, [bulkBrandSearch, brands]);
+
+  const bulkBrandAddCandidate = useMemo(() => {
+    if (!canManageBrandList) return null;
+    const name = String(bulkBrandSearch || "").trim().replace(/\s+/g, " ").trim();
+    const key = toBrandKey(name);
+    if (!key) return null;
+    if (brandKeys.has(key)) return null;
+    return { name, key };
+  }, [bulkBrandSearch, brandKeys, canManageBrandList]);
 
   const switchMode = (next: "single" | "bulk") => {
     setMode(next);
@@ -807,6 +914,32 @@ export default function NewTicketModal({
                               Clear search
                             </button>
                           ) : null}
+                          {canManageBrandList ? (
+                            <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                              {brandAddCandidate ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-sm"
+                                  disabled={loading || brandManageBusyKey === `add:${brandAddCandidate.key}`}
+                                  onClick={() => addBrandToDropdown(brandAddCandidate.name)}
+                                  title="Add typed brand to dropdown"
+                                  style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+                                >
+                                  <LuPlus aria-hidden />
+                                  Add "{brandAddCandidate.name}"
+                                </button>
+                              ) : null}
+                              {brandManageMsg ? (
+                                <span style={{ fontSize: 12, color: "var(--green)" }}>{brandManageMsg}</span>
+                              ) : brandManageError ? (
+                                <span style={{ fontSize: 12, color: "var(--red)" }}>{brandManageError}</span>
+                              ) : (
+                                <span style={{ fontSize: 12, color: "var(--text3)" }}>
+                                  Admin: add or delete brands from this dropdown.
+                                </span>
+                              )}
+                            </div>
+                          ) : null}
                         </div>
 
                         <div style={{ maxHeight: 240, overflowY: "auto" }}>
@@ -834,27 +967,50 @@ export default function NewTicketModal({
                           {filteredBrands.map((b) => {
                             const selected = brandOption === b;
                             return (
-                              <button
-                                key={b}
-                                type="button"
-                                role="option"
-                                aria-selected={selected}
-                                className="table-link"
-                                onClick={() => {
-                                  setBrandOption(b);
-                                  set("inverterMake", b);
-                                  setBrandSearch("");
-                                  setBrandOpen(false);
-                                }}
-                                style={{
-                                  width: "100%",
-                                  padding: "10px 12px",
-                                  textAlign: "left",
-                                  color: selected ? "var(--accent)" : "var(--text)",
-                                }}
-                              >
-                                {b}
-                              </button>
+                              <div key={b} style={{ display: "flex", alignItems: "center", gap: 8, paddingRight: 8 }}>
+                                <button
+                                  type="button"
+                                  role="option"
+                                  aria-selected={selected}
+                                  className="table-link"
+                                  onClick={() => {
+                                    setBrandOption(b);
+                                    set("inverterMake", b);
+                                    setBrandSearch("");
+                                    setBrandOpen(false);
+                                  }}
+                                  style={{
+                                    flex: 1,
+                                    padding: "10px 12px",
+                                    textAlign: "left",
+                                    color: selected ? "var(--accent)" : "var(--text)",
+                                  }}
+                                >
+                                  {b}
+                                </button>
+                                {canManageBrandList ? (
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost btn-sm"
+                                    aria-label={`Delete ${b}`}
+                                    disabled={loading || brandManageBusyKey === `del:${toBrandKey(b)}`}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      if (
+                                        typeof window !== "undefined" &&
+                                        !window.confirm(`Delete brand \"${b}\" from dropdown?`)
+                                      )
+                                        return;
+                                      deleteBrandFromDropdown(b);
+                                    }}
+                                    title="Delete brand"
+                                    style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                                  >
+                                    <LuTrash2 aria-hidden />
+                                  </button>
+                                ) : null}
+                              </div>
                             );
                           })}
 
@@ -1215,6 +1371,32 @@ export default function NewTicketModal({
                                   Clear search
                                 </button>
                               ) : null}
+                              {canManageBrandList ? (
+                                <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                                  {bulkBrandAddCandidate ? (
+                                    <button
+                                      type="button"
+                                      className="btn btn-ghost btn-sm"
+                                      disabled={loading || brandManageBusyKey === `add:${bulkBrandAddCandidate.key}`}
+                                      onClick={() => addBrandToDropdown(bulkBrandAddCandidate.name)}
+                                      title="Add typed brand to dropdown"
+                                      style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+                                    >
+                                      <LuPlus aria-hidden />
+                                      Add "{bulkBrandAddCandidate.name}"
+                                    </button>
+                                  ) : null}
+                                  {brandManageMsg ? (
+                                    <span style={{ fontSize: 12, color: "var(--green)" }}>{brandManageMsg}</span>
+                                  ) : brandManageError ? (
+                                    <span style={{ fontSize: 12, color: "var(--red)" }}>{brandManageError}</span>
+                                  ) : (
+                                    <span style={{ fontSize: 12, color: "var(--text3)" }}>
+                                      Admin: add or delete brands from this dropdown.
+                                    </span>
+                                  )}
+                                </div>
+                              ) : null}
                             </div>
 
                             <div style={{ maxHeight: 240, overflowY: "auto" }}>
@@ -1241,26 +1423,49 @@ export default function NewTicketModal({
                               {bulkFilteredBrands.map((b) => {
                                 const selected = bulkBrandOption === b;
                                 return (
-                                  <button
-                                    key={b}
-                                    type="button"
-                                    role="option"
-                                    aria-selected={selected}
-                                    className="table-link"
-                                    onClick={() => {
-                                      setBulkItem(bulkActiveIndex, { brandOption: b, inverterMake: b });
-                                      setBulkBrandSearch("");
-                                      setBulkBrandOpen(false);
-                                    }}
-                                    style={{
-                                      width: "100%",
-                                      padding: "10px 12px",
-                                      textAlign: "left",
-                                      color: selected ? "var(--accent)" : "var(--text)",
-                                    }}
-                                  >
-                                    {b}
-                                  </button>
+                                  <div key={b} style={{ display: "flex", alignItems: "center", gap: 8, paddingRight: 8 }}>
+                                    <button
+                                      type="button"
+                                      role="option"
+                                      aria-selected={selected}
+                                      className="table-link"
+                                      onClick={() => {
+                                        setBulkItem(bulkActiveIndex, { brandOption: b, inverterMake: b });
+                                        setBulkBrandSearch("");
+                                        setBulkBrandOpen(false);
+                                      }}
+                                      style={{
+                                        flex: 1,
+                                        padding: "10px 12px",
+                                        textAlign: "left",
+                                        color: selected ? "var(--accent)" : "var(--text)",
+                                      }}
+                                    >
+                                      {b}
+                                    </button>
+                                    {canManageBrandList ? (
+                                      <button
+                                        type="button"
+                                        className="btn btn-ghost btn-sm"
+                                        aria-label={`Delete ${b}`}
+                                        disabled={loading || brandManageBusyKey === `del:${toBrandKey(b)}`}
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          if (
+                                            typeof window !== "undefined" &&
+                                            !window.confirm(`Delete brand \"${b}\" from dropdown?`)
+                                          )
+                                            return;
+                                          deleteBrandFromDropdown(b);
+                                        }}
+                                        title="Delete brand"
+                                        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                                      >
+                                        <LuTrash2 aria-hidden />
+                                      </button>
+                                    ) : null}
+                                  </div>
                                 );
                               })}
 
