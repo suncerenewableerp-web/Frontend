@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ALL_MODULES } from "../constants";
 import type { ModulePermission, RoleDefinition, User } from "../types";
 import { apiRoleCreate, apiRoleDelete, apiRoleUpdate, apiUserUpdateRole, apiUsersList } from "../api";
@@ -36,9 +36,40 @@ export default function UserManagement({
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [passwordForUser, setPasswordForUser] = useState<User | null>(null);
   const [updatingRoleForId, setUpdatingRoleForId] = useState<string | null>(null);
+  const [userSearch, setUserSearch] = useState("");
+  const [userPage, setUserPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   const isAdmin = String(userRole || "").trim().toUpperCase() === "ADMIN";
   const canUpdateUserRole = isAdmin && canAccess(roles, userRole, "users", "edit");
+
+  const roleLabelById = useMemo(
+    () => Object.fromEntries(roles.map((r) => [r.id, r.label])),
+    [roles],
+  );
+
+  const filteredUsers = useMemo(() => {
+    const q = userSearch.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter((u) => {
+      const name = String(u.name || "").toLowerCase();
+      const email = String(u.email || "").toLowerCase();
+      const roleLabel = String(roleLabelById[u.role] || u.role || "").toLowerCase();
+      return name.includes(q) || email.includes(q) || roleLabel.includes(q);
+    });
+  }, [users, userSearch, roleLabelById]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
+  const currentPage = Math.min(Math.max(1, userPage), totalPages);
+  const startIndex = (currentPage - 1) * PAGE_SIZE;
+  const pageRows = filteredUsers.slice(startIndex, startIndex + PAGE_SIZE);
+  const showingFrom = filteredUsers.length ? startIndex + 1 : 0;
+  const showingTo = Math.min(startIndex + PAGE_SIZE, filteredUsers.length);
+
+  useEffect(() => {
+    if (userPage !== currentPage) setUserPage(currentPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, filteredUsers.length]);
 
   const reloadUsers = async () => {
     try {
@@ -135,7 +166,23 @@ export default function UserManagement({
       {activeTab === "users" && (
         <div className="table-card">
           <div className="table-header">
-            <div className="table-title">All Users ({users.length})</div>
+            <div className="table-title">All Users ({filteredUsers.length})</div>
+            <div className="table-actions">
+              <div className="search-wrap">
+                <span className="search-icon" aria-hidden>
+                  <LuUsers />
+                </span>
+                <input
+                  className="search-input"
+                  placeholder="Search users..."
+                  value={userSearch}
+                  onChange={(e) => {
+                    setUserSearch(e.target.value);
+                    setUserPage(1);
+                  }}
+                />
+              </div>
+            </div>
           </div>
           <div className="scroll-x">
             <table>
@@ -150,7 +197,7 @@ export default function UserManagement({
                 </tr>
               </thead>
               <tbody>
-                {users.map((u) => {
+                {pageRows.map((u) => {
                   const roleDef = roles.find((r) => r.id === u.role);
                   return (
                     <tr key={u.id}>
@@ -171,7 +218,7 @@ export default function UserManagement({
                               flexShrink: 0,
                             }}
                           >
-                            {u.name[0]}
+                            {(u.name && u.name[0]) || "?"}
                           </div>
                           <span style={{ fontWeight: 500 }}>{u.name}</span>
                         </div>
@@ -271,6 +318,42 @@ export default function UserManagement({
               </tbody>
             </table>
           </div>
+
+          {filteredUsers.length > PAGE_SIZE ? (
+            <div
+              style={{
+                padding: "12px 20px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+                borderTop: "1px solid var(--border2)",
+              }}
+            >
+              <div style={{ fontSize: 12, color: "var(--text3)" }}>
+                Showing {showingFrom}-{showingTo} of {filteredUsers.length}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  disabled={currentPage <= 1}
+                  onClick={() => setUserPage((p) => Math.max(1, Math.min(totalPages, p - 1)))}
+                >
+                  Prev
+                </button>
+                <div style={{ fontSize: 12, color: "var(--text3)", fontFamily: "var(--mono)" }}>
+                  Page {currentPage}/{totalPages}
+                </div>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setUserPage((p) => Math.max(1, Math.min(totalPages, p + 1)))}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
 
