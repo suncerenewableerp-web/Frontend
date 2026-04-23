@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ALL_MODULES } from "../constants";
 import type { ModulePermission, RoleDefinition, User } from "../types";
-import { apiRoleCreate, apiRoleDelete, apiRoleUpdate, apiUsersList } from "../api";
+import { apiRoleCreate, apiRoleDelete, apiRoleUpdate, apiUserUpdateRole, apiUsersList } from "../api";
 import { LuKeyRound, LuTags, LuUsers } from "react-icons/lu";
 import { Badge } from "./Badges";
 import RoleBuilderModal from "./RoleBuilderModal";
@@ -35,6 +35,10 @@ export default function UserManagement({
   const [roleError, setRoleError] = useState("");
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [passwordForUser, setPasswordForUser] = useState<User | null>(null);
+  const [updatingRoleForId, setUpdatingRoleForId] = useState<string | null>(null);
+
+  const isAdmin = String(userRole || "").trim().toUpperCase() === "ADMIN";
+  const canUpdateUserRole = isAdmin && canAccess(roles, userRole, "users", "edit");
 
   const reloadUsers = async () => {
     try {
@@ -182,7 +186,53 @@ export default function UserManagement({
                         {u.email}
                       </td>
                       <td>
-                        <Badge label={roleDef?.label || u.role} color={roleDef?.color || "#8B4513"} />
+                        {canUpdateUserRole ? (
+                          <select
+                            value={u.role}
+                            disabled={updatingRoleForId === u.id}
+                            onChange={async (e) => {
+                              const nextRole = String(e.target.value || "").trim().toUpperCase();
+                              const prevRole = u.role;
+                              if (!nextRole || nextRole === prevRole) return;
+
+                              setRoleError("");
+                              setUpdatingRoleForId(u.id);
+                              try {
+                                await apiUserUpdateRole(u.id, nextRole);
+                                await reloadUsers();
+                              } catch (err) {
+                                await reloadUsers();
+                                setRoleError(
+                                  err instanceof Error ? err.message : "Failed to update role",
+                                );
+                              } finally {
+                                setUpdatingRoleForId((cur) => (cur === u.id ? null : cur));
+                              }
+                            }}
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 800,
+                              padding: "4px 10px",
+                              borderRadius: 999,
+                              border: "1px solid rgba(44,26,14,0.18)",
+                              background: "rgba(255,255,255,0.9)",
+                              color: "var(--brown)",
+                              cursor: updatingRoleForId === u.id ? "not-allowed" : "pointer",
+                            }}
+                            title="Change role"
+                          >
+                            {roles.map((r) => (
+                              <option key={r.id} value={r.id}>
+                                {r.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <Badge
+                            label={roleDef?.label || u.role}
+                            color={roleDef?.color || "#8B4513"}
+                          />
+                        )}
                       </td>
                       <td>
                         <span

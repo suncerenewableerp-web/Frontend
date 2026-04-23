@@ -990,6 +990,17 @@ export async function apiUsersList(): Promise<User[]> {
   return env.data.users.map(toUser);
 }
 
+export async function apiUserUpdateRole(userId: string, role: string): Promise<User> {
+  const env = await apiFetch<{ user: BackendUser }>(`/api/users/${encodeURIComponent(userId)}/role`, {
+    method: "PUT",
+    body: JSON.stringify({ role }),
+  });
+  if (!env.success) {
+    throw new ApiRequestError(env.message || "Failed to update user role", env.errors);
+  }
+  return toUser(env.data.user);
+}
+
 export type EngineerName = { id: string; name: string };
 
 export async function apiEngineerNamesList(): Promise<EngineerName[]> {
