@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 
-const WHATSAPP_NUMBER = "916361991349";
+export const WHATSAPP_NUMBER = "916361991349";
 
 const WA_SVG = (size = 24, color = "white") => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>

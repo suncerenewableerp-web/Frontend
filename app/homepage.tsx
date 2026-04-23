@@ -227,30 +227,21 @@ function Hero() {
               marginBottom: 52,
             }}
           >
-            <button onClick={openWAModal} className="btn-dark">
-              Get a Free Quote →
-            </button>
             <Link
               href="/login"
-              className="nv-erp"
+              className="nv-erp btn-choco"
               style={{
                 fontSize: "0.83rem",
-                color: "var(--brown-mid)",
-                fontWeight: 600,
-                textDecoration: "none",
+                fontWeight: 700,
                 padding: "10px 18px",
-                border: "1.5px solid var(--border-mid)",
-                borderRadius: 8,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                transition: "border-color 0.2s,color 0.2s",
-                background: "rgba(240,235,224,0.55)",
-                backdropFilter: "blur(10px)",
+                borderRadius: 10,
               }}
             >
               {SERVICES_ICON} Solar Inverter Services
             </Link>
+            <button onClick={openWAModal} className="btn-dark">
+              Get a Free Quote →
+            </button>
           </div>
           <div
             style={{

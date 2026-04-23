@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import Footer from "./Footer";
 import { WAModal, FloatingWA } from "./GlobalContact";
 import { ModalProvider, useModal } from "./ModalContext";
+import PreFooterQuoteCTA from "./PreFooterQuoteCTA";
 
 const Navbar = dynamic(() => import("./Navbar"), { ssr: false });
 
@@ -21,6 +22,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     <div className={`root-layout-inner ${isErp ? "is-erp" : ""} ${isExcluded ? "is-excluded" : ""}`}>
       {!isExcluded && <Navbar onOpen={openWAModal} />}
       <main className="main-content">{children}</main>
+      {!isExcluded && !isErp && <PreFooterQuoteCTA />}
       {!isExcluded && <Footer />}
       {!isExcluded && <FloatingWA onClick={openWAModal} />}
       {!isExcluded && isWAModalOpen && <WAModal onClose={closeWAModal} />}

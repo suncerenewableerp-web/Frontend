@@ -146,19 +146,12 @@ export default function Navbar({ onOpen }: { onOpen?: () => void }) {
           <Link href="/contact" style={{ fontSize: "0.83rem", color: "var(--brown-mid)", fontWeight: 600, textDecoration: "none", padding: "9px 16px", borderRadius: 8 }}>Contact</Link>
           <Link
             href="/login"
-            className="nv-erp"
+            className="nv-erp btn-choco"
             style={{
               fontSize: "0.83rem",
-              color: "var(--brown-mid)",
-              fontWeight: 600,
-              textDecoration: "none",
+              fontWeight: 700,
               padding: "9px 18px",
-              border: "1.5px solid var(--border-mid)",
               borderRadius: 8,
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              transition: "border-color 0.2s,color 0.2s",
             }}
           >
             {ERP_ICON} Solar Inverter Services

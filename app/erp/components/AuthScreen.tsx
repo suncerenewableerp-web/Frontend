@@ -30,12 +30,6 @@ export default function AuthScreen({
       .finally(() => setLoading(false));
   };
 
-  const DEMO_CREDS: Record<string, { email: string; password: string }> = {
-    CUSTOMER: { email: "customer@example.com", password: "customer123" },
-  };
-
-  const roleLabelById = Object.fromEntries(roles.map((r) => [r.id, r.label]));
-
   return (
     <div className="auth-screen">
       <div className="auth-card">
@@ -132,25 +126,6 @@ export default function AuthScreen({
           </button>
         </form>
 
-        <div className="demo-users">
-          <div className="demo-title">Demo Accounts</div>
-          <div className="demo-chips">
-            {Object.keys(DEMO_CREDS).map((roleId) => (
-              <div
-                key={roleId}
-                className="demo-chip"
-                onClick={() => {
-                  setEmail(DEMO_CREDS[roleId].email);
-                  setPassword(DEMO_CREDS[roleId].password);
-                  setError("");
-                }}
-              >
-                {roleLabelById[roleId] || roleId}
-              </div>
-            ))}
-          </div>
-        </div>
-
         <div className="auth-switch">
           Don&apos;t have an account?{" "}
           <a
@@ -158,7 +133,7 @@ export default function AuthScreen({
             className="auth-link"
             onClick={() => onGoSignup()}
           >
-            Create one here
+            Sign up here
           </a>
         </div>
       </div>
