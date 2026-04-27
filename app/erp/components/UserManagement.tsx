@@ -3,7 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { ALL_MODULES } from "../constants";
 import type { ModulePermission, RoleDefinition, User } from "../types";
-import { apiRoleCreate, apiRoleDelete, apiRoleUpdate, apiUserUpdateRole, apiUsersList } from "../api";
+import {
+  apiRoleCreate,
+  apiRoleDelete,
+  apiRoleUpdate,
+  apiUserDelete,
+  apiUserUpdateRole,
+  apiUsersList,
+  getStoredAuth,
+} from "../api";
 import { LuKeyRound, LuTags, LuUsers } from "react-icons/lu";
 import { Badge } from "./Badges";
 import RoleBuilderModal from "./RoleBuilderModal";
@@ -36,12 +44,16 @@ export default function UserManagement({
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [passwordForUser, setPasswordForUser] = useState<User | null>(null);
   const [updatingRoleForId, setUpdatingRoleForId] = useState<string | null>(null);
+  const [deleteUserConfirm, setDeleteUserConfirm] = useState<string | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [userSearch, setUserSearch] = useState("");
   const [userPage, setUserPage] = useState(1);
   const PAGE_SIZE = 10;
 
   const isAdmin = String(userRole || "").trim().toUpperCase() === "ADMIN";
   const canUpdateUserRole = isAdmin && canAccess(roles, userRole, "users", "edit");
+  const canDeleteUsers = canAccess(roles, userRole, "users", "delete");
+  const currentUserId = getStoredAuth()?.user?.id || null;
 
   const roleLabelById = useMemo(
     () => Object.fromEntries(roles.map((r) => [r.id, r.label])),
@@ -199,6 +211,7 @@ export default function UserManagement({
               <tbody>
                 {pageRows.map((u) => {
                   const roleDef = roles.find((r) => r.id === u.role);
+                  const isSelf = Boolean(currentUserId && u.id === currentUserId);
                   return (
                     <tr key={u.id}>
                       <td>
@@ -310,6 +323,51 @@ export default function UserManagement({
                               Set Password
                             </button>
                           )}
+                          {canDeleteUsers &&
+                            (deleteUserConfirm === u.id ? (
+                              <>
+                                <button
+                                  className="btn btn-danger btn-sm"
+                                  disabled={deletingUserId === u.id}
+                                  onClick={async () => {
+                                    setDeletingUserId(u.id);
+                                    setRoleError("");
+                                    try {
+                                      await apiUserDelete(u.id);
+                                      setDeleteUserConfirm(null);
+                                      await reloadUsers();
+                                    } catch (e) {
+                                      setRoleError(
+                                        e instanceof Error ? e.message : "Failed to delete user",
+                                      );
+                                    } finally {
+                                      setDeletingUserId((cur) => (cur === u.id ? null : cur));
+                                    }
+                                  }}
+                                >
+                                  Confirm
+                                </button>
+                                <button
+                                  className="btn btn-ghost btn-sm"
+                                  disabled={deletingUserId === u.id}
+                                  onClick={() => setDeleteUserConfirm(null)}
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                className="btn btn-danger btn-sm"
+                                disabled={isSelf}
+                                title={isSelf ? "You cannot delete your own account" : "Delete user"}
+                                onClick={() => {
+                                  setRoleError("");
+                                  setDeleteUserConfirm(u.id);
+                                }}
+                              >
+                                🗑️
+                              </button>
+                            ))}
                         </div>
                       </td>
                     </tr>

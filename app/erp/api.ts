@@ -886,7 +886,7 @@ export async function apiUpdateTicketStatus(
 }
 
 export async function apiTicketOnsiteAssign(ticketId: string, engineerId?: string | null): Promise<Ticket> {
-  const payload: Record<string, any> = {};
+  const payload: { engineerId?: string } = {};
   const id = String(engineerId || "").trim();
   if (id) payload.engineerId = id;
   const env = await apiFetch<BackendTicket>(`/api/tickets/${encodeURIComponent(ticketId)}/onsite/assign`, {
@@ -999,6 +999,15 @@ export async function apiUserUpdateRole(userId: string, role: string): Promise<U
     throw new ApiRequestError(env.message || "Failed to update user role", env.errors);
   }
   return toUser(env.data.user);
+}
+
+export async function apiUserDelete(userId: string): Promise<void> {
+  const env = await apiFetch<{ message?: string }>(`/api/users/${encodeURIComponent(userId)}`, {
+    method: "DELETE",
+  });
+  if (!env.success) {
+    throw new ApiRequestError(env.message || "Failed to delete user", env.errors);
+  }
 }
 
 export type EngineerName = { id: string; name: string };
@@ -1135,6 +1144,55 @@ export async function apiJobCardEngineerNameDelete(nameOrKey: string): Promise<s
     method: "DELETE",
   });
   if (!env.success) throw new Error(env.message || "Failed to delete jobcard engineer name");
+  return String(env.data?.name || "");
+}
+
+export async function apiJobCardRepairActionNamesList(): Promise<string[]> {
+  const env = await apiFetch<unknown>("/api/settings/jobcard-repair-actions", { method: "GET" });
+  if (!env.success) throw new Error(env.message || "Failed to fetch repair action names");
+  return Array.isArray(env.data)
+    ? (env.data as unknown[]).map((x) => String(x || "")).filter(Boolean)
+    : [];
+}
+
+export async function apiJobCardRepairActionNameAdd(name: string): Promise<string> {
+  const env = await apiFetch<{ name?: unknown }>("/api/settings/jobcard-repair-actions", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+  if (!env.success) throw new Error(env.message || "Failed to add repair action name");
+  return String(env.data?.name || name || "");
+}
+
+function toJobCardRepairActionKey(input: string): string | null {
+  const raw = String(input || "").trim();
+  if (!raw) return null;
+  const collapsed = raw.replace(/\s+/g, " ").trim();
+  if (!collapsed) return null;
+  return collapsed.toLowerCase();
+}
+
+export async function apiJobCardRepairActionNameUpdate(
+  nameOrKey: string,
+  nextName: string,
+): Promise<string> {
+  const key = toJobCardRepairActionKey(nameOrKey);
+  if (!key) throw new Error("Name is required");
+  const env = await apiFetch<{ name?: unknown }>(`/api/settings/jobcard-repair-actions/${encodeURIComponent(key)}`, {
+    method: "PUT",
+    body: JSON.stringify({ name: nextName }),
+  });
+  if (!env.success) throw new Error(env.message || "Failed to update repair action name");
+  return String(env.data?.name || nextName || "");
+}
+
+export async function apiJobCardRepairActionNameDelete(nameOrKey: string): Promise<string> {
+  const key = toJobCardRepairActionKey(nameOrKey);
+  if (!key) throw new Error("Name is required");
+  const env = await apiFetch<{ name?: unknown }>(`/api/settings/jobcard-repair-actions/${encodeURIComponent(key)}`, {
+    method: "DELETE",
+  });
+  if (!env.success) throw new Error(env.message || "Failed to delete repair action name");
   return String(env.data?.name || "");
 }
 

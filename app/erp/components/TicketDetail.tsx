@@ -18,6 +18,10 @@ import {
   apiJobCardEngineerNameAdd,
   apiJobCardEngineerNameDelete,
   apiJobCardEngineerNamesList,
+  apiJobCardRepairActionNameAdd,
+  apiJobCardRepairActionNameDelete,
+  apiJobCardRepairActionNameUpdate,
+  apiJobCardRepairActionNamesList,
   apiTicketJobCardGet,
   apiTicketJobCardFinalize,
   apiTicketJobCardUpdate,
@@ -354,13 +358,28 @@ export default function TicketDetail({
   const [engineerNameDeleteMsg, setEngineerNameDeleteMsg] = useState("");
   const [engineerNameDeleteError, setEngineerNameDeleteError] = useState("");
 
+  const [repairActionDropdown, setRepairActionDropdown] = useState<string[]>([]);
+  const [customRepairActionNames, setCustomRepairActionNames] = useState<string[]>([]);
+  const [repairActionNameAdding, setRepairActionNameAdding] = useState(false);
+  const [repairActionNameDeletingKey, setRepairActionNameDeletingKey] = useState("");
+  const [repairActionNameInput, setRepairActionNameInput] = useState("");
+  const [repairActionNameAddMsg, setRepairActionNameAddMsg] = useState("");
+  const [repairActionNameAddError, setRepairActionNameAddError] = useState("");
+  const [repairActionNameDeleteMsg, setRepairActionNameDeleteMsg] = useState("");
+  const [repairActionNameDeleteError, setRepairActionNameDeleteError] = useState("");
+  const [repairActionNameUpdatingKey, setRepairActionNameUpdatingKey] = useState("");
+
   useEffect(() => {
     const shouldLoad =
       (activeTab === "jobcard" && ["ENGINEER", "ADMIN", "SALES"].includes(roleName)) ||
       (isOnsite && roleName === "ENGINEER");
     if (!shouldLoad) return;
     let cancelled = false;
-    Promise.allSettled([apiEngineerNamesList(), apiJobCardEngineerNamesList()])
+    Promise.allSettled([
+      apiEngineerNamesList(),
+      apiJobCardEngineerNamesList(),
+      apiJobCardRepairActionNamesList(),
+    ])
       .then((results) => {
         if (cancelled) return;
         const userNames =
@@ -371,6 +390,10 @@ export default function TicketDetail({
           results[1].status === "fulfilled"
             ? (results[1].value || []).map((n) => String(n || "").trim()).filter(Boolean)
             : [];
+        const repairActions =
+          results[2].status === "fulfilled"
+            ? (results[2].value || []).map((n) => String(n || "").trim()).filter(Boolean)
+            : [];
 
         const merged = [...DEFAULT_ENGINEER_DROPDOWN, ...customNames, ...userNames];
         const uniq = Array.from(new Set(merged.map((x) => x.trim()).filter(Boolean)));
@@ -380,6 +403,11 @@ export default function TicketDetail({
         const customUniq = Array.from(new Set(customNames.map((x) => x.trim()).filter(Boolean)));
         customUniq.sort((a, b) => a.localeCompare(b));
         setCustomEngineerNames(customUniq);
+
+        const repairUniq = Array.from(new Set(repairActions.map((x) => x.trim()).filter(Boolean)));
+        repairUniq.sort((a, b) => a.localeCompare(b));
+        setRepairActionDropdown(repairUniq);
+        setCustomRepairActionNames(repairUniq);
       })
       .catch(() => {});
     return () => {
@@ -2329,14 +2357,221 @@ export default function TicketDetail({
                       {engineerNameDeleteMsg}
                     </div>
                   ) : null}
-                  {engineerNameDeleteError ? (
-                    <div className="form-error" style={{ marginTop: 10 }}>
-                      {engineerNameDeleteError}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
+	                  {engineerNameDeleteError ? (
+	                    <div className="form-error" style={{ marginTop: 10 }}>
+	                      {engineerNameDeleteError}
+	                    </div>
+	                  ) : null}
+	                </div>
+
+	                <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--border2)" }}>
+	                  <div className="form-section">QA Team / Sub Engineer Names</div>
+	                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+	                    <input
+	                      className="form-input"
+	                      value={repairActionNameInput}
+	                      disabled={repairActionNameAdding}
+	                      placeholder="Add a new name (for Repair Actions dropdown)"
+	                      onChange={(e) => {
+	                        setRepairActionNameInput(e.target.value);
+	                        setRepairActionNameAddMsg("");
+	                        setRepairActionNameAddError("");
+	                      }}
+	                      style={{ minWidth: 260, maxWidth: 420 }}
+	                    />
+	                    <button
+	                      className="btn btn-ghost btn-sm"
+	                      type="button"
+	                      disabled={
+	                        repairActionNameAdding || !String(repairActionNameInput || "").trim()
+	                      }
+	                      onClick={() => {
+	                        const name = String(repairActionNameInput || "")
+	                          .trim()
+	                          .replace(/\s+/g, " ");
+	                        if (!name) return;
+	                        setRepairActionNameAdding(true);
+	                        setRepairActionNameAddMsg("");
+	                        setRepairActionNameAddError("");
+	                        setRepairActionNameDeleteMsg("");
+	                        setRepairActionNameDeleteError("");
+	                        apiJobCardRepairActionNameAdd(name)
+	                          .then((saved) => {
+	                            const out = String(saved || name).trim().replace(/\s+/g, " ");
+	                            setRepairActionNameInput("");
+	                            setRepairActionNameAddMsg("Added.");
+	                            return apiJobCardRepairActionNamesList()
+	                              .then((rows) => {
+	                                const merged = [...(rows || []), out];
+	                                const uniq = Array.from(
+	                                  new Set(merged.map((x) => String(x || "").trim()).filter(Boolean)),
+	                                );
+	                                uniq.sort((a, b) => a.localeCompare(b));
+	                                setRepairActionDropdown(uniq);
+	                                setCustomRepairActionNames(uniq);
+	                              })
+	                              .catch(() => {
+	                                setRepairActionDropdown((cur) => {
+	                                  const next = Array.from(
+	                                    new Set([...(cur || []), out].map((x) => x.trim()).filter(Boolean)),
+	                                  );
+	                                  next.sort((a, b) => a.localeCompare(b));
+	                                  return next;
+	                                });
+	                                setCustomRepairActionNames((cur) => {
+	                                  const next = Array.from(
+	                                    new Set([...(cur || []), out].map((x) => x.trim()).filter(Boolean)),
+	                                  );
+	                                  next.sort((a, b) => a.localeCompare(b));
+	                                  return next;
+	                                });
+	                              });
+	                          })
+	                          .catch((e) =>
+	                            setRepairActionNameAddError(
+	                              e instanceof Error ? e.message : "Failed to add name",
+	                            ),
+	                          )
+	                          .finally(() => setRepairActionNameAdding(false));
+	                      }}
+	                    >
+	                      {repairActionNameAdding ? "Adding..." : "Add"}
+	                    </button>
+	                    <div style={{ fontSize: 12, color: "var(--text3)" }}>
+	                      This updates the dropdown used in Card Repair Actions.
+	                    </div>
+	                  </div>
+	                  {repairActionNameAddMsg ? (
+	                    <div style={{ marginTop: 10, fontSize: 12, color: "var(--green)" }}>
+	                      {repairActionNameAddMsg}
+	                    </div>
+	                  ) : null}
+	                  {repairActionNameAddError ? (
+	                    <div className="form-error" style={{ marginTop: 10 }}>
+	                      {repairActionNameAddError}
+	                    </div>
+	                  ) : null}
+	                  <div style={{ marginTop: 12 }}>
+	                    <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 8 }}>
+	                      Saved names ({customRepairActionNames.length})
+	                    </div>
+	                    {customRepairActionNames.length ? (
+	                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+	                        {customRepairActionNames.map((n) => {
+	                          const key = String(n || "").trim().replace(/\s+/g, " ").toLowerCase();
+	                          const deleting = repairActionNameDeletingKey === key;
+	                          const updating = repairActionNameUpdatingKey === key;
+	                          return (
+	                            <div
+	                              key={key}
+	                              style={{
+	                                display: "flex",
+	                                alignItems: "center",
+	                                gap: 10,
+	                                padding: "6px 10px",
+	                                borderRadius: 999,
+	                                border: "1px solid rgba(148,163,184,0.35)",
+	                                background: "rgba(148,163,184,0.10)",
+	                                maxWidth: "100%",
+	                              }}
+	                            >
+	                              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)" }}>
+	                                {n}
+	                              </div>
+	                              <button
+	                                className="btn btn-ghost btn-sm"
+	                                type="button"
+	                                disabled={repairActionNameAdding || deleting || updating}
+	                                onClick={() => {
+	                                  const next = window.prompt("Update name", n);
+	                                  if (next === null) return;
+	                                  const nextName = String(next || "").trim().replace(/\s+/g, " ");
+	                                  if (!nextName) return;
+	                                  setRepairActionNameUpdatingKey(key);
+	                                  setRepairActionNameAddMsg("");
+	                                  setRepairActionNameAddError("");
+	                                  setRepairActionNameDeleteMsg("");
+	                                  setRepairActionNameDeleteError("");
+	                                  apiJobCardRepairActionNameUpdate(n, nextName)
+	                                    .then(() => apiJobCardRepairActionNamesList())
+	                                    .then((rows) => {
+	                                      const uniq = Array.from(
+	                                        new Set(
+	                                          (rows || []).map((x) => String(x || "").trim()).filter(Boolean),
+	                                        ),
+	                                      );
+	                                      uniq.sort((a, b) => a.localeCompare(b));
+	                                      setRepairActionDropdown(uniq);
+	                                      setCustomRepairActionNames(uniq);
+	                                      setRepairActionNameAddMsg("Updated.");
+	                                    })
+	                                    .catch((e) =>
+	                                      setRepairActionNameAddError(
+	                                        e instanceof Error ? e.message : "Failed to update name",
+	                                      ),
+	                                    )
+	                                    .finally(() => setRepairActionNameUpdatingKey(""));
+	                                }}
+	                              >
+	                                {updating ? "Updating..." : "Edit"}
+	                              </button>
+	                              <button
+	                                className="btn btn-ghost btn-sm"
+	                                type="button"
+	                                disabled={repairActionNameAdding || deleting || updating}
+	                                onClick={() => {
+	                                  if (!window.confirm(`Delete "${n}" from dropdown?`)) return;
+	                                  setRepairActionNameDeletingKey(key);
+	                                  setRepairActionNameDeleteMsg("");
+	                                  setRepairActionNameDeleteError("");
+	                                  setRepairActionNameAddMsg("");
+	                                  setRepairActionNameAddError("");
+	                                  apiJobCardRepairActionNameDelete(n)
+	                                    .then(() => apiJobCardRepairActionNamesList())
+	                                    .then((rows) => {
+	                                      const uniq = Array.from(
+	                                        new Set(
+	                                          (rows || []).map((x) => String(x || "").trim()).filter(Boolean),
+	                                        ),
+	                                      );
+	                                      uniq.sort((a, b) => a.localeCompare(b));
+	                                      setRepairActionDropdown(uniq);
+	                                      setCustomRepairActionNames(uniq);
+	                                      setRepairActionNameDeleteMsg("Deleted.");
+	                                    })
+	                                    .catch((e) =>
+	                                      setRepairActionNameDeleteError(
+	                                        e instanceof Error ? e.message : "Failed to delete name",
+	                                      ),
+	                                    )
+	                                    .finally(() => setRepairActionNameDeletingKey(""));
+	                                }}
+	                              >
+	                                {deleting ? "Deleting..." : "Delete"}
+	                              </button>
+	                            </div>
+	                          );
+	                        })}
+	                      </div>
+	                    ) : (
+	                      <div style={{ fontSize: 12, color: "var(--text3)" }}>
+	                        No names added yet.
+	                      </div>
+	                    )}
+	                    {repairActionNameDeleteMsg ? (
+	                      <div style={{ marginTop: 10, fontSize: 12, color: "var(--green)" }}>
+	                        {repairActionNameDeleteMsg}
+	                      </div>
+	                    ) : null}
+	                    {repairActionNameDeleteError ? (
+	                      <div className="form-error" style={{ marginTop: 10 }}>
+	                        {repairActionNameDeleteError}
+	                      </div>
+	                    ) : null}
+	                  </div>
+	                </div>
+	              </div>
+	            ) : null}
             {jobError && (
               <div className="form-error" style={{ marginBottom: 12, marginTop: -6 }}>
                 {jobError}
@@ -2471,17 +2706,17 @@ export default function TicketDetail({
 	                      >
 	                        <div className="form-group">
 	                          <label className="form-label">Name</label>
-	                          <NameCombobox
-	                            value={jobCard.repairActionsByName || ""}
-	                            disabled={!canEditJobCard}
-	                            options={engineerDropdown}
-	                            placeholder="e.g. QA Team / Sub engineer name"
-	                            onChange={(v) =>
-	                              setJobCard((p) =>
-	                                p ? { ...p, repairActionsByName: v } : p,
-	                              )
-	                            }
-	                          />
+		                          <NameCombobox
+		                            value={jobCard.repairActionsByName || ""}
+		                            disabled={!canEditJobCard}
+		                            options={repairActionDropdown}
+		                            placeholder="e.g. QA Team / Sub engineer name"
+		                            onChange={(v) =>
+		                              setJobCard((p) =>
+		                                p ? { ...p, repairActionsByName: v } : p,
+		                              )
+		                            }
+		                          />
 	                        </div>
 	                      </div>
                       <div className="scroll-x">
@@ -2916,13 +3151,52 @@ export default function TicketDetail({
 	                      <div className="detail-value">
 	                        <span className="tag">{ticket.status}</span>
                       </div>
-                    </div>
-                  </div>
+	                    </div>
+	                  </div>
 
-	                  {roleName === "SALES" &&
-	                  String(ticket.status || "").toUpperCase() === "UNDER_REPAIRED" &&
-	                  String(jobCard.engineerFinalStatus || "").toUpperCase().trim() === "REPAIRABLE" ? (
-	                    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+	                  {String(jobCard.currentStatus || "").toUpperCase() === "REPAIRABLE" ? (
+	                    <>
+	                      <div className="form-section">Card Repair Actions Carried Out By</div>
+	                      {canEditJobCard ? (
+	                        <div
+	                          className="form-grid"
+	                          style={{
+	                            marginBottom: 10,
+	                            gridTemplateColumns: "minmax(220px, 420px) 1fr",
+	                          }}
+	                        >
+	                          <div className="form-group">
+	                            <label className="form-label">Name</label>
+	                            <NameCombobox
+	                              value={jobCard.repairActionsByName || ""}
+	                              disabled={!canEditJobCard}
+	                              options={repairActionDropdown}
+	                              placeholder="e.g. QA Team / Sub engineer name"
+	                              onChange={(v) =>
+	                                setJobCard((p) =>
+	                                  p ? { ...p, repairActionsByName: v } : p,
+	                                )
+	                              }
+	                            />
+	                          </div>
+	                        </div>
+	                      ) : (
+	                        <div className="detail-grid" style={{ marginBottom: 14 }}>
+	                          <div className="detail-card">
+	                            <div className="detail-label">Name</div>
+	                            <div className="detail-value" style={{ fontSize: 13, fontWeight: 600 }}>
+	                              {jobCard.repairActionsByName || "—"}
+	                            </div>
+	                          </div>
+	                        </div>
+	                      )}
+	                    </>
+	                  ) : null}
+
+		                  {roleName === "SALES" &&
+		                  String(ticket.status || "").toUpperCase() === "UNDER_REPAIRED" &&
+		                  String(jobCard.engineerFinalStatus || "").toUpperCase().trim() === "REPAIRABLE" ? (
+		                    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
 	                      <button
 	                        className="btn btn-accent btn-sm"
 	                        type="button"
