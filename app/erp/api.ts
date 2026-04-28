@@ -266,6 +266,9 @@ type BackendTicket = {
   issue?: { description?: string; priority?: string; errorCode?: string };
   status?: string;
   assignedTo?: Array<{ name?: string }> | { name?: string };
+  salesAssignee?: BackendUser | string;
+  salesAssigneeEmail?: string;
+  salesAssigneeName?: string;
   logistics?:
     | string
     | {
@@ -560,6 +563,13 @@ function toTicket(t: BackendTicket): Ticket {
   const createdByEmail =
     t?.createdBy && typeof t.createdBy === "object" ? String((t.createdBy as BackendUser)?.email || "") : "";
 
+  const salesAssigneeName =
+    t?.salesAssigneeName ||
+    (t?.salesAssignee && typeof t.salesAssignee === "object" ? String((t.salesAssignee as BackendUser)?.name || "") : "");
+  const salesAssigneeEmail =
+    t?.salesAssigneeEmail ||
+    (t?.salesAssignee && typeof t.salesAssignee === "object" ? String((t.salesAssignee as BackendUser)?.email || "") : "");
+
   const serviceType =
     String(t?.serviceType || "")
       .trim()
@@ -596,6 +606,8 @@ function toTicket(t: BackendTicket): Ticket {
     onsiteRemark: t?.onsite?.remark ? String(t.onsite.remark) : undefined,
     onsiteMarkedRepairedAt: toDateInput(t?.onsite?.markedRepairedAt),
     assignedEngineer: String(assignedEngineer),
+    salesAssigneeName: salesAssigneeName ? String(salesAssigneeName) : undefined,
+    salesAssigneeEmail: salesAssigneeEmail ? String(salesAssigneeEmail) : undefined,
     createdAt: String(t?.createdAt ? String(t.createdAt).slice(0, 10) : ""),
     slaStatus: toSlaStatus(t?.slaStatus),
   };
@@ -1109,6 +1121,76 @@ export async function apiInverterBrandDelete(nameOrKey: string): Promise<string>
     method: "DELETE",
   });
   if (!env.success) throw new Error(env.message || "Failed to delete inverter brand");
+  return String(env.data?.name || "");
+}
+
+export async function apiCustomerCompaniesList(): Promise<string[]> {
+  const env = await apiFetch<unknown>("/api/settings/customer-companies", { method: "GET" });
+  if (!env.success) throw new Error(env.message || "Failed to fetch customer companies");
+  return Array.isArray(env.data)
+    ? (env.data as unknown[]).map((x) => String(x || "")).filter(Boolean)
+    : [];
+}
+
+export async function apiCustomerCompanyAdd(name: string): Promise<string> {
+  const env = await apiFetch<{ name?: unknown }>("/api/settings/customer-companies", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+  if (!env.success) throw new Error(env.message || "Failed to add customer company");
+  return String(env.data?.name || name || "");
+}
+
+function toCustomerCompanyKey(input: string): string | null {
+  const raw = String(input || "").trim();
+  if (!raw) return null;
+  const collapsed = raw.replace(/\s+/g, " ").trim();
+  if (!collapsed) return null;
+  return collapsed.toLowerCase();
+}
+
+export async function apiCustomerCompanyDelete(nameOrKey: string): Promise<string> {
+  const key = toCustomerCompanyKey(nameOrKey);
+  if (!key) throw new Error("Company name is required");
+  const env = await apiFetch<{ name?: unknown }>(`/api/settings/customer-companies/${encodeURIComponent(key)}`, {
+    method: "DELETE",
+  });
+  if (!env.success) throw new Error(env.message || "Failed to delete customer company");
+  return String(env.data?.name || "");
+}
+
+export async function apiInverterCapacitiesList(): Promise<string[]> {
+  const env = await apiFetch<unknown>("/api/settings/inverter-capacities", { method: "GET" });
+  if (!env.success) throw new Error(env.message || "Failed to fetch inverter capacities");
+  return Array.isArray(env.data)
+    ? (env.data as unknown[]).map((x) => String(x || "")).filter(Boolean)
+    : [];
+}
+
+export async function apiInverterCapacityAdd(name: string): Promise<string> {
+  const env = await apiFetch<{ name?: unknown }>("/api/settings/inverter-capacities", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+  if (!env.success) throw new Error(env.message || "Failed to add inverter capacity");
+  return String(env.data?.name || name || "");
+}
+
+function toInverterCapacityKey(input: string): string | null {
+  const raw = String(input || "").trim();
+  if (!raw) return null;
+  const collapsed = raw.replace(/\s+/g, " ").trim();
+  if (!collapsed) return null;
+  return collapsed.toLowerCase();
+}
+
+export async function apiInverterCapacityDelete(nameOrKey: string): Promise<string> {
+  const key = toInverterCapacityKey(nameOrKey);
+  if (!key) throw new Error("Capacity is required");
+  const env = await apiFetch<{ name?: unknown }>(`/api/settings/inverter-capacities/${encodeURIComponent(key)}`, {
+    method: "DELETE",
+  });
+  if (!env.success) throw new Error(env.message || "Failed to delete inverter capacity");
   return String(env.data?.name || "");
 }
 

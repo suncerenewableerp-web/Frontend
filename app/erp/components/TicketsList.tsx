@@ -110,6 +110,7 @@ export default function TicketsList({
   const isAdmin = roleNorm === "ADMIN";
   const isSales = roleNorm === "SALES";
   const isCustomer = roleNorm === "CUSTOMER";
+  const canSeeSalesOwner = !isCustomer && (isSales || isAdmin);
   const canSeeAllTab = (isAdmin || isSales) && !isEngineer;
   const normalizedInitialStatus = String(initialStatusFilter || "").toUpperCase().trim();
 
@@ -748,22 +749,23 @@ export default function TicketsList({
         <div className="scroll-x">
           <table>
 	            <thead>
-	              <tr>
-	                <th style={{ width: 70 }}>Sr No.</th>
-	                <th>Ticket ID</th>
-	                {!isCustomer ? <th>Customer</th> : null}
-	                <th>Inverter</th>
-	                <th>Fault</th>
-	                <th>Priority</th>
-	                <th>Status / SLA</th>
-	                <th>Created</th>
-	              </tr>
+		              <tr>
+		                <th style={{ width: 70 }}>Sr No.</th>
+		                <th>Ticket ID</th>
+		                {!isCustomer ? <th>Customer</th> : null}
+		                {canSeeSalesOwner ? <th>Sales Owner</th> : null}
+		                <th>Inverter</th>
+		                <th>Fault</th>
+		                <th>Priority</th>
+		                <th>Status / SLA</th>
+		                <th>Created</th>
+		              </tr>
 	            </thead>
 	            <tbody>
-	              {rows.length === 0 ? (
-	                <tr>
-	                  <td colSpan={isCustomer ? 7 : 8}>
-	                    <div className="empty-state">
+		              {rows.length === 0 ? (
+		                <tr>
+		                  <td colSpan={isCustomer ? 7 : canSeeSalesOwner ? 9 : 8}>
+		                    <div className="empty-state">
 	                      <div className="empty-icon" aria-hidden>
 	                        <LuTicket />
 	                      </div>
@@ -815,6 +817,11 @@ export default function TicketsList({
 	                        </button>
 	                      </td>
 	                      {!isCustomer ? <td style={{ fontWeight: 500 }}>{t.customer}</td> : null}
+	                      {canSeeSalesOwner ? (
+	                        <td style={{ fontSize: 12, color: "var(--text2)" }}>
+	                          {t.salesAssigneeName || t.salesAssigneeEmail || "—"}
+	                        </td>
+	                      ) : null}
 	                      <td>
 	                        <span className="tag">
 	                          {t.inverterMake} {t.inverterModel}

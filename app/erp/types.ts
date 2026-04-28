@@ -118,6 +118,8 @@ export interface Ticket {
   onsiteRemark?: string;
   onsiteMarkedRepairedAt?: string; // YYYY-MM-DD
   assignedEngineer: string;
+  salesAssigneeName?: string;
+  salesAssigneeEmail?: string;
   createdAt: string;
   slaStatus: "MET" | "BREACHED" | "AT_RISK";
   jobCard?: JobCard;

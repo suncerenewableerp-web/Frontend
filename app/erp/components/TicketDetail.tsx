@@ -1770,17 +1770,18 @@ export default function TicketDetail({
             </div>
             </div>
           ) : null}
-          {canSeeCustomerContact ? (
-            <div className="detail-grid" style={{ marginBottom: 14 }}>
-              {[
-                ["Customer", ticket.customerName || ticket.customer || "—"],
-                ["Company", ticket.customerCompany || "—"],
-                ["Address", ticket.customerAddress || "—"],
-              ].map(([label, val]) => (
-                <div key={label} className="detail-card">
-                  <div className="detail-label">{label}</div>
-                  <div className="detail-value">{val}</div>
-                </div>
+	          {canSeeCustomerContact ? (
+	            <div className="detail-grid" style={{ marginBottom: 14 }}>
+	              {[
+	                ["Customer", ticket.customerName || ticket.customer || "—"],
+	                ["Company", ticket.customerCompany || "—"],
+	                ["Sales Owner", ticket.salesAssigneeName || ticket.salesAssigneeEmail || "—"],
+	                ["Address", ticket.customerAddress || "—"],
+	              ].map(([label, val]) => (
+	                <div key={label} className="detail-card">
+	                  <div className="detail-label">{label}</div>
+	                  <div className="detail-value">{val}</div>
+	                </div>
               ))}
             </div>
           ) : null}
