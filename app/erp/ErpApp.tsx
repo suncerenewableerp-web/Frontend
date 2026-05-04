@@ -72,7 +72,14 @@ export default function ErpApp({
   const notify = (msg: string) => setNotification(msg);
 
   const loadTickets = async () => {
-    const list = await apiTicketsList();
+    const roleNorm = String(user?.role || "").trim().toUpperCase();
+    const limit =
+      roleNorm === "ADMIN" || roleNorm === "SALES"
+        ? 500
+        : roleNorm === "ENGINEER"
+          ? 300
+          : 100;
+    const list = await apiTicketsList({ limit });
     setTickets(list);
   };
 

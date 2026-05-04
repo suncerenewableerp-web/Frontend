@@ -702,12 +702,16 @@ export async function apiResetPassword(token: string, password: string): Promise
 }
 
 export async function apiTicketsList(params?: {
+  page?: number;
+  limit?: number;
   status?: string;
   priority?: string;
   slaStatus?: string;
   search?: string;
 }): Promise<Ticket[]> {
   const qs = new URLSearchParams();
+  if (params?.page) qs.set("page", String(params.page));
+  if (params?.limit) qs.set("limit", String(params.limit));
   if (params?.status) qs.set("status", params.status);
   if (params?.priority) qs.set("priority", params.priority);
   if (params?.slaStatus) qs.set("slaStatus", params.slaStatus);
