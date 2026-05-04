@@ -5,6 +5,8 @@ import {
   apiCustomerCompaniesList,
   apiCustomerCompanyAdd,
   apiCustomerCompanyDelete,
+  apiInverterModelAdd,
+  apiInverterModelsList,
   apiInverterCapacitiesList,
   apiInverterCapacityAdd,
   apiInverterCapacityDelete,
@@ -66,6 +68,7 @@ const INVERTER_BRANDS = [
 
 const OTHER_BRAND_VALUE = "OTHER";
 const OTHER_COMPANY_VALUE = "OTHER_COMPANY";
+const OTHER_MODEL_VALUE = "OTHER_MODEL";
 const OTHER_CAPACITY_VALUE = "OTHER_CAPACITY";
 
 function toBrandKey(input: string): string {
@@ -394,6 +397,7 @@ export default function NewTicketModal({
     warrantyEndDate: "",
   });
   const [brandOption, setBrandOption] = useState<string>("");
+  const [modelOption, setModelOption] = useState<string>("");
   const [brandSearch, setBrandSearch] = useState("");
   const [brandOpen, setBrandOpen] = useState(false);
   const [brands, setBrands] = useState<string[]>(() => [...DEFAULT_BRANDS]);
@@ -431,6 +435,7 @@ export default function NewTicketModal({
 
   type BulkItem = {
     brandOption: string;
+    modelOption: string;
     inverterMake: string;
     inverterModel: string;
     capacityOption: string;
@@ -442,6 +447,7 @@ export default function NewTicketModal({
 
   const emptyBulkItem = (): BulkItem => ({
     brandOption: "",
+    modelOption: "",
     inverterMake: "",
     inverterModel: "",
     capacityOption: "",
@@ -498,6 +504,10 @@ export default function NewTicketModal({
   const [brandManageMsg, setBrandManageMsg] = useState("");
   const [brandManageError, setBrandManageError] = useState("");
   const [brandManageBusyKey, setBrandManageBusyKey] = useState<string>("");
+  const canManageModelList = roleNorm === "ADMIN" || roleNorm === "SALES";
+  const [modelManageMsg, setModelManageMsg] = useState("");
+  const [modelManageError, setModelManageError] = useState("");
+  const [modelManageBusyKey, setModelManageBusyKey] = useState<string>("");
   const [companyManageMsg, setCompanyManageMsg] = useState("");
   const [companyManageError, setCompanyManageError] = useState("");
   const [companyManageBusyKey, setCompanyManageBusyKey] = useState<string>("");
@@ -531,6 +541,55 @@ export default function NewTicketModal({
     });
     return s;
   }, [capacities]);
+
+  const [serverModelsByMakeKey, setServerModelsByMakeKey] = useState<Record<string, string[]>>({});
+  const fetchedModelsMakeKeysRef = useRef<Set<string>>(new Set());
+
+  const mergeServerModels = (makeKey: string, models: string[]) => {
+    if (!makeKey) return;
+    const incoming = (models || []).map((m) => String(m || "").trim()).filter(Boolean);
+    if (!incoming.length) return;
+    setServerModelsByMakeKey((prev) => {
+      const existing = Array.isArray(prev?.[makeKey]) ? prev[makeKey]! : [];
+      const next = uniqueSorted([...existing, ...incoming]);
+      if (next.length === existing.length) return prev;
+      return { ...(prev || {}), [makeKey]: next };
+    });
+  };
+
+  const fetchModelsForMakeIfNeeded = async (make: string) => {
+    const makeKey = toBrandKey(make);
+    if (!makeKey) return;
+    if (fetchedModelsMakeKeysRef.current.has(makeKey)) return;
+    fetchedModelsMakeKeysRef.current.add(makeKey);
+    try {
+      const rows = await apiInverterModelsList(make);
+      mergeServerModels(makeKey, rows);
+    } catch {
+      // Keep static catalog list if API fails.
+    }
+  };
+
+  const addModelToDropdown = async (rawMake: string, rawModel: string) => {
+    if (!canManageModelList) return;
+    const make = String(rawMake || "").trim().replace(/\s+/g, " ").trim();
+    const model = String(rawModel || "").trim().replace(/\s+/g, " ").trim();
+    const makeKey = toBrandKey(make);
+    const modelKey = toBrandKey(model);
+    if (!makeKey || !modelKey) return;
+    setModelManageMsg("");
+    setModelManageError("");
+    setModelManageBusyKey(`add:${makeKey}:${modelKey}`);
+    try {
+      const savedName = await apiInverterModelAdd(make, model);
+      mergeServerModels(makeKey, [savedName]);
+      setModelManageMsg("Added to dropdown.");
+    } catch (e) {
+      setModelManageError(e instanceof Error ? e.message : "Failed to add model");
+    } finally {
+      setModelManageBusyKey("");
+    }
+  };
 
   const addBrandToDropdown = async (rawName: string) => {
     if (!canManageBrandList) return;
@@ -846,14 +905,20 @@ export default function NewTicketModal({
 
   const modelsForSelectedMake = useMemo(() => {
     const key = toBrandKey(form.inverterMake);
-    return key ? MODELS_BY_MAKE_KEY[key] || [] : [];
-  }, [form.inverterMake]);
+    if (!key) return [];
+    const base = MODELS_BY_MAKE_KEY[key] || [];
+    const extra = serverModelsByMakeKey[key] || [];
+    return uniqueSorted([...base, ...extra]);
+  }, [form.inverterMake, serverModelsByMakeKey]);
 
   const bulkModelsForSelectedMake = useMemo(() => {
     const make = bulkItems[bulkActiveIndex]?.inverterMake || "";
     const key = toBrandKey(make);
-    return key ? MODELS_BY_MAKE_KEY[key] || [] : [];
-  }, [bulkItems, bulkActiveIndex]);
+    if (!key) return [];
+    const base = MODELS_BY_MAKE_KEY[key] || [];
+    const extra = serverModelsByMakeKey[key] || [];
+    return uniqueSorted([...base, ...extra]);
+  }, [bulkItems, bulkActiveIndex, serverModelsByMakeKey]);
 
   const capacitiesForSelectedMake = useMemo(() => {
     const makeKey = toBrandKey(form.inverterMake);
@@ -870,23 +935,36 @@ export default function NewTicketModal({
 
   useEffect(() => {
     if (!modelsForSelectedMake.length) return;
+    if (modelOption === OTHER_MODEL_VALUE) return;
     const current = toBrandKey(form.inverterModel);
     if (!current) return;
     if (!modelsForSelectedMake.some((m) => toBrandKey(m) === current)) {
       set("inverterModel", "");
     }
-  }, [modelsForSelectedMake, form.inverterModel]);
+  }, [modelsForSelectedMake, form.inverterModel, modelOption]);
 
   useEffect(() => {
     const active = bulkItems[bulkActiveIndex];
     if (!active) return;
     if (!bulkModelsForSelectedMake.length) return;
+    if (active.modelOption === OTHER_MODEL_VALUE) return;
     const current = toBrandKey(active.inverterModel);
     if (!current) return;
     if (!bulkModelsForSelectedMake.some((m) => toBrandKey(m) === current)) {
       setBulkItem(bulkActiveIndex, { inverterModel: "" });
     }
   }, [bulkModelsForSelectedMake, bulkItems, bulkActiveIndex]);
+
+  useEffect(() => {
+    if (!form.inverterMake.trim()) return;
+    void fetchModelsForMakeIfNeeded(form.inverterMake);
+  }, [form.inverterMake]);
+
+  useEffect(() => {
+    const make = bulkItems[bulkActiveIndex]?.inverterMake || "";
+    if (!String(make).trim()) return;
+    void fetchModelsForMakeIfNeeded(make);
+  }, [bulkItems, bulkActiveIndex]);
 
   const activateBulkTicket = (idx: number) => {
     setBulkActiveIndex(idx);
@@ -1669,6 +1747,8 @@ export default function NewTicketModal({
                             onClick={() => {
                               setBrandOption("");
                               set("inverterMake", "");
+                              setModelOption("");
+                              set("inverterModel", "");
                               setBrandSearch("");
                               setBrandOpen(false);
                             }}
@@ -1694,6 +1774,8 @@ export default function NewTicketModal({
                                   onClick={() => {
                                     setBrandOption(b);
                                     set("inverterMake", b);
+                                    setModelOption("");
+                                    set("inverterModel", "");
                                     setBrandSearch("");
                                     setBrandOpen(false);
                                   }}
@@ -1742,6 +1824,8 @@ export default function NewTicketModal({
                             onClick={() => {
                               setBrandOption(OTHER_BRAND_VALUE);
                               set("inverterMake", "");
+                              setModelOption("");
+                              set("inverterModel", "");
                               setBrandSearch("");
                               setBrandOpen(false);
                             }}
@@ -1762,19 +1846,75 @@ export default function NewTicketModal({
 	                <div className="form-group">
 	                  <label className="form-label">Model</label>
 	                  {modelsForSelectedMake.length ? (
-	                    <select
-	                      className="form-select"
-	                      value={form.inverterModel}
-	                      onChange={(e) => set("inverterModel", e.target.value)}
-	                      disabled={loading}
-	                    >
-	                      <option value="">Select model (optional)</option>
-	                      {modelsForSelectedMake.map((m) => (
-	                        <option key={m} value={m}>
-	                          {m}
-	                        </option>
-	                      ))}
-	                    </select>
+                      <>
+	                      <select
+	                        className="form-select"
+	                        value={modelOption === OTHER_MODEL_VALUE ? OTHER_MODEL_VALUE : form.inverterModel}
+	                        onChange={(e) => {
+	                          const v = e.target.value;
+	                          if (v === OTHER_MODEL_VALUE) {
+	                            setModelOption(OTHER_MODEL_VALUE);
+	                            set("inverterModel", "");
+	                            return;
+	                          }
+	                          setModelOption("");
+	                          set("inverterModel", v);
+	                        }}
+	                        disabled={loading}
+	                      >
+	                        <option value="">Select model (optional)</option>
+	                        {modelsForSelectedMake.map((m) => (
+	                          <option key={m} value={m}>
+	                            {m}
+	                          </option>
+	                        ))}
+	                        <option value={OTHER_MODEL_VALUE}>Others</option>
+	                      </select>
+                      {modelOption === OTHER_MODEL_VALUE ? (
+                        <div style={{ marginTop: 10 }}>
+                          <input
+                            className="form-input"
+                            placeholder="Enter model name"
+                            value={form.inverterModel}
+                            onChange={(e) => {
+                              setModelManageMsg("");
+                              setModelManageError("");
+                              set("inverterModel", e.target.value);
+                            }}
+                            disabled={loading}
+                          />
+                          <div style={{ marginTop: 6, fontSize: 12, color: "var(--text3)" }}>
+                            This model is not in dropdown yet. Sales team can add it later.
+                          </div>
+                          {canManageModelList &&
+                          form.inverterMake.trim() &&
+                          form.inverterModel.trim() &&
+                          !modelsForSelectedMake.some((m) => toBrandKey(m) === toBrandKey(form.inverterModel)) ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              disabled={
+                                loading ||
+                                modelManageBusyKey ===
+                                  `add:${toBrandKey(form.inverterMake)}:${toBrandKey(form.inverterModel)}`
+                              }
+                              onClick={() => addModelToDropdown(form.inverterMake, form.inverterModel)}
+                              style={{ marginTop: 8 }}
+                            >
+                              Add "{form.inverterModel.trim()}" to dropdown
+                            </button>
+                          ) : null}
+                          {(modelManageMsg || modelManageError) && (
+                            <div style={{ marginTop: 8, fontSize: 12 }}>
+                              {modelManageMsg ? (
+                                <div style={{ color: "var(--text3)" }}>{modelManageMsg}</div>
+                              ) : null}
+                              {modelManageError ? <div style={{ color: "var(--red)" }}>{modelManageError}</div> : null}
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
+                      </>
 	                  ) : (
 	                    <input
 	                      className="form-input"
@@ -2588,7 +2728,12 @@ export default function NewTicketModal({
                                 aria-selected={!bulkBrandOption}
                                 className="table-link"
                                 onClick={() => {
-                                  setBulkItem(bulkActiveIndex, { brandOption: "", inverterMake: "" });
+                                  setBulkItem(bulkActiveIndex, {
+                                    brandOption: "",
+                                    modelOption: "",
+                                    inverterMake: "",
+                                    inverterModel: "",
+                                  });
                                   setBulkBrandSearch("");
                                   setBulkBrandOpen(false);
                                 }}
@@ -2612,7 +2757,12 @@ export default function NewTicketModal({
                                       aria-selected={selected}
                                       className="table-link"
                                       onClick={() => {
-                                        setBulkItem(bulkActiveIndex, { brandOption: b, inverterMake: b });
+                                        setBulkItem(bulkActiveIndex, {
+                                          brandOption: b,
+                                          modelOption: "",
+                                          inverterMake: b,
+                                          inverterModel: "",
+                                        });
                                         setBulkBrandSearch("");
                                         setBulkBrandOpen(false);
                                       }}
@@ -2661,7 +2811,9 @@ export default function NewTicketModal({
                                 onClick={() => {
                                   setBulkItem(bulkActiveIndex, {
                                     brandOption: OTHER_BRAND_VALUE,
+                                    modelOption: "",
                                     inverterMake: "",
+                                    inverterModel: "",
                                   });
                                   setBulkBrandSearch("");
                                   setBulkBrandOpen(false);
@@ -2696,19 +2848,88 @@ export default function NewTicketModal({
 	                    <div className="form-group">
 	                      <label className="form-label">Model</label>
 	                      {bulkModelsForSelectedMake.length ? (
-	                        <select
-	                          className="form-select"
-	                          value={bulkItems[bulkActiveIndex]!.inverterModel}
-	                          onChange={(e) => setBulkItem(bulkActiveIndex, { inverterModel: e.target.value })}
-	                          disabled={loading}
-	                        >
-	                          <option value="">Select model (optional)</option>
-	                          {bulkModelsForSelectedMake.map((m) => (
-	                            <option key={m} value={m}>
-	                              {m}
-	                            </option>
-	                          ))}
-	                        </select>
+                        <>
+	                          <select
+	                            className="form-select"
+	                            value={
+	                              bulkItems[bulkActiveIndex]!.modelOption === OTHER_MODEL_VALUE
+	                                ? OTHER_MODEL_VALUE
+	                                : bulkItems[bulkActiveIndex]!.inverterModel
+	                            }
+	                            onChange={(e) => {
+	                              const v = e.target.value;
+	                              if (v === OTHER_MODEL_VALUE) {
+	                                setBulkItem(bulkActiveIndex, { modelOption: OTHER_MODEL_VALUE, inverterModel: "" });
+	                                return;
+	                              }
+	                              setBulkItem(bulkActiveIndex, { modelOption: "", inverterModel: v });
+	                            }}
+	                            disabled={loading}
+	                          >
+	                            <option value="">Select model (optional)</option>
+	                            {bulkModelsForSelectedMake.map((m) => (
+	                              <option key={m} value={m}>
+	                                {m}
+	                              </option>
+	                            ))}
+	                            <option value={OTHER_MODEL_VALUE}>Others</option>
+	                          </select>
+                          {bulkItems[bulkActiveIndex]!.modelOption === OTHER_MODEL_VALUE ? (
+                            <div style={{ marginTop: 10 }}>
+                              <input
+                                className="form-input"
+                                placeholder="Enter model name"
+                                value={bulkItems[bulkActiveIndex]!.inverterModel}
+                                onChange={(e) => {
+                                  setModelManageMsg("");
+                                  setModelManageError("");
+                                  setBulkItem(bulkActiveIndex, { inverterModel: e.target.value });
+                                }}
+                                disabled={loading}
+                              />
+                              <div style={{ marginTop: 6, fontSize: 12, color: "var(--text3)" }}>
+                                This model is not in dropdown yet. Sales team can add it later.
+                              </div>
+                              {canManageModelList &&
+                              bulkItems[bulkActiveIndex]!.inverterMake.trim() &&
+                              bulkItems[bulkActiveIndex]!.inverterModel.trim() &&
+                              !bulkModelsForSelectedMake.some(
+                                (m) => toBrandKey(m) === toBrandKey(bulkItems[bulkActiveIndex]!.inverterModel),
+                              ) ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-sm"
+                                  disabled={
+                                    loading ||
+                                    modelManageBusyKey ===
+                                      `add:${toBrandKey(bulkItems[bulkActiveIndex]!.inverterMake)}:${toBrandKey(
+                                        bulkItems[bulkActiveIndex]!.inverterModel,
+                                      )}`
+                                  }
+                                  onClick={() =>
+                                    addModelToDropdown(
+                                      bulkItems[bulkActiveIndex]!.inverterMake,
+                                      bulkItems[bulkActiveIndex]!.inverterModel,
+                                    )
+                                  }
+                                  style={{ marginTop: 8 }}
+                                >
+                                  Add "{bulkItems[bulkActiveIndex]!.inverterModel.trim()}" to dropdown
+                                </button>
+                              ) : null}
+                              {(modelManageMsg || modelManageError) && (
+                                <div style={{ marginTop: 8, fontSize: 12 }}>
+                                  {modelManageMsg ? (
+                                    <div style={{ color: "var(--text3)" }}>{modelManageMsg}</div>
+                                  ) : null}
+                                  {modelManageError ? (
+                                    <div style={{ color: "var(--red)" }}>{modelManageError}</div>
+                                  ) : null}
+                                </div>
+                              )}
+                            </div>
+                          ) : null}
+                        </>
 	                      ) : (
 	                        <input
 	                          className="form-input"

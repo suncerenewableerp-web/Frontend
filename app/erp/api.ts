@@ -308,11 +308,25 @@ export type BackendLogistics = {
   billing?: {
     invoiceGenerated?: boolean;
     paymentDone?: boolean;
+    salesRemark?: string;
+    proofDocument?: {
+      url?: string;
+      uploadedAt?: string | Date;
+      uploadedBy?: string;
+      uploadedByRole?: string;
+      originalName?: string;
+      mimeType?: string;
+      size?: number;
+    };
     dispatchApprovalRequestedAt?: string | Date;
     dispatchApprovalRequestedBy?: string;
     dispatchApproved?: boolean;
     dispatchApprovedAt?: string | Date;
     dispatchApprovedBy?: string;
+    dispatchRejected?: boolean;
+    dispatchRejectedAt?: string | Date;
+    dispatchRejectedBy?: string;
+    dispatchRejectionRemark?: string;
   };
   documents?: string[];
   createdAt?: string | Date;
@@ -1124,6 +1138,29 @@ export async function apiInverterBrandDelete(nameOrKey: string): Promise<string>
   return String(env.data?.name || "");
 }
 
+export async function apiInverterModelsList(make: string): Promise<string[]> {
+  const m = String(make || "").trim();
+  if (!m) return [];
+  const env = await apiFetch<unknown>(`/api/settings/inverter-models?make=${encodeURIComponent(m)}`, { method: "GET" });
+  if (!env.success) throw new Error(env.message || "Failed to fetch inverter models");
+  return Array.isArray(env.data)
+    ? (env.data as unknown[]).map((x) => String(x || "")).filter(Boolean)
+    : [];
+}
+
+export async function apiInverterModelAdd(make: string, name: string): Promise<string> {
+  const m = String(make || "").trim();
+  const n = String(name || "").trim();
+  if (!m) throw new Error("Make is required");
+  if (!n) throw new Error("Model name is required");
+  const env = await apiFetch<{ name?: unknown }>("/api/settings/inverter-models", {
+    method: "POST",
+    body: JSON.stringify({ make: m, name: n }),
+  });
+  if (!env.success) throw new Error(env.message || "Failed to add inverter model");
+  return String(env.data?.name || n || "");
+}
+
 export async function apiCustomerCompaniesList(): Promise<string[]> {
   const env = await apiFetch<unknown>("/api/settings/customer-companies", { method: "GET" });
   if (!env.success) throw new Error(env.message || "Failed to fetch customer companies");
@@ -1324,11 +1361,13 @@ export async function apiUnderDispatchSave(input: {
   ticketId: string;
   invoiceGenerated: boolean;
   paymentDone: boolean;
+  remark?: string;
 }): Promise<{ invoiceGenerated: boolean; paymentDone: boolean }> {
   const payload = {
     ticketId: input.ticketId,
     invoiceGenerated: input.invoiceGenerated,
     paymentDone: input.paymentDone,
+    ...(typeof input.remark !== "undefined" ? { remark: String(input.remark || "") } : {}),
   };
   const env = await apiFetch<{ invoiceGenerated?: unknown; paymentDone?: unknown }>(
     "/api/logistics/under-dispatch",
@@ -1338,6 +1377,28 @@ export async function apiUnderDispatchSave(input: {
   return { invoiceGenerated: Boolean(env.data?.invoiceGenerated), paymentDone: Boolean(env.data?.paymentDone) };
 }
 
+export async function apiUnderDispatchProofUpload(
+  ticketId: string,
+  file: File,
+  remark?: string,
+): Promise<{ proofUrl: string; salesRemark: string }> {
+  const fd = new FormData();
+  fd.append("ticketId", ticketId);
+  fd.append("file", file);
+  if (typeof remark !== "undefined") fd.append("remark", String(remark || ""));
+  const env = await apiFetch<{ proofDocument?: unknown; salesRemark?: unknown }>(
+    "/api/logistics/under-dispatch-proof",
+    { method: "POST", body: fd },
+  );
+  if (!env.success) throw new Error(env.message || "Failed to upload billing proof");
+  const docRaw = env.data?.proofDocument;
+  const doc = docRaw && typeof docRaw === "object" ? (docRaw as Record<string, unknown>) : {};
+  return {
+    proofUrl: String(doc.url || ""),
+    salesRemark: String(env.data?.salesRemark || ""),
+  };
+}
+
 export async function apiDispatchApprove(ticketId: string): Promise<{ dispatchApproved: boolean }> {
   const env = await apiFetch<{ dispatchApproved?: unknown }>("/api/logistics/approve-dispatch", {
     method: "POST",
@@ -1345,6 +1406,18 @@ export async function apiDispatchApprove(ticketId: string): Promise<{ dispatchAp
   });
   if (!env.success) throw new Error(env.message || "Failed to approve dispatch");
   return { dispatchApproved: Boolean(env.data?.dispatchApproved ?? true) };
+}
+
+export async function apiDispatchReject(
+  ticketId: string,
+  remark: string,
+): Promise<{ dispatchRejected: boolean }> {
+  const env = await apiFetch<{ dispatchRejected?: unknown }>("/api/logistics/reject-dispatch", {
+    method: "POST",
+    body: JSON.stringify({ ticketId, remark }),
+  });
+  if (!env.success) throw new Error(env.message || "Failed to reject dispatch");
+  return { dispatchRejected: Boolean(env.data?.dispatchRejected ?? true) };
 }
 
 export async function apiTicketApproveInstallationDone(ticketId: string): Promise<Ticket> {
@@ -1490,6 +1563,38 @@ export type PendingDispatchApprovalTicket = {
   invoiceGenerated: boolean;
   paymentDone: boolean;
 };
+
+export type TicketTrendsPoint = { date: string; created: number; closed: number };
+
+export async function apiDashboardTicketTrends(days = 14): Promise<{
+  days: number;
+  tz: string;
+  series: TicketTrendsPoint[];
+}> {
+  const d = Number.isFinite(days as any) ? Math.trunc(Number(days)) : 14;
+  const safeDays = Math.min(90, Math.max(7, d || 14));
+  const env = await apiFetch<{ days?: unknown; tz?: unknown; series?: unknown }>(
+    `/api/dashboard/ticket-trends?days=${encodeURIComponent(String(safeDays))}`,
+    { method: "GET" },
+  );
+  if (!env.success) throw new Error(env.message || "Failed to fetch ticket trends");
+  const raw = env.data?.series;
+  const series: TicketTrendsPoint[] = Array.isArray(raw)
+    ? (raw as unknown[]).map((r) => {
+        const obj = r && typeof r === "object" ? (r as Record<string, unknown>) : {};
+        return {
+          date: String(obj.date || ""),
+          created: Number(obj.created || 0) || 0,
+          closed: Number(obj.closed || 0) || 0,
+        };
+      })
+    : [];
+  return {
+    days: Number(env.data?.days || safeDays) || safeDays,
+    tz: String(env.data?.tz || "UTC"),
+    series: series.filter((p) => p.date),
+  };
+}
 
 export async function apiPendingDispatchApprovalsList(): Promise<{
   count: number;

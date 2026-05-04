@@ -5,11 +5,15 @@ import { STATUS_ORDER } from "../constants";
 import {
   apiInverterBrandAdd,
   apiInverterBrandsList,
+  apiInverterModelAdd,
+  apiInverterModelsList,
   apiLogisticsByTicket,
   apiSchedulePickup,
   apiScheduleDispatch,
   apiUnderDispatchSave,
+  apiUnderDispatchProofUpload,
   apiDispatchApprove,
+  apiDispatchReject,
   apiTicketApproveInstallationDone,
   apiTicketInstallationDocumentsGet,
   apiTicketInstallationDocumentUpload,
@@ -35,6 +39,7 @@ import {
   apiUpdateTicketFaultDescription,
   type BackendLogistics,
 } from "../api";
+import inverterCatalog from "../data/inverter_catalog.json";
 import type {
   JobCard,
   JobCardComponentUsed,
@@ -45,6 +50,18 @@ import type {
   TicketStatus,
   User,
 } from "../types";
+
+type InverterCatalog = { modelsByMakeKey?: Record<string, string[]> };
+const CATALOG = (inverterCatalog || {}) as InverterCatalog;
+const MODELS_BY_MAKE_KEY: Record<string, string[]> = CATALOG.modelsByMakeKey || {};
+
+function toCatalogKey(input: any): string | null {
+  const raw = String(input || "").trim();
+  if (!raw) return null;
+  const collapsed = raw.replace(/\s+/g, " ").trim();
+  if (!collapsed) return null;
+  return collapsed.toLowerCase();
+}
 import { canAccess } from "../utils";
 import { Badge, PriorityBadge, SlaBadge, StatusBadge } from "./Badges";
 import DatePicker from "./DatePicker";
@@ -323,6 +340,11 @@ export default function TicketDetail({
   const [brandAddMsg, setBrandAddMsg] = useState("");
   const [brandAddError, setBrandAddError] = useState("");
   const [brandAdding, setBrandAdding] = useState(false);
+  const canManageModelList = roleName === "ADMIN" || roleName === "SALES";
+  const [knownModels, setKnownModels] = useState<string[]>([]);
+  const [modelAddMsg, setModelAddMsg] = useState("");
+  const [modelAddError, setModelAddError] = useState("");
+  const [modelAdding, setModelAdding] = useState(false);
   const canEditTicketDetails = useMemo(() => {
     if (roleName !== "ADMIN" && roleName !== "SALES") return false;
     return canAccess(roles, user.role, "tickets", "edit") && ticket.status !== "CLOSED";
@@ -538,6 +560,45 @@ export default function TicketDetail({
     canManageBrandList &&
     Boolean(details.inverterMake.trim()) &&
     !knownBrandKeys.has(details.inverterMake.trim().toLowerCase());
+
+  useEffect(() => {
+    if (!canManageModelList) return;
+    const make = String(details.inverterMake || "").trim();
+    if (!make) {
+      setKnownModels([]);
+      return;
+    }
+    let cancelled = false;
+    apiInverterModelsList(make)
+      .then((rows) => {
+        if (cancelled) return;
+        setKnownModels(rows || []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setKnownModels([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canManageModelList, details.inverterMake, ticket.id]);
+
+  const knownModelKeysForMake = useMemo(() => {
+    const set = new Set<string>();
+    const makeKey = toCatalogKey(details.inverterMake);
+    const base = makeKey ? MODELS_BY_MAKE_KEY[makeKey] || [] : [];
+    [...(base || []), ...(knownModels || [])].forEach((m) => {
+      const k = toCatalogKey(m);
+      if (k) set.add(k);
+    });
+    return set;
+  }, [details.inverterMake, knownModels]);
+
+  const canAddModelToDropdown =
+    canManageModelList &&
+    Boolean(details.inverterMake.trim()) &&
+    Boolean(details.inverterModel.trim()) &&
+    !knownModelKeysForMake.has(toCatalogKey(details.inverterModel) || "");
   const [detailsSaving, setDetailsSaving] = useState(false);
   const [detailsError, setDetailsError] = useState("");
   const [detailsSavedMsg, setDetailsSavedMsg] = useState("");
@@ -560,6 +621,10 @@ export default function TicketDetail({
   const [dispatchLocation, setDispatchLocation] = useState("");
   const [dispatchInvoiceGenerated, setDispatchInvoiceGenerated] = useState(false);
   const [dispatchPaymentDone, setDispatchPaymentDone] = useState(false);
+  const [dispatchSalesRemark, setDispatchSalesRemark] = useState("");
+  const [dispatchSalesRemarkBaseline, setDispatchSalesRemarkBaseline] = useState<string | null>(null);
+  const [dispatchProofFile, setDispatchProofFile] = useState<File | null>(null);
+  const [dispatchProofError, setDispatchProofError] = useState("");
 
   const [logisticsStage, setLogisticsStage] = useState<"pickup" | "under_dispatch" | "dispatch">(() => {
     if (initialLogisticsStage) return initialLogisticsStage;
@@ -582,7 +647,10 @@ export default function TicketDetail({
   const [logisticsAdvancing, setLogisticsAdvancing] = useState(false);
   const [underDispatchSaving, setUnderDispatchSaving] = useState(false);
   const [dispatchApprovalSaving, setDispatchApprovalSaving] = useState(false);
+  const [dispatchRejectSaving, setDispatchRejectSaving] = useState(false);
   const [dispatchApprovalError, setDispatchApprovalError] = useState("");
+  const [dispatchRejectError, setDispatchRejectError] = useState("");
+  const [dispatchRejectRemark, setDispatchRejectRemark] = useState("");
   const [logisticsError, setLogisticsError] = useState("");
   const [logisticsSavedMsg, setLogisticsSavedMsg] = useState("");
 
@@ -611,6 +679,10 @@ export default function TicketDetail({
     invoiceGenerated: boolean;
     paymentDone: boolean;
   }>(null);
+  const dispatchRemarkDirty = useMemo(() => {
+    if (dispatchSalesRemarkBaseline === null) return Boolean(dispatchSalesRemark.trim());
+    return dispatchSalesRemarkBaseline !== dispatchSalesRemark;
+  }, [dispatchSalesRemarkBaseline, dispatchSalesRemark]);
   const dispatchBillingDirty = useMemo(() => {
     if (!dispatchBillingBaseline) return true;
     return (
@@ -777,6 +849,8 @@ export default function TicketDetail({
         const nextDispatchLoc = String(dispatch?.pickupDetails?.pickupLocation || "");
         const nextInvoice = Boolean(dispatch?.billing?.invoiceGenerated);
         const nextPayment = Boolean(dispatch?.billing?.paymentDone);
+        const nextRemark = String(dispatch?.billing?.salesRemark || "");
+        const nextAdminRejectRemark = String(dispatch?.billing?.dispatchRejectionRemark || "");
 
         setDispatchDate(nextDispatchDate);
         setDispatchCourierName(nextDispatchCourier);
@@ -784,6 +858,12 @@ export default function TicketDetail({
         setDispatchLocation(nextDispatchLoc);
         setDispatchInvoiceGenerated(nextInvoice);
         setDispatchPaymentDone(nextPayment);
+        setDispatchSalesRemark(nextRemark);
+        setDispatchSalesRemarkBaseline(dispatch ? nextRemark : null);
+        setDispatchProofFile(null);
+        setDispatchProofError("");
+        setDispatchRejectRemark(nextAdminRejectRemark);
+        setDispatchRejectError("");
         setDispatchBaseline(
           dispatch
             ? {
@@ -2050,8 +2130,60 @@ export default function TicketDetail({
                     <input
                       className="form-input"
                       value={details.inverterModel}
-                      onChange={(e) => setDetails((p) => ({ ...p, inverterModel: e.target.value }))}
+                      onChange={(e) => {
+                        setModelAddMsg("");
+                        setModelAddError("");
+                        setDetails((p) => ({ ...p, inverterModel: e.target.value }));
+                      }}
                     />
+                    {canAddModelToDropdown ? (
+                      <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10 }}>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          disabled={modelAdding}
+                          onClick={() => {
+                            const make = details.inverterMake.trim();
+                            const name = details.inverterModel.trim();
+                            if (!make || !name) return;
+                            setModelAdding(true);
+                            setModelAddMsg("");
+                            setModelAddError("");
+                            apiInverterModelAdd(make, name)
+                              .then((savedName) => {
+                                setKnownModels((prev) => {
+                                  const next = Array.isArray(prev) ? [...prev] : [];
+                                  const key = toCatalogKey(savedName || name);
+                                  if (!key) return next;
+                                  const exists = next.some((m) => toCatalogKey(m) === key);
+                                  if (!exists) next.push(String(savedName || name).trim());
+                                  return next;
+                                });
+                                setModelAddMsg("Added to model dropdown.");
+                              })
+                              .catch((e) =>
+                                setModelAddError(e instanceof Error ? e.message : "Failed to add model"),
+                              )
+                              .finally(() => setModelAdding(false));
+                          }}
+                        >
+                          {modelAdding ? "Adding..." : "Add to Model Dropdown"}
+                        </button>
+                        {modelAddMsg ? (
+                          <span style={{ fontSize: 12, color: "var(--green)" }}>{modelAddMsg}</span>
+                        ) : modelAddError ? (
+                          <span style={{ fontSize: 12, color: "var(--red)" }}>{modelAddError}</span>
+                        ) : (
+                          <span style={{ fontSize: 12, color: "var(--text3)" }}>
+                            This model is not in dropdown.
+                          </span>
+                        )}
+                      </div>
+                    ) : modelAddMsg ? (
+                      <div style={{ marginTop: 8, fontSize: 12, color: "var(--green)" }}>{modelAddMsg}</div>
+                    ) : modelAddError ? (
+                      <div style={{ marginTop: 8, fontSize: 12, color: "var(--red)" }}>{modelAddError}</div>
+                    ) : null}
                   </div>
                   <div>
                     <div className="form-label">Capacity</div>
@@ -4251,20 +4383,101 @@ export default function TicketDetail({
                         />
                         Payment done
                       </label>
+                    </div>
+
+                    {dispatchInvoiceGenerated && dispatchPaymentDone ? (
+                      <div style={{ marginTop: 12 }}>
+                        <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 8 }}>
+                          Upload billing proof PDF and add a remark for Admin approval.
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+                          <input
+                            className="form-input"
+                            type="file"
+                            accept="application/pdf"
+                            disabled={underDispatchSaving || roleName === "ADMIN"}
+                            onChange={(e) => {
+                              setDispatchProofError("");
+                              const f = e.target.files?.[0] || null;
+                              if (f && f.size > 5 * 1024 * 1024) {
+                                setDispatchProofFile(null);
+                                setDispatchProofError("File too large. Max 5MB.");
+                                e.target.value = "";
+                                return;
+                              }
+                              setDispatchProofFile(f);
+                            }}
+                          />
+                          <div style={{ fontSize: 12, color: "var(--text3)" }}>PDF up to 5MB</div>
+                        </div>
+                        <div style={{ marginTop: 10 }}>
+                          <textarea
+                            className="form-input"
+                            rows={2}
+                            placeholder="Remark for Admin (optional)"
+                            value={dispatchSalesRemark}
+                            disabled={underDispatchSaving || roleName === "ADMIN"}
+                            onChange={(e) => setDispatchSalesRemark(e.target.value)}
+                          />
+                        </div>
+                        {dispatchProofError ? (
+                          <div className="form-error" style={{ marginTop: 10 }}>
+                            {dispatchProofError}
+                          </div>
+                        ) : null}
+
+                        <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+                          {String(dispatchLogistics?.billing?.proofDocument?.url || "").trim() ? (
+                            renderPickupDocumentCard(String(dispatchLogistics?.billing?.proofDocument?.url || ""))
+                          ) : (
+                            <div style={{ fontSize: 12, color: "var(--text3)" }}>
+                              No billing proof uploaded yet.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center" }}>
                       <button
                         className="btn btn-accent btn-sm"
                         type="button"
-                        disabled={underDispatchSaving || !dispatchBillingDirty}
+                        disabled={underDispatchSaving || (!dispatchBillingDirty && !dispatchRemarkDirty && !dispatchProofFile)}
                         onClick={() => {
+                          const existingProof = String(dispatchLogistics?.billing?.proofDocument?.url || "").trim();
+                          if (
+                            roleName === "SALES" &&
+                            dispatchInvoiceGenerated &&
+                            dispatchPaymentDone &&
+                            !existingProof &&
+                            !dispatchProofFile
+                          ) {
+                            setDispatchProofError("Please choose a billing proof PDF.");
+                            return;
+                          }
+
                           setUnderDispatchSaving(true);
                           setDispatchApprovalError("");
                           setLogisticsError("");
                           setLogisticsSavedMsg("");
-                          apiUnderDispatchSave({
-                            ticketId: ticket.id,
-                            invoiceGenerated: dispatchInvoiceGenerated,
-                            paymentDone: dispatchPaymentDone,
-                          })
+                          const uploadFirst =
+                            dispatchProofFile && dispatchInvoiceGenerated && dispatchPaymentDone && roleName !== "ADMIN"
+                              ? apiUnderDispatchProofUpload(ticket.id, dispatchProofFile, dispatchSalesRemark)
+                                  .then(() => setDispatchProofFile(null))
+                                  .catch((e) => {
+                                    throw e;
+                                  })
+                              : Promise.resolve();
+
+                          uploadFirst
+                            .then(() =>
+                              apiUnderDispatchSave({
+                                ticketId: ticket.id,
+                                invoiceGenerated: dispatchInvoiceGenerated,
+                                paymentDone: dispatchPaymentDone,
+                                remark: dispatchSalesRemark,
+                              }),
+                            )
 	                            .then(() => Promise.all([apiTicketGet(ticket.id), apiLogisticsByTicket(ticket.id)]))
 	                            .then(([fresh, rows]) => {
 	                              onTicketUpdated(fresh);
@@ -4276,8 +4489,11 @@ export default function TicketDetail({
 	                              const invoiceSaved = Boolean(dispatch?.billing?.invoiceGenerated);
 	                              const paymentSaved = Boolean(dispatch?.billing?.paymentDone);
                               const approved = Boolean(dispatch?.billing?.dispatchApproved);
+                              const remarkSaved = String(dispatch?.billing?.salesRemark || "");
                               setDispatchInvoiceGenerated(invoiceSaved);
                               setDispatchPaymentDone(paymentSaved);
+                              setDispatchSalesRemark(remarkSaved);
+                              setDispatchSalesRemarkBaseline(remarkSaved);
                               setDispatchBillingBaseline({ invoiceGenerated: invoiceSaved, paymentDone: paymentSaved });
                               setDispatchLogistics(dispatch);
                               if (roleName === "SALES" && !approved) {
@@ -4305,47 +4521,105 @@ export default function TicketDetail({
                         Admin Approval:{" "}
                         {Boolean(dispatchLogistics?.billing?.dispatchApproved)
                           ? "APPROVED"
+                          : Boolean(dispatchLogistics?.billing?.dispatchRejected)
+                            ? "REJECTED"
                           : dispatchLogistics?.billing?.dispatchApprovalRequestedAt
                             ? "PENDING"
                             : "—"}
                       </span>
+                      {Boolean(dispatchLogistics?.billing?.dispatchRejected) &&
+                      String(dispatchLogistics?.billing?.dispatchRejectionRemark || "").trim() ? (
+                        <div style={{ fontSize: 12, color: "var(--red)" }}>
+                          Rejection: {String(dispatchLogistics?.billing?.dispatchRejectionRemark || "").trim()}
+                        </div>
+                      ) : null}
                       {roleName === "SALES" && !dispatchApprovedForSales ? (
                         <div style={{ fontSize: 12, color: "var(--text3)" }}>
-                          Dispatch will be available after Admin approval.
+                          {Boolean(dispatchLogistics?.billing?.dispatchRejected)
+                            ? "Admin rejected dispatch approval. Update proof/remark and save again to re-request."
+                            : "Dispatch will be available after Admin approval."}
                         </div>
                       ) : null}
                       {roleName === "ADMIN" && !Boolean(dispatchLogistics?.billing?.dispatchApproved) ? (
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          type="button"
-                          disabled={dispatchApprovalSaving}
-                          onClick={() => {
-                            setDispatchApprovalSaving(true);
-                            setDispatchApprovalError("");
-                            setLogisticsSavedMsg("");
-                            apiDispatchApprove(ticket.id)
-                              .then(() => apiLogisticsByTicket(ticket.id))
-                              .then((rows) => {
-                                const dispatch =
-                                  rows.find((r) => String(r?.type || "").toUpperCase() === "DELIVERY") || null;
-                                setDispatchLogistics(dispatch);
-                                setLogisticsSavedMsg("Dispatch approved.");
-                              })
-                              .catch((e) =>
-                                setDispatchApprovalError(
-                                  e instanceof Error ? e.message : "Failed to approve dispatch",
-                                ),
-                              )
-                              .finally(() => setDispatchApprovalSaving(false));
-                          }}
-                        >
-                          {dispatchApprovalSaving ? "Approving..." : "Approve Dispatch"}
-                        </button>
+                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            type="button"
+                            disabled={dispatchApprovalSaving || dispatchRejectSaving}
+                            onClick={() => {
+                              setDispatchApprovalSaving(true);
+                              setDispatchApprovalError("");
+                              setDispatchRejectError("");
+                              setLogisticsSavedMsg("");
+                              apiDispatchApprove(ticket.id)
+                                .then(() => apiLogisticsByTicket(ticket.id))
+                                .then((rows) => {
+                                  const dispatch =
+                                    rows.find((r) => String(r?.type || "").toUpperCase() === "DELIVERY") || null;
+                                  setDispatchLogistics(dispatch);
+                                  setLogisticsSavedMsg("Dispatch approved.");
+                                })
+                                .catch((e) =>
+                                  setDispatchApprovalError(
+                                    e instanceof Error ? e.message : "Failed to approve dispatch",
+                                  ),
+                                )
+                                .finally(() => setDispatchApprovalSaving(false));
+                            }}
+                          >
+                            {dispatchApprovalSaving ? "Approving..." : "Approve Dispatch"}
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            type="button"
+                            disabled={dispatchRejectSaving || dispatchApprovalSaving}
+                            onClick={() => {
+                              const r = String(dispatchRejectRemark || "").trim();
+                              if (!r) {
+                                setDispatchRejectError("Remark is required to reject.");
+                                return;
+                              }
+                              setDispatchRejectSaving(true);
+                              setDispatchRejectError("");
+                              setDispatchApprovalError("");
+                              setLogisticsSavedMsg("");
+                              apiDispatchReject(ticket.id, r)
+                                .then(() => apiLogisticsByTicket(ticket.id))
+                                .then((rows) => {
+                                  const dispatch =
+                                    rows.find((row) => String(row?.type || "").toUpperCase() === "DELIVERY") || null;
+                                  setDispatchLogistics(dispatch);
+                                  setLogisticsSavedMsg("Dispatch rejected.");
+                                })
+                                .catch((e) =>
+                                  setDispatchRejectError(
+                                    e instanceof Error ? e.message : "Failed to reject dispatch",
+                                  ),
+                                )
+                                .finally(() => setDispatchRejectSaving(false));
+                            }}
+                          >
+                            {dispatchRejectSaving ? "Rejecting..." : "Not Approved"}
+                          </button>
+                          <input
+                            className="form-input"
+                            placeholder="Remark (why not approved)"
+                            value={dispatchRejectRemark}
+                            onChange={(e) => setDispatchRejectRemark(e.target.value)}
+                            style={{ minWidth: 260 }}
+                            disabled={dispatchRejectSaving || dispatchApprovalSaving}
+                          />
+                        </div>
                       ) : null}
                     </div>
                     {dispatchApprovalError ? (
                       <div className="form-error" style={{ marginTop: 10 }}>
                         {dispatchApprovalError}
+                      </div>
+                    ) : null}
+                    {dispatchRejectError ? (
+                      <div className="form-error" style={{ marginTop: 10 }}>
+                        {dispatchRejectError}
                       </div>
                     ) : null}
                   </div>
