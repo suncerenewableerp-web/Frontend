@@ -11,6 +11,7 @@ import {
   type PendingDispatchApprovalTicket,
   type TicketTrendsPoint,
 } from "../api";
+import ComboBarLineChart from "./ComboBarLineChart";
 
 export default function Dashboard({
   user,
@@ -47,9 +48,8 @@ export default function Dashboard({
   const maxCount = Math.max(...Object.values(statusCounts), 1);
 
   const [approvalPending, setApprovalPending] = useState<PendingDispatchApprovalTicket[]>([]);
-  const [approvalErr, setApprovalErr] = useState("");
 
-  const showTrends = isAdmin || isSales;
+  const showTrends = isAdmin || isSales || isCustomer;
   const [trendDays, setTrendDays] = useState(14);
   const [trends, setTrends] = useState<TicketTrendsPoint[]>([]);
   const [trendsErr, setTrendsErr] = useState("");
@@ -66,12 +66,10 @@ export default function Dashboard({
         .then((r) => {
           if (cancelled) return;
           setApprovalPending(r.tickets || []);
-          setApprovalErr("");
         })
-        .catch((e) => {
+        .catch(() => {
           if (cancelled) return;
           setApprovalPending([]);
-          setApprovalErr(e instanceof Error ? e.message : "Failed to load approval pending tickets");
         });
     };
 
@@ -107,11 +105,6 @@ export default function Dashboard({
     };
   }, [showTrends, trendDays]);
 
-  const maxTrendCount = useMemo(() => {
-    const max = (trends || []).reduce((best, p) => Math.max(best, p.created || 0, p.closed || 0), 0);
-    return Math.max(max, 1);
-  }, [trends]);
-
   const formatTrendDate = (raw: string) => {
     const s = String(raw || "").trim();
     if (!s) return "";
@@ -127,12 +120,6 @@ export default function Dashboard({
     if (Number.isNaN(d.getTime())) return s;
     return new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "2-digit", month: "short" }).format(d);
   };
-
-  const trendLabelStep = useMemo(() => {
-    const n = trends.length || 0;
-    if (!n) return 1;
-    return Math.max(1, Math.ceil(n / 7));
-  }, [trends.length]);
 
   const trendTotals = useMemo(() => {
     const created = (trends || []).reduce((s, p) => s + (Number(p.created) || 0), 0);
@@ -150,13 +137,159 @@ export default function Dashboard({
     };
   }, [trends, selectedTrendDate]);
 
-  const approvalPendingTickets = useMemo(() => {
-    const byId = new Map<string, Ticket>();
-    tickets.forEach((t) => byId.set(t.id, t));
-    return (approvalPending || [])
-      .map((p) => ({ p, t: byId.get(p.ticketDbId) || null }))
-      .filter((x) => x.t);
-  }, [approvalPending, tickets]);
+  const trendsChartPoints = useMemo(() => {
+    return (trends || []).map((p) => ({
+      id: p.date,
+      xLabel: formatTrendDate(p.date),
+      xTooltip: formatTrendTooltip(p.date),
+      bars: [
+        { id: "created", label: "Created", value: Math.max(0, Number(p.created) || 0), color: "#6b3a1f" },
+        { id: "closed", label: "Closed", value: Math.max(0, Number(p.closed) || 0), color: "#16a34a" },
+      ],
+      // Line touches Created bars (like the reference image)
+      lineValue: Math.max(0, Number(p.created) || 0),
+    }));
+  }, [trends]);
+
+  const trendsCard = showTrends ? (
+    <div className="table-card" style={{ marginBottom: 16 }}>
+      <div className="table-header">
+        <div className="table-title">Tickets Created vs Closed</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <select
+            className="form-select"
+            value={String(trendDays)}
+            onChange={(e) => {
+              const n = Number.parseInt(e.target.value, 10);
+              setTrendDays(Number.isFinite(n) ? n : 14);
+            }}
+            aria-label="Select trend range"
+            style={{ width: 150, fontFamily: "var(--mono)", fontSize: 12 }}
+          >
+            <option value="7">Weekly</option>
+            <option value="14">Fortnightly</option>
+            <option value="30">Monthly</option>
+            <option value="365">Yearly</option>
+          </select>
+        </div>
+      </div>
+      <div style={{ padding: "20px" }}>
+        {trendsErr ? (
+          <div style={{ fontSize: 12, color: "var(--text3)" }}>{trendsErr}</div>
+        ) : trends.length ? (
+          <>
+            <div
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 12,
+                padding: 14,
+                background: "var(--bg2)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  marginBottom: 10,
+                }}
+              >
+                <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      gap: 8,
+                      alignItems: "center",
+                      fontSize: 12,
+                      color: "var(--text2)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 999,
+                        background: "#6b3a1f",
+                        display: "inline-block",
+                      }}
+                    />
+                    Created
+                  </span>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      gap: 8,
+                      alignItems: "center",
+                      fontSize: 12,
+                      color: "var(--text2)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 999,
+                        background: "#16a34a",
+                        display: "inline-block",
+                      }}
+                    />
+                    Closed
+                  </span>
+                  <span style={{ fontSize: 12, color: "var(--text3)" }}>
+                    Total:{" "}
+                    <span style={{ fontFamily: "var(--mono)" }}>
+                      {trendTotals.created} created · {trendTotals.closed} closed
+                    </span>
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text3)" }}>Tap bars/points for details</div>
+              </div>
+
+              {selectedTrendSummary ? (
+                <div style={{ marginBottom: 10, fontSize: 12, color: "var(--text2)" }}>
+                  Selected:{" "}
+                  <span className="tag" style={{ fontFamily: "var(--mono)" }}>
+                    {formatTrendTooltip(selectedTrendSummary.date)}
+                  </span>{" "}
+                  <span style={{ fontFamily: "var(--mono)" }}>
+                    {selectedTrendSummary.created} created · {selectedTrendSummary.closed} closed
+                  </span>
+                </div>
+              ) : null}
+
+              <ComboBarLineChart
+                points={trendsChartPoints}
+                selectedId={selectedTrendDate}
+                onSelect={setSelectedTrendDate}
+                height={220}
+                yLabel="Tickets"
+                ariaLabel="Tickets created vs closed chart"
+              />
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  flexWrap: "wrap",
+                  fontSize: 12,
+                  color: "var(--text3)",
+                  marginTop: 8,
+                }}
+              >
+                <span style={{ fontFamily: "var(--mono)" }}>
+                  Tip: tap any point to see counts for that date.
+                </span>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: 12, color: "var(--text3)" }}>No data.</div>
+        )}
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div className="content">
@@ -170,61 +303,65 @@ export default function Dashboard({
       </div>
 
       {isCustomer ? (
-        <div className="table-card">
-          <div className="table-header">
-            <div className="table-title">Your Tickets</div>
-            <button className="btn btn-ghost btn-sm" onClick={() => onNav("tickets")}>
-              View All →
-            </button>
-          </div>
-          <div className="scroll-x">
-            <table>
-              <thead>
-                <tr>
-                  <th>Ticket ID</th>
-                  <th>Inverter</th>
-                  <th>Status</th>
-                  <th>Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {myTickets.length === 0 ? (
+        <>
+          <div className="table-card">
+            <div className="table-header">
+              <div className="table-title">Your Tickets</div>
+              <button className="btn btn-ghost btn-sm" onClick={() => onNav("tickets")}>
+                View All →
+              </button>
+            </div>
+            <div className="scroll-x">
+              <table>
+                <thead>
                   <tr>
-                    <td colSpan={4} style={{ padding: 22, color: "var(--text3)" }}>
-                      No tickets found.
-                    </td>
+                    <th>Ticket ID</th>
+                    <th>Inverter</th>
+                    <th>Status</th>
+                    <th>Created</th>
                   </tr>
-                ) : (
-                  myTickets.slice(0, 8).map((t) => (
-                    <tr key={t.id}>
-                      <td>
-                        <button
-                          type="button"
-                          className="td-mono table-link"
-                          onClick={() => onViewTicket(t)}
-                          title="View ticket"
-                        >
-                          {t.ticketId}
-                        </button>
-                      </td>
-                      <td>
-                        <span className="tag">
-                          {t.inverterMake} {t.capacity}
-                        </span>
-                      </td>
-                      <td>
-                        <StatusBadge status={t.status} />
-                      </td>
-                      <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text3)" }}>
-                        {t.createdAt}
+                </thead>
+                <tbody>
+                  {myTickets.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} style={{ padding: 22, color: "var(--text3)" }}>
+                        No tickets found.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    myTickets.slice(0, 8).map((t) => (
+                      <tr key={t.id}>
+                        <td>
+                          <button
+                            type="button"
+                            className="td-mono table-link"
+                            onClick={() => onViewTicket(t)}
+                            title="View ticket"
+                          >
+                            {t.ticketId}
+                          </button>
+                        </td>
+                        <td>
+                          <span className="tag">
+                            {t.inverterMake} {t.capacity}
+                          </span>
+                        </td>
+                        <td>
+                          <StatusBadge status={t.status} />
+                        </td>
+                        <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text3)" }}>
+                          {t.createdAt}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+
+          {trendsCard}
+        </>
       ) : (
         <>
           <div className="kpi-grid">
@@ -294,237 +431,9 @@ export default function Dashboard({
             ))}
           </div>
 
-          {isAdmin ? (
-            <div className="table-card" style={{ marginBottom: 16 }}>
-              <div className="table-header">
-                <div className="table-title">Approval Pending</div>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => onOpenTickets({ status: "APPROVAL_PENDING" })}
-                >
-                  View All →
-                </button>
-              </div>
-              <div style={{ padding: "12px 16px", fontSize: 12, color: "var(--text3)" }}>
-                {approvalErr
-                  ? approvalErr
-                  : approvalPending.length
-                    ? `${approvalPending.length} tickets waiting for dispatch approval`
-                    : "No approvals pending."}
-              </div>
-              {approvalPendingTickets.length ? (
-                <div className="scroll-x">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Ticket ID</th>
-                        <th>Customer</th>
-                        <th>Invoice</th>
-                        <th>Payment</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {approvalPendingTickets.slice(0, 8).map(({ p, t }) => (
-                        <tr key={p.ticketDbId}>
-                          <td>
-                            <button
-                              type="button"
-                              className="td-mono table-link"
-                              onClick={() =>
-                                onViewTicket(t as Ticket, { tab: "logistics", logisticsStage: "under_dispatch" })
-                              }
-                              title="Open under-dispatch logistics"
-                            >
-                              {p.ticketId}
-                            </button>
-                          </td>
-                          <td>{p.customer}</td>
-                          <td style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
-                            {p.invoiceGenerated ? "YES" : "NO"}
-                          </td>
-                          <td style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
-                            {p.paymentDone ? "YES" : "NO"}
-                          </td>
-                          <td>
-                            <StatusBadge status={(t as Ticket).status} />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
+          {/* Keep the KPI tile for admins, but don’t show the full approval list on dashboard. */}
 
-          {showTrends ? (
-            <div className="table-card" style={{ marginBottom: 16 }}>
-              <div className="table-header">
-                <div className="table-title">Tickets Created vs Closed</div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  {[7, 14, 30].map((d) => (
-                    <button
-                      key={d}
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => setTrendDays(d)}
-                      aria-pressed={trendDays === d}
-                      title={`Show last ${d} days`}
-                      style={
-                        trendDays === d
-                          ? {
-                              background: "#6b3a1f",
-                              borderColor: "#6b3a1f",
-                              color: "white",
-                            }
-                          : undefined
-                      }
-                    >
-                      {d}d
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div style={{ padding: "20px" }}>
-                {trendsErr ? (
-                  <div style={{ fontSize: 12, color: "var(--text3)" }}>{trendsErr}</div>
-                ) : trends.length ? (
-                  <>
-                    <div
-                      style={{
-                        border: "1px solid var(--border)",
-                        borderRadius: 12,
-                        padding: 14,
-                        background: "var(--bg2)",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: 12,
-                          flexWrap: "wrap",
-                          alignItems: "center",
-                          marginBottom: 10,
-                        }}
-                      >
-                        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                          <span style={{ display: "inline-flex", gap: 8, alignItems: "center", fontSize: 12, color: "var(--text2)" }}>
-                            <span style={{ width: 10, height: 10, borderRadius: 999, background: "#6b3a1f", display: "inline-block" }} />
-                            Created
-                          </span>
-                          <span style={{ display: "inline-flex", gap: 8, alignItems: "center", fontSize: 12, color: "var(--text2)" }}>
-                            <span style={{ width: 10, height: 10, borderRadius: 999, background: "#16a34a", display: "inline-block" }} />
-                            Closed
-                          </span>
-                          <span style={{ fontSize: 12, color: "var(--text3)" }}>
-                            Total:{" "}
-                            <span style={{ fontFamily: "var(--mono)" }}>
-                              {trendTotals.created} created · {trendTotals.closed} closed
-                            </span>
-                          </span>
-                        </div>
-                        <div style={{ fontSize: 12, color: "var(--text3)" }}>
-                          Hover bars for details
-                        </div>
-                      </div>
-
-                      {selectedTrendSummary ? (
-                        <div style={{ marginBottom: 10, fontSize: 12, color: "var(--text2)" }}>
-                          Selected:{" "}
-                          <span className="tag" style={{ fontFamily: "var(--mono)" }}>
-                            {formatTrendTooltip(selectedTrendSummary.date)}
-                          </span>{" "}
-                          <span style={{ fontFamily: "var(--mono)" }}>
-                            {selectedTrendSummary.created} created · {selectedTrendSummary.closed} closed
-                          </span>
-                        </div>
-                      ) : null}
-
-                      <div className="bar-chart" style={{ height: 160 }}>
-                        {(trends || []).map((p, idx) => {
-                          const created = Math.max(0, Number(p.created) || 0);
-                          const closed = Math.max(0, Number(p.closed) || 0);
-                          const hCreated = Math.round((created / maxTrendCount) * 110);
-                          const hClosed = Math.round((closed / maxTrendCount) * 110);
-                          const isSelected = selectedTrendDate === p.date;
-                          const showLabel =
-                            isSelected || idx === 0 || idx === trends.length - 1 || idx % trendLabelStep === 0;
-                          const title = `${formatTrendTooltip(p.date)} • Created ${created} • Closed ${closed}`;
-                          return (
-                            <button
-                              key={p.date}
-                              type="button"
-                              className="bar-col"
-                              title={title}
-                              onClick={() => setSelectedTrendDate(p.date)}
-                              style={{
-                                gap: 6,
-                                border: isSelected ? "1px solid var(--accent-mid)" : "1px solid transparent",
-                                borderRadius: 10,
-                                padding: "6px 6px",
-                                background: isSelected ? "var(--surface)" : "transparent",
-                                boxShadow: isSelected ? "0 0 0 3px var(--accent-soft)" : "none",
-                                cursor: "pointer",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  display: "flex",
-                                  gap: 4,
-                                  width: "100%",
-                                  alignItems: "flex-end",
-                                  height: 120,
-                                }}
-                              >
-                                <div
-                                  className="bar"
-                                  style={{
-                                    height: `${Math.max(2, hCreated)}px`,
-                                    background: created ? "#6b3a1f" : "var(--surface3)",
-                                    width: "48%",
-                                  }}
-                                  aria-label={`Created ${created}`}
-                                />
-                                <div
-                                  className="bar"
-                                  style={{
-                                    height: `${Math.max(2, hClosed)}px`,
-                                    background: closed ? "#16a34a" : "var(--surface3)",
-                                    width: "48%",
-                                  }}
-                                  aria-label={`Closed ${closed}`}
-                                />
-                              </div>
-                              <div className="bar-label" style={{ fontFamily: "var(--mono)" }}>
-                                {showLabel ? formatTrendDate(p.date) : ""}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 10,
-                          flexWrap: "wrap",
-                          fontSize: 12,
-                          color: "var(--text3)",
-                          marginTop: 6,
-                        }}
-                      >
-                        <span style={{ fontFamily: "var(--mono)" }}>Tip: hover any day to see counts.</span>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div style={{ fontSize: 12, color: "var(--text3)" }}>No data.</div>
-                )}
-              </div>
-            </div>
-          ) : null}
+          {trendsCard}
 
           <div className="two-col">
             <div className="table-card">

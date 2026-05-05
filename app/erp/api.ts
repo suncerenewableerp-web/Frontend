@@ -1575,8 +1575,9 @@ export async function apiDashboardTicketTrends(days = 14): Promise<{
   tz: string;
   series: TicketTrendsPoint[];
 }> {
-  const d = Number.isFinite(days as any) ? Math.trunc(Number(days)) : 14;
-  const safeDays = Math.min(90, Math.max(7, d || 14));
+  const rawDays = typeof days === "number" ? days : Number(days);
+  const d = Number.isFinite(rawDays) ? Math.trunc(rawDays) : 14;
+  const safeDays = Math.min(365, Math.max(7, d || 14));
   const env = await apiFetch<{ days?: unknown; tz?: unknown; series?: unknown }>(
     `/api/dashboard/ticket-trends?days=${encodeURIComponent(String(safeDays))}`,
     { method: "GET" },
