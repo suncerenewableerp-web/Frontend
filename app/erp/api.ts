@@ -730,6 +730,8 @@ export type JobCardListRow = {
   ticket: Ticket;
   jobStatus: string;
   engineerFinalStatus: string;
+  repairActionsByName: string;
+  checkedByName: string;
   updatedAt: string; // YYYY-MM-DD
   updatedAtMs: number;
 };
@@ -754,6 +756,8 @@ export async function apiJobCardsList(): Promise<JobCardListRow[]> {
         ticket,
         jobStatus: String(jc?.currentStatus || ""),
         engineerFinalStatus: String(jc?.engineerFinalStatus || ""),
+        repairActionsByName: String(jc?.repairActionsByName || ""),
+        checkedByName: String(jc?.checkedByName || ""),
         updatedAt: toDateInput(jc?.updatedAt),
         updatedAtMs,
       } satisfies JobCardListRow;

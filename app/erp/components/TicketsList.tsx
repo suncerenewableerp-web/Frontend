@@ -87,6 +87,7 @@ export default function TicketsList({
   tickets,
   initialStatusFilter,
   initialPriorityFilter,
+  initialTabOverride,
   onView,
   onNew,
 }: {
@@ -95,6 +96,16 @@ export default function TicketsList({
   tickets: Ticket[];
   initialStatusFilter?: string;
   initialPriorityFilter?: string;
+  initialTabOverride?:
+    | "open"
+    | "all"
+    | "inward"
+    | "repaired"
+    | "offline_booking"
+    | "outward"
+    | "approval_pending"
+    | "approved_by_admin"
+    | "closed";
   onView: (
     t: Ticket,
     opts?: {
@@ -114,7 +125,7 @@ export default function TicketsList({
   const canSeeAllTab = (isAdmin || isSales) && !isEngineer;
   const normalizedInitialStatus = String(initialStatusFilter || "").toUpperCase().trim();
 
-  const initialTab:
+  const derivedInitialTab:
     | "open"
     | "all"
     | "inward"
@@ -138,11 +149,16 @@ export default function TicketsList({
         ? "approved_by_admin"
       : normalizedInitialStatus === "CLOSED"
         ? "closed"
-        : normalizedInitialStatus === "UNDER_REPAIRED"
+      : normalizedInitialStatus === "UNDER_REPAIRED"
           ? "repaired"
           : includesStatus(OUTWARD_STATUSES, normalizedInitialStatus)
             ? "outward"
             : "inward";
+
+  const initialTab =
+    isCustomer && initialTabOverride && initialTabOverride !== "open" && initialTabOverride !== "closed"
+      ? derivedInitialTab
+      : (initialTabOverride as typeof derivedInitialTab | undefined) || derivedInitialTab;
 
   const safeInitialStatusFilter =
     isEngineer
@@ -282,6 +298,25 @@ export default function TicketsList({
     latestByTicket.forEach((r, id) => {
       const final = String(r?.engineerFinalStatus || "").toUpperCase().trim();
       if (final) out.set(id, final);
+    });
+    return out;
+  }, [jobCards]);
+
+  const repairMetaByTicketId = useMemo(() => {
+    const latestByTicket = new Map<string, JobCardListRow>();
+    (jobCards || []).forEach((r) => {
+      const t = r?.ticket;
+      const ticketId = String(t?.id || "");
+      if (!ticketId) return;
+      const prev = latestByTicket.get(ticketId);
+      if (!prev || (r.updatedAtMs || 0) >= (prev.updatedAtMs || 0)) latestByTicket.set(ticketId, r);
+    });
+    const out = new Map<string, { engineer: string; qa: string }>();
+    latestByTicket.forEach((r, id) => {
+      // In JobCard UI: Engineer Name = checkedByName, QA/Sub engineer = repairActionsByName
+      const engineer = String(r?.checkedByName || "").trim();
+      const qa = String(r?.repairActionsByName || "").trim();
+      if (engineer || qa) out.set(id, { engineer, qa });
     });
     return out;
   }, [jobCards]);
@@ -749,11 +784,13 @@ export default function TicketsList({
         <div className="scroll-x">
           <table>
 	            <thead>
-		              <tr>
+	              <tr>
 		                <th style={{ width: 70 }}>Sr No.</th>
 		                <th>Ticket ID</th>
 		                {!isCustomer ? <th>Customer</th> : null}
 		                {canSeeSalesOwner ? <th>Sales Owner</th> : null}
+                    {ticketsTab === "repaired" ? <th>Repair Engineer</th> : null}
+                    {ticketsTab === "repaired" ? <th>QA</th> : null}
 		                <th>Inverter</th>
 		                <th>Fault</th>
 		                <th>Priority</th>
@@ -764,7 +801,7 @@ export default function TicketsList({
 	            <tbody>
 		              {rows.length === 0 ? (
 		                <tr>
-		                  <td colSpan={isCustomer ? 7 : canSeeSalesOwner ? 9 : 8}>
+		                  <td colSpan={isCustomer ? 7 : ticketsTab === "repaired" ? (canSeeSalesOwner ? 11 : 10) : canSeeSalesOwner ? 9 : 8}>
 		                    <div className="empty-state">
 	                      <div className="empty-icon" aria-hidden>
 	                        <LuTicket />
@@ -779,6 +816,7 @@ export default function TicketsList({
                   const showOutcome = ticketsTab === "repaired" && canLoadJobCards && !!final;
                   const outcome =
                     final === "NOT_REPAIRABLE" ? "SCRAP" : final === "REPAIRABLE" ? "REPAIRED" : null;
+                  const meta = ticketsTab === "repaired" ? repairMetaByTicketId.get(t.id) : null;
 
                   return (
                     <tr key={t.id}>
@@ -822,6 +860,16 @@ export default function TicketsList({
 	                          {t.salesAssigneeName || t.salesAssigneeEmail || "—"}
 	                        </td>
 	                      ) : null}
+                        {ticketsTab === "repaired" ? (
+                          <td style={{ fontSize: 12, color: "var(--text2)" }}>
+                            {meta?.engineer || "—"}
+                          </td>
+                        ) : null}
+                        {ticketsTab === "repaired" ? (
+                          <td style={{ fontSize: 12, color: "var(--text2)" }}>
+                            {meta?.qa || "—"}
+                          </td>
+                        ) : null}
 	                      <td>
 	                        <span className="tag">
 	                          {t.inverterMake} {t.inverterModel}

@@ -59,7 +59,8 @@ export default function ComboBarLineChart({
     const yMax = Math.max(1, niceCeil(maxRaw));
     const ticks = Math.max(2, Math.trunc(yTicks || 5));
     const tickStep = yMax / (ticks - 1);
-    const tickValues = Array.from({ length: ticks }, (_, i) => Math.round(i * tickStep));
+    // Keep raw values to avoid duplicate tick keys after rounding.
+    const tickValues = Array.from({ length: ticks }, (_, i) => i * tickStep);
     const labelStep = n ? Math.max(1, Math.ceil(n / 7)) : 1;
     return { n, yMax, tickValues, labelStep };
   }, [points, yTicks]);
@@ -145,11 +146,12 @@ export default function ComboBarLineChart({
         ) : null}
 
         {/* grid + y ticks */}
-        {metrics.tickValues.map((tv) => {
+        {metrics.tickValues.map((tv, i) => {
           const y = scaleY(tv);
-          const isZero = tv === 0;
+          const label = Math.round(tv);
+          const isZero = i === 0 || label === 0;
           return (
-            <g key={tv}>
+            <g key={i}>
               <line
                 x1={dims.padL}
                 x2={dims.w - dims.padR}
@@ -166,7 +168,7 @@ export default function ComboBarLineChart({
                 fontSize={11}
                 fontFamily="var(--mono)"
               >
-                {tv}
+                {label}
               </text>
             </g>
           );

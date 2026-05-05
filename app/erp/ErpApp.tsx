@@ -55,6 +55,16 @@ export default function ErpApp({
   const [ticketsListPreset, setTicketsListPreset] = useState<{
     status?: string;
     priority?: string;
+    tab?:
+      | "open"
+      | "all"
+      | "inward"
+      | "repaired"
+      | "offline_booking"
+      | "outward"
+      | "approval_pending"
+      | "approved_by_admin"
+      | "closed";
   } | null>(null);
   const [ticketDetailTab, setTicketDetailTab] = useState<
     "overview" | "jobcard" | "logistics" | "sla"
@@ -411,6 +421,7 @@ export default function ErpApp({
                 tickets={tickets}
                 initialStatusFilter={ticketsListPreset?.status}
                 initialPriorityFilter={ticketsListPreset?.priority}
+                initialTabOverride={ticketsListPreset?.tab}
                 onView={(t, opts) => {
                   setSelectedTicket(t);
                   const nextTab =

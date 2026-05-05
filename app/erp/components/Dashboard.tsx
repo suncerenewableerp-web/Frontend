@@ -4,7 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import type { Ticket, User } from "../types";
 import { PriorityBadge, SlaBadge, StatusBadge } from "./Badges";
 import { STATUS_COLORS } from "../constants";
-import { LuCircleCheck, LuShieldAlert, LuSiren, LuTicket, LuTriangleAlert } from "react-icons/lu";
+import {
+  LuCalendarClock,
+  LuCircleCheck,
+  LuShieldAlert,
+  LuTicket,
+  LuTruck,
+  LuWrench,
+  LuMapPin,
+} from "react-icons/lu";
 import {
   apiDashboardTicketTrends,
   apiPendingDispatchApprovalsList,
@@ -27,7 +35,7 @@ export default function Dashboard({
     t: Ticket,
     opts?: { tab?: "overview" | "jobcard" | "logistics" | "sla"; logisticsStage?: "pickup" | "under_dispatch" | "dispatch" },
   ) => void;
-  onOpenTickets: (preset?: { status?: string; priority?: string }) => void;
+  onOpenTickets: (preset?: { status?: string; priority?: string; tab?: "offline_booking" }) => void;
 }) {
   const isCustomer = String(user.role || "").toUpperCase() === "CUSTOMER";
   const isAdmin = String(user.role || "").toUpperCase() === "ADMIN";
@@ -35,9 +43,18 @@ export default function Dashboard({
   const inward = tickets.filter((t) =>
     ["CREATED", "PICKUP_SCHEDULED", "IN_TRANSIT"].includes(String(t.status || "").toUpperCase()),
   ).length;
+  const pickupScheduled = tickets.filter((t) => t.status === "PICKUP_SCHEDULED").length;
+  const inTransit = tickets.filter((t) => t.status === "IN_TRANSIT").length;
+  const underDispatch = tickets.filter((t) => t.status === "UNDER_DISPATCH").length;
+  const underRepair = tickets.filter((t) => t.status === "UNDER_REPAIRED").length;
+  const onsiteRepair = tickets.filter(
+    (t) => String(t.serviceType || "").trim().toUpperCase() === "ONSITE" && t.status !== "CLOSED",
+  ).length;
   const closed = tickets.filter((t) => t.status === "CLOSED").length;
+  /*
   const breached = tickets.filter((t) => t.slaStatus === "BREACHED").length;
   const high = tickets.filter((t) => t.priority === "HIGH" && t.status !== "CLOSED").length;
+  */
 
   const myTickets = tickets;
 
@@ -49,7 +66,7 @@ export default function Dashboard({
 
   const [approvalPending, setApprovalPending] = useState<PendingDispatchApprovalTicket[]>([]);
 
-  const showTrends = isAdmin || isSales || isCustomer;
+  const showTrends = isAdmin || isSales;
   const [trendDays, setTrendDays] = useState(14);
   const [trends, setTrends] = useState<TicketTrendsPoint[]>([]);
   const [trendsErr, setTrendsErr] = useState("");
@@ -360,7 +377,7 @@ export default function Dashboard({
             </div>
           </div>
 
-          {trendsCard}
+          {/* Trends chart intentionally hidden for customers */}
         </>
       ) : (
         <>
@@ -386,6 +403,51 @@ export default function Dashboard({
                     },
                   ]
                 : []),
+              ...((isAdmin || isSales)
+                ? [
+                    {
+                      label: "Pickup Scheduled",
+                      value: pickupScheduled,
+                      sub: "Sales: pickup dates",
+                      color: "#2563eb",
+                      Icon: LuCalendarClock,
+                      onClick: () => onOpenTickets({ status: "PICKUP_SCHEDULED" }),
+                    },
+                    {
+                      label: "In Transit",
+                      value: inTransit,
+                      sub: "Sales: logistics moving",
+                      color: "#0ea5e9",
+                      Icon: LuTruck,
+                      onClick: () => onOpenTickets({ status: "IN_TRANSIT" }),
+                    },
+                    {
+                      label: "Under Dispatch",
+                      value: underDispatch,
+                      sub: "Sales: dispatch workflow",
+                      color: "#7c3aed",
+                      Icon: LuTruck,
+                      onClick: () => onOpenTickets({ status: "UNDER_DISPATCH" }),
+                    },
+                    {
+                      label: "Under Repair",
+                      value: underRepair,
+                      sub: "Servicing: workshop progress",
+                      color: "#f97316",
+                      Icon: LuWrench,
+                      onClick: () => onOpenTickets({ status: "UNDER_REPAIRED" }),
+                    },
+                    {
+                      label: "Onsite Repair",
+                      value: onsiteRepair,
+                      sub: "Servicing: offline booking",
+                      color: "#10b981",
+                      Icon: LuMapPin,
+                      onClick: () => onOpenTickets({ tab: "offline_booking" }),
+                    },
+                  ]
+                : []),
+              /*
               {
                 label: "High Priority",
                 value: high,
@@ -402,6 +464,7 @@ export default function Dashboard({
                 Icon: LuSiren,
                 onClick: () => onNav("sla"),
               },
+              */
               {
                 label: "Resolved",
                 value: closed,
