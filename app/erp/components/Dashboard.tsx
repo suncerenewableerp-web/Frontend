@@ -141,7 +141,8 @@ export default function Dashboard({
   const trendTotals = useMemo(() => {
     const created = (trends || []).reduce((s, p) => s + (Number(p.created) || 0), 0);
     const closed = (trends || []).reduce((s, p) => s + (Number(p.closed) || 0), 0);
-    return { created, closed };
+    const repaired = (trends || []).reduce((s, p) => s + (Number(p.repaired) || 0), 0);
+    return { created, closed, repaired };
   }, [trends]);
 
   const selectedTrendSummary = useMemo(() => {
@@ -151,6 +152,7 @@ export default function Dashboard({
       date: hit.date,
       created: Number(hit.created || 0) || 0,
       closed: Number(hit.closed || 0) || 0,
+      repaired: Number(hit.repaired || 0) || 0,
     };
   }, [trends, selectedTrendDate]);
 
@@ -161,6 +163,7 @@ export default function Dashboard({
       xTooltip: formatTrendTooltip(p.date),
       bars: [
         { id: "created", label: "Created", value: Math.max(0, Number(p.created) || 0), color: "#6b3a1f" },
+        { id: "repaired", label: "Repaired", value: Math.max(0, Number(p.repaired) || 0), color: "#2563eb" },
         { id: "closed", label: "Closed", value: Math.max(0, Number(p.closed) || 0), color: "#16a34a" },
       ],
       // Line touches Created bars (like the reference image)
@@ -171,7 +174,7 @@ export default function Dashboard({
   const trendsCard = showTrends ? (
     <div className="table-card" style={{ marginBottom: 16 }}>
       <div className="table-header">
-        <div className="table-title">Tickets Created vs Closed</div>
+        <div className="table-title">Tickets Created vs Repaired vs Closed</div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <select
             className="form-select"
@@ -248,6 +251,26 @@ export default function Dashboard({
                         width: 10,
                         height: 10,
                         borderRadius: 999,
+                        background: "#2563eb",
+                        display: "inline-block",
+                      }}
+                    />
+                    Repaired
+                  </span>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      gap: 8,
+                      alignItems: "center",
+                      fontSize: 12,
+                      color: "var(--text2)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 999,
                         background: "#16a34a",
                         display: "inline-block",
                       }}
@@ -257,7 +280,7 @@ export default function Dashboard({
                   <span style={{ fontSize: 12, color: "var(--text3)" }}>
                     Total:{" "}
                     <span style={{ fontFamily: "var(--mono)" }}>
-                      {trendTotals.created} created · {trendTotals.closed} closed
+                      {trendTotals.created} created · {trendTotals.repaired} repaired · {trendTotals.closed} closed
                     </span>
                   </span>
                 </div>
@@ -271,7 +294,8 @@ export default function Dashboard({
                     {formatTrendTooltip(selectedTrendSummary.date)}
                   </span>{" "}
                   <span style={{ fontFamily: "var(--mono)" }}>
-                    {selectedTrendSummary.created} created · {selectedTrendSummary.closed} closed
+                    {selectedTrendSummary.created} created · {selectedTrendSummary.repaired} repaired ·{" "}
+                    {selectedTrendSummary.closed} closed
                   </span>
                 </div>
               ) : null}
@@ -282,7 +306,7 @@ export default function Dashboard({
                 onSelect={setSelectedTrendDate}
                 height={220}
                 yLabel="Tickets"
-                ariaLabel="Tickets created vs closed chart"
+                ariaLabel="Tickets created vs repaired vs closed chart"
               />
 
               <div

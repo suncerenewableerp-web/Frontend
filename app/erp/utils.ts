@@ -9,7 +9,7 @@ export const canAccess = (
 ): boolean => {
   const roleNorm = String(userRole || "").toUpperCase();
   if (roleNorm === "ADMIN") return true;
-  if (roleNorm === "SALES" && module === "tickets") return true;
+  if (roleNorm === "SALES" && module === "tickets" && action !== "delete") return true;
   if (roleNorm === "SALES" && module === "logistics" && action !== "delete") return true;
   if (roleNorm === "SALES" && module === "jobcard" && action === "view") return true;
   const roleDef = roles.find((r) => r.id === userRole);

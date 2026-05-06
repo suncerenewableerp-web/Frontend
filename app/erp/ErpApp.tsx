@@ -446,6 +446,11 @@ export default function ErpApp({
                   setPage("ticket_detail");
                 }}
                 onNew={() => setShowNewTicket(true)}
+                onTicketDeleted={(ticketDbId) => {
+                  setTickets((prev) => prev.filter((t) => t.id !== ticketDbId));
+                  setSelectedTicket((prev) => (prev?.id === ticketDbId ? null : prev));
+                }}
+                onNotify={notify}
               />
             )}
             {page === "ticket_detail" && selectedTicket && (

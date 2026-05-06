@@ -5,13 +5,15 @@ import { STATUS_ORDER } from "../constants";
 import type { RoleDefinition, Ticket, TicketStatus, User } from "../types";
 import { canAccess } from "../utils";
 import { EngineerOutcomeBadge, PriorityBadge, SlaBadge, StatusBadge } from "./Badges";
-import { LuSearch, LuTicket } from "react-icons/lu";
+import { LuSearch, LuTicket, LuTrash2 } from "react-icons/lu";
 import {
   apiApprovedDispatchApprovalsList,
   apiJobCardsList,
   apiPendingDispatchApprovalsList,
+  apiTicketDelete,
   type JobCardListRow,
 } from "../api";
+import DeleteTicketModal from "./DeleteTicketModal";
 
 const INWARD_STATUSES: TicketStatus[] = ["CREATED", "PICKUP_SCHEDULED", "IN_TRANSIT"];
 const OUTWARD_STATUSES: TicketStatus[] = ["UNDER_DISPATCH", "DISPATCHED", "INSTALLATION_DONE"];
@@ -90,6 +92,8 @@ export default function TicketsList({
   initialTabOverride,
   onView,
   onNew,
+  onTicketDeleted,
+  onNotify,
 }: {
   user: User;
   roles: RoleDefinition[];
@@ -115,6 +119,8 @@ export default function TicketsList({
     },
   ) => void;
   onNew: () => void;
+  onTicketDeleted?: (ticketDbId: string) => void;
+  onNotify?: (msg: string) => void;
 }) {
   const roleNorm = String(user.role || "").trim().toUpperCase();
   const isEngineer = roleNorm === "ENGINEER";
@@ -172,6 +178,13 @@ export default function TicketsList({
         : "ALL";
 
   const canLoadJobCards = canAccess(roles, user.role, "jobcard", "view") && roleNorm !== "CUSTOMER";
+  const canDeleteTickets = isAdmin && canAccess(roles, user.role, "tickets", "delete");
+
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Ticket | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   const [ticketsTab, setTicketsTab] = useState<
     | "open"
@@ -202,6 +215,37 @@ export default function TicketsList({
   const [approvedByAdminError, setApprovedByAdminError] = useState("");
 
   const visibleTickets = tickets;
+
+  const openDelete = (t: Ticket) => {
+    setDeleteTarget(t);
+    setDeleteConfirmId("");
+    setDeleteError("");
+    setDeleteOpen(true);
+  };
+
+  const closeDelete = (opts?: { force?: boolean }) => {
+    if (deleteBusy && !opts?.force) return;
+    setDeleteOpen(false);
+    setDeleteTarget(null);
+    setDeleteConfirmId("");
+    setDeleteError("");
+  };
+
+  const doDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteBusy(true);
+    setDeleteError("");
+    try {
+      await apiTicketDelete(deleteTarget.id, deleteConfirmId);
+      onTicketDeleted?.(deleteTarget.id);
+      onNotify?.(`Ticket ${deleteTarget.ticketId} deleted.`);
+      closeDelete({ force: true });
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : "Failed to delete ticket");
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -486,6 +530,17 @@ export default function TicketsList({
       : ticketsTab === "outward"
         ? STATUS_ORDER.filter((s) => OUTWARD_STATUSES.includes(s))
         : [];
+
+  const baseEmptyColSpan = isCustomer
+    ? 7
+    : ticketsTab === "repaired"
+      ? canSeeSalesOwner
+        ? 11
+        : 10
+      : canSeeSalesOwner
+        ? 9
+        : 8;
+  const emptyColSpan = baseEmptyColSpan + (canDeleteTickets ? 1 : 0);
 
   return (
     <div className="content">
@@ -793,19 +848,20 @@ export default function TicketsList({
                     {ticketsTab === "repaired" ? <th>QA</th> : null}
 		                <th>Inverter</th>
 		                <th>Fault</th>
-		                <th>Priority</th>
-		                <th>Status / SLA</th>
-		                <th>Created</th>
-		              </tr>
-	            </thead>
-	            <tbody>
-		              {rows.length === 0 ? (
-		                <tr>
-		                  <td colSpan={isCustomer ? 7 : ticketsTab === "repaired" ? (canSeeSalesOwner ? 11 : 10) : canSeeSalesOwner ? 9 : 8}>
-		                    <div className="empty-state">
-	                      <div className="empty-icon" aria-hidden>
-	                        <LuTicket />
-	                      </div>
+                <th>Priority</th>
+                <th>Status / SLA</th>
+                <th>Created</th>
+                {canDeleteTickets ? <th style={{ width: 64 }}>Delete</th> : null}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={emptyColSpan}>
+                    <div className="empty-state">
+                      <div className="empty-icon" aria-hidden>
+                        <LuTicket />
+                      </div>
                       <div className="empty-text">No tickets found</div>
                     </div>
                   </td>
@@ -906,6 +962,24 @@ export default function TicketsList({
                       >
                         {t.createdAt}
                       </td>
+                      {canDeleteTickets ? (
+                        <td style={{ textAlign: "right" }}>
+                          <button
+                            type="button"
+                            className="btn btn-danger btn-sm"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              openDelete(t);
+                            }}
+                            title="Delete ticket (requires ID confirmation)"
+                            aria-label={`Delete ticket ${t.ticketId}`}
+                            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                          >
+                            <LuTrash2 aria-hidden />
+                          </button>
+                        </td>
+                      ) : null}
                     </tr>
                   );
                 })
@@ -913,6 +987,20 @@ export default function TicketsList({
             </tbody>
           </table>
         </div>
+
+        <DeleteTicketModal
+          open={deleteOpen}
+          ticket={deleteTarget}
+          confirmId={deleteConfirmId}
+          onConfirmIdChange={(v) => {
+            setDeleteConfirmId(v);
+            if (deleteError) setDeleteError("");
+          }}
+          busy={deleteBusy}
+          error={deleteError}
+          onClose={() => closeDelete()}
+          onDelete={doDelete}
+        />
 
         {rows.length > PAGE_SIZE ? (
           <div

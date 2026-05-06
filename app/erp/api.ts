@@ -1016,6 +1016,16 @@ export async function apiUpdateTicketFaultDescription(
   return toTicket(env.data);
 }
 
+export async function apiTicketDelete(id: string, confirmId: string): Promise<void> {
+  const env = await apiFetch<{ message?: string }>(`/api/tickets/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    body: JSON.stringify({ confirmId }),
+  });
+  if (!env.success) {
+    throw new ApiRequestError(env.message || "Failed to delete ticket", env.errors);
+  }
+}
+
 export async function apiUsersList(): Promise<User[]> {
   const env = await apiFetch<{ users: BackendUser[]; pagination: Json }>("/api/users", {
     method: "GET",
@@ -1572,7 +1582,7 @@ export type PendingDispatchApprovalTicket = {
   paymentDone: boolean;
 };
 
-export type TicketTrendsPoint = { date: string; created: number; closed: number };
+export type TicketTrendsPoint = { date: string; created: number; closed: number; repaired: number };
 
 export async function apiDashboardTicketTrends(days = 14): Promise<{
   days: number;
@@ -1595,6 +1605,7 @@ export async function apiDashboardTicketTrends(days = 14): Promise<{
           date: String(obj.date || ""),
           created: Number(obj.created || 0) || 0,
           closed: Number(obj.closed || 0) || 0,
+          repaired: Number(obj.repaired || 0) || 0,
         };
       })
     : [];
