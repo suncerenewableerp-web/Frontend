@@ -306,6 +306,7 @@ export default function Dashboard({
                 onSelect={setSelectedTrendDate}
                 height={220}
                 yLabel="Tickets"
+                showBarValues
                 ariaLabel="Tickets created vs repaired vs closed chart"
               />
 
@@ -462,9 +463,9 @@ export default function Dashboard({
                       onClick: () => onOpenTickets({ status: "UNDER_REPAIRED" }),
                     },
                     {
-                      label: "Onsite Repair",
+                      label: "On-site Repairing",
                       value: onsiteRepair,
-                      sub: "Servicing: offline booking",
+                      sub: "Servicing: on-site repairing",
                       color: "#10b981",
                       Icon: LuMapPin,
                       onClick: () => onOpenTickets({ tab: "offline_booking" }),

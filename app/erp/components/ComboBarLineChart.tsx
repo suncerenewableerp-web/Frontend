@@ -35,6 +35,7 @@ export default function ComboBarLineChart({
   height = 220,
   yTicks = 5,
   yLabel = "",
+  showBarValues = false,
   ariaLabel = "Chart",
 }: {
   points: ComboPoint[];
@@ -43,6 +44,7 @@ export default function ComboBarLineChart({
   height?: number;
   yTicks?: number;
   yLabel?: string;
+  showBarValues?: boolean;
   ariaLabel?: string;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -242,17 +244,33 @@ export default function ComboBarLineChart({
                 const h = Math.max(2, Math.round((v / metrics.yMax) * dims.innerH));
                 const x = groupX + j * (barW + barGap);
                 const y = baseY - h;
+                const showLabel = showBarValues && v > 0 && (barW >= 10 || isSelected);
+                const labelY = Math.max(dims.padT + 12, y - 4);
                 return (
-                  <rect
-                    key={b.id}
-                    x={x}
-                    y={y}
-                    width={barW}
-                    height={h}
-                    rx={5}
-                    fill={v ? b.color : "var(--surface3)"}
-                    opacity={isSelected ? 1 : 0.95}
-                  />
+                  <g key={b.id}>
+                    <rect
+                      x={x}
+                      y={y}
+                      width={barW}
+                      height={h}
+                      rx={5}
+                      fill={v ? b.color : "var(--surface3)"}
+                      opacity={isSelected ? 1 : 0.95}
+                    />
+                    {showLabel ? (
+                      <text
+                        x={x + barW / 2}
+                        y={labelY}
+                        textAnchor="middle"
+                        fill="var(--text2)"
+                        fontSize={10}
+                        fontFamily="var(--mono)"
+                        pointerEvents="none"
+                      >
+                        {v}
+                      </text>
+                    ) : null}
+                  </g>
                 );
               })}
               <text

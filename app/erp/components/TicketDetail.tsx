@@ -35,6 +35,7 @@ import {
   apiEngineerNamesList,
   apiTicketOnsiteAssign,
   apiTicketOnsiteJobCardUpdate,
+  apiUpdateTicketStatus,
   apiUpdateTicketDetails,
   apiUpdateTicketFaultDescription,
   type BackendLogistics,
@@ -323,6 +324,11 @@ export default function TicketDetail({
 
   const canManageOnsiteBooking = isOnsite && (roleName === "ADMIN" || roleName === "SALES");
   const canWorkOnsiteBooking = isOnsite && roleName === "ENGINEER";
+  const canCloseOnsiteBooking = useMemo(() => {
+    if (!canManageOnsiteBooking) return false;
+    if (roleName !== "ADMIN" && roleName !== "SALES") return false;
+    return canAccess(roles, user.role, "tickets", "edit");
+  }, [canManageOnsiteBooking, roleName, roles, user.role]);
 
   const [onsiteAssigning, setOnsiteAssigning] = useState(false);
   const [onsiteAssignError, setOnsiteAssignError] = useState("");
@@ -334,6 +340,9 @@ export default function TicketDetail({
   const [onsiteClosing, setOnsiteClosing] = useState(false);
   const [onsiteError, setOnsiteError] = useState("");
   const [onsiteSavedMsg, setOnsiteSavedMsg] = useState("");
+  const [onsiteAdminClosing, setOnsiteAdminClosing] = useState(false);
+  const [onsiteAdminError, setOnsiteAdminError] = useState("");
+  const [onsiteAdminMsg, setOnsiteAdminMsg] = useState("");
 
   const canManageBrandList = roleName === "ADMIN";
   const [knownBrands, setKnownBrands] = useState<string[]>([]);
@@ -1525,7 +1534,7 @@ export default function TicketDetail({
           {isOnsite ? (
             <div className="table-card" style={{ marginBottom: 16 }}>
               <div className="table-header">
-                <div className="table-title">On-site Repair (Offline Booking)</div>
+                <div className="table-title">On-site Repairing</div>
               </div>
               <div style={{ padding: "16px 20px" }}>
                 <div className="detail-grid" style={{ marginBottom: 14 }}>
@@ -1580,9 +1589,19 @@ export default function TicketDetail({
                     {onsiteSavedMsg}
                   </div>
                 ) : null}
+                {onsiteAdminMsg ? (
+                  <div style={{ marginBottom: 10, fontSize: 12, color: "var(--green)" }}>
+                    {onsiteAdminMsg}
+                  </div>
+                ) : null}
                 {onsiteError ? (
                   <div className="form-error" style={{ marginBottom: 10 }}>
                     {onsiteError}
+                  </div>
+                ) : null}
+                {onsiteAdminError ? (
+                  <div className="form-error" style={{ marginBottom: 10 }}>
+                    {onsiteAdminError}
                   </div>
                 ) : null}
 
@@ -1615,13 +1634,38 @@ export default function TicketDetail({
                       </div>
                     </div>
                   ) : (
-                    <div style={{ fontSize: 12, color: "var(--text3)" }}>
-                      Ticket is assigned. Waiting for engineer to complete on-site repair.
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                      <div style={{ fontSize: 12, color: "var(--text3)" }}>
+                        {ticket.onsiteMarkedRepairedAt
+                          ? `Engineer marked as done on ${ticket.onsiteMarkedRepairedAt}. You can close it after verification.`
+                          : "Waiting for engineer to mark as done."}
+                      </div>
+                      {canCloseOnsiteBooking && ticket.status === "UNDER_REPAIRED" && Boolean(ticket.onsiteMarkedRepairedAt) ? (
+                        <button
+                          className="btn btn-accent btn-sm"
+                          type="button"
+                          disabled={onsiteAdminClosing}
+                          onClick={() => {
+                            setOnsiteAdminClosing(true);
+                            setOnsiteAdminError("");
+                            setOnsiteAdminMsg("");
+                            apiUpdateTicketStatus(ticket.id, "CLOSED")
+                              .then((updated) => {
+                                onTicketUpdated(updated);
+                                setOnsiteAdminMsg("Ticket closed.");
+                              })
+                              .catch((e) => setOnsiteAdminError(e instanceof Error ? e.message : "Failed to close ticket"))
+                              .finally(() => setOnsiteAdminClosing(false));
+                          }}
+                        >
+                          {onsiteAdminClosing ? "Closing..." : "Close Ticket"}
+                        </button>
+                      ) : null}
                     </div>
                   )
                 ) : null}
 
-                {canWorkOnsiteBooking && ticket.status === "UNDER_REPAIRED" ? (
+                {canWorkOnsiteBooking && ticket.status === "UNDER_REPAIRED" && !ticket.onsiteMarkedRepairedAt ? (
                   <div style={{ marginTop: 14 }}>
                     <div className="form-section">Engineer Job Details</div>
                     <div
@@ -1689,15 +1733,20 @@ export default function TicketDetail({
                           })
                             .then((updated) => {
                               onTicketUpdated(updated);
-                              setOnsiteSavedMsg("Marked as done and closed.");
+                              setOnsiteSavedMsg("Marked as done. Waiting for Admin/Sales to close.");
                             })
-                            .catch((e) => setOnsiteError(e instanceof Error ? e.message : "Failed to close ticket"))
+                            .catch((e) => setOnsiteError(e instanceof Error ? e.message : "Failed to mark as done"))
                             .finally(() => setOnsiteClosing(false));
                         }}
                       >
-                        {onsiteClosing ? "Closing..." : "Mark as Done"}
+                        {onsiteClosing ? "Marking..." : "Mark as Done"}
                       </button>
                     </div>
+                  </div>
+                ) : null}
+                {canWorkOnsiteBooking && ticket.status === "UNDER_REPAIRED" && ticket.onsiteMarkedRepairedAt ? (
+                  <div style={{ marginTop: 14, fontSize: 12, color: "var(--text3)" }}>
+                    You have marked this ticket as done. Waiting for Admin/Sales to close it.
                   </div>
                 ) : null}
               </div>

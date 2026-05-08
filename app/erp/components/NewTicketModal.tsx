@@ -1397,7 +1397,7 @@ export default function NewTicketModal({
                   On-site Repairing
                 </button>
                 <div style={{ marginTop: 8, fontSize: 12, color: "var(--text3)" }}>
-                  Select this if you want an engineer to visit the company site and repair the inverter (offline booking).
+                  Select this if you want an engineer to visit the company site and repair the inverter (on-site repairing).
                 </div>
               </div>
 
@@ -3252,7 +3252,7 @@ export default function NewTicketModal({
               ? "Creating..."
               : mode === "single"
                 ? form.onsiteRepairing
-                  ? "Create Offline Booking →"
+                  ? "Create On-site Repairing →"
                   : "Create Ticket →"
                 : `Create ${bulkItems.length} Ticket${bulkItems.length === 1 ? "" : "s"} →`}
           </button>

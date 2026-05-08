@@ -127,6 +127,7 @@ export default function TicketsList({
   const isAdmin = roleNorm === "ADMIN";
   const isSales = roleNorm === "SALES";
   const isCustomer = roleNorm === "CUSTOMER";
+  const canSeeSerialNumber = !isCustomer;
   const canSeeSalesOwner = !isCustomer && (isSales || isAdmin);
   const canSeeAllTab = (isAdmin || isSales) && !isEngineer;
   const normalizedInitialStatus = String(initialStatusFilter || "").toUpperCase().trim();
@@ -198,6 +199,7 @@ export default function TicketsList({
     | "closed"
   >(initialTab);
   const [repairedTab, setRepairedTab] = useState<"all" | "repairable" | "not_repairable">("all");
+  const [offlineBookingTab, setOfflineBookingTab] = useState<"running" | "done">("running");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState(safeInitialStatusFilter);
   const [priorityFilter, setPriorityFilter] = useState(initialPriorityFilter || "ALL");
@@ -382,6 +384,14 @@ export default function TicketsList({
     () => visibleTickets.filter((t) => isOnsiteTicket(t) && t.status !== "CLOSED"),
     [visibleTickets],
   );
+  const offlineBookingRunningTickets = useMemo(
+    () => offlineBookingTickets.filter((t) => !t.onsiteMarkedRepairedAt),
+    [offlineBookingTickets],
+  );
+  const offlineBookingDoneTickets = useMemo(
+    () => offlineBookingTickets.filter((t) => Boolean(t.onsiteMarkedRepairedAt)),
+    [offlineBookingTickets],
+  );
   const outwardTickets = useMemo(
     () =>
       visibleTickets.filter((t) => !isOnsiteTicket(t) && OUTWARD_STATUSES.includes(t.status)),
@@ -420,6 +430,16 @@ export default function TicketsList({
     () => offlineBookingTickets.filter((t) => matchesDateFilter(t.createdAt, dateFilter)).length,
     [offlineBookingTickets, dateFilter],
   );
+  const offlineBookingTabCounts = useMemo(() => {
+    let running = 0;
+    let done = 0;
+    offlineBookingTickets.forEach((t) => {
+      if (!matchesDateFilter(t.createdAt, dateFilter)) return;
+      if (t.onsiteMarkedRepairedAt) done++;
+      else running++;
+    });
+    return { running, done };
+  }, [offlineBookingTickets, dateFilter]);
   const outwardCount = useMemo(
     () => outwardTickets.filter((t) => matchesDateFilter(t.createdAt, dateFilter)).length,
     [outwardTickets, dateFilter],
@@ -455,7 +475,10 @@ export default function TicketsList({
     if (ticketsTab === "all") return visibleTickets;
     if (ticketsTab === "inward") return inwardTickets;
     if (ticketsTab === "repaired") return repairedTickets;
-    if (ticketsTab === "offline_booking") return offlineBookingTickets;
+    if (ticketsTab === "offline_booking") {
+      if (isAdmin || isSales) return offlineBookingTab === "done" ? offlineBookingDoneTickets : offlineBookingRunningTickets;
+      return offlineBookingTickets;
+    }
     if (ticketsTab === "outward") return outwardTickets;
     if (ticketsTab === "approval_pending") return approvalPendingTickets;
     if (ticketsTab === "approved_by_admin") return approvedByAdminTickets;
@@ -467,10 +490,15 @@ export default function TicketsList({
     inwardTickets,
     repairedTickets,
     offlineBookingTickets,
+    offlineBookingRunningTickets,
+    offlineBookingDoneTickets,
+    offlineBookingTab,
     outwardTickets,
     approvalPendingTickets,
     approvedByAdminTickets,
     closedTickets,
+    isAdmin,
+    isSales,
   ]);
 
   const filtered = useMemo(() => {
@@ -531,7 +559,7 @@ export default function TicketsList({
         ? STATUS_ORDER.filter((s) => OUTWARD_STATUSES.includes(s))
         : [];
 
-  const baseEmptyColSpan = isCustomer
+  const baseEmptyColSpanBase = isCustomer
     ? 7
     : ticketsTab === "repaired"
       ? canSeeSalesOwner
@@ -540,6 +568,8 @@ export default function TicketsList({
       : canSeeSalesOwner
         ? 9
         : 8;
+  const offlineBookingExtraCols = ticketsTab === "offline_booking" ? 3 : 0; // engineer/date/remark
+  const baseEmptyColSpan = baseEmptyColSpanBase + (canSeeSerialNumber ? 1 : 0) + offlineBookingExtraCols;
   const emptyColSpan = baseEmptyColSpan + (canDeleteTickets ? 1 : 0);
 
   return (
@@ -638,10 +668,11 @@ export default function TicketsList({
                     setTicketsTab("offline_booking");
                     setStatusFilter("ALL");
                     setRepairedTab("all");
+                    setOfflineBookingTab("running");
                     setPage(1);
                   }}
                 >
-                  Offline Booking ({offlineBookingCount})
+                  On-site Repairing ({offlineBookingCount})
                 </div>
               ) : null}
               {!isSales ? (
@@ -823,6 +854,30 @@ export default function TicketsList({
             )}
           </div>
         ) : null}
+        {ticketsTab === "offline_booking" && (isAdmin || isSales) ? (
+          <div style={{ padding: "16px 20px 0" }}>
+            <div className="tabs" style={{ marginBottom: 14 }}>
+              <div
+                className={`tab ${offlineBookingTab === "running" ? "active" : ""}`}
+                onClick={() => {
+                  setOfflineBookingTab("running");
+                  setPage(1);
+                }}
+              >
+                Running ({offlineBookingTabCounts.running})
+              </div>
+              <div
+                className={`tab ${offlineBookingTab === "done" ? "active" : ""}`}
+                onClick={() => {
+                  setOfflineBookingTab("done");
+                  setPage(1);
+                }}
+              >
+                Mark as Done ({offlineBookingTabCounts.done})
+              </div>
+            </div>
+          </div>
+        ) : null}
         {ticketsTab === "approved_by_admin" ? (
           <div style={{ padding: "12px 20px 0" }}>
             <div style={{ fontSize: 12, color: "var(--text3)" }}>
@@ -842,6 +897,10 @@ export default function TicketsList({
 	              <tr>
 		                <th style={{ width: 70 }}>Sr No.</th>
 		                <th>Ticket ID</th>
+                    {canSeeSerialNumber ? <th style={{ minWidth: 160 }}>Serial No.</th> : null}
+                    {ticketsTab === "offline_booking" ? <th style={{ minWidth: 160 }}>Engineer</th> : null}
+                    {ticketsTab === "offline_booking" ? <th style={{ width: 120 }}>Date</th> : null}
+                    {ticketsTab === "offline_booking" ? <th style={{ minWidth: 220 }}>Remark</th> : null}
 		                {!isCustomer ? <th>Customer</th> : null}
 		                {canSeeSalesOwner ? <th>Sales Owner</th> : null}
                     {ticketsTab === "repaired" ? <th>Repair Engineer</th> : null}
@@ -910,6 +969,37 @@ export default function TicketsList({
 	                          {t.ticketId}
 	                        </button>
 	                      </td>
+                        {canSeeSerialNumber ? (
+                          <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text2)" }}>
+                            {String(t.serialNumber || "").trim() || "—"}
+                          </td>
+                        ) : null}
+                        {ticketsTab === "offline_booking" ? (
+                          <td style={{ fontSize: 12, color: "var(--text2)" }}>
+                            {String(t.onsiteEngineerName || "").trim() ||
+                              (t.assignedEngineer && t.assignedEngineer !== "-" ? t.assignedEngineer : "—")}
+                          </td>
+                        ) : null}
+                        {ticketsTab === "offline_booking" ? (
+                          <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text3)" }}>
+                            {t.onsiteVisitDate || t.onsiteMarkedRepairedAt || "—"}
+                          </td>
+                        ) : null}
+                        {ticketsTab === "offline_booking" ? (
+                          <td
+                            style={{
+                              maxWidth: 260,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              color: "var(--text2)",
+                              fontSize: 12,
+                            }}
+                            title={String(t.onsiteRemark || "").trim() || undefined}
+                          >
+                            {String(t.onsiteRemark || "").trim() || "—"}
+                          </td>
+                        ) : null}
 	                      {!isCustomer ? <td style={{ fontWeight: 500 }}>{t.customer}</td> : null}
 	                      {canSeeSalesOwner ? (
 	                        <td style={{ fontSize: 12, color: "var(--text2)" }}>
