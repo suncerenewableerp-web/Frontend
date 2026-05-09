@@ -5,7 +5,7 @@ import { STATUS_ORDER } from "../constants";
 import type { RoleDefinition, Ticket, TicketStatus, User } from "../types";
 import { canAccess } from "../utils";
 import { EngineerOutcomeBadge, PriorityBadge, SlaBadge, StatusBadge } from "./Badges";
-import { LuSearch, LuTicket, LuTrash2 } from "react-icons/lu";
+import { LuDownload, LuSearch, LuTicket, LuTrash2 } from "react-icons/lu";
 import {
   apiApprovedDispatchApprovalsList,
   apiJobCardsList,
@@ -83,6 +83,74 @@ function matchesDateFilter(createdAtYmd: string, filter: DateFilter, now = new D
   return true;
 }
 
+function escapeHtmlCell(input: unknown): string {
+  return String(input ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function downloadTicketsAsExcel(tickets: Ticket[], filenameBase: string) {
+  const headers = [
+    "Ticket ID",
+    "Status",
+    "Customer",
+    "Sales Owner",
+    "Service Type",
+    "Engineer",
+    "Visit Date",
+    "Remark",
+    "Inverter Make",
+    "Inverter Model",
+    "Capacity",
+    "Serial No",
+    "Fault",
+    "Error Code",
+    "Priority",
+    "SLA",
+    "Created",
+  ];
+
+  const bodyRows = (tickets || []).map((t) => [
+    t.ticketId,
+    t.status,
+    t.customer,
+    t.salesAssigneeName || t.salesAssigneeEmail || "",
+    t.serviceType || "",
+    t.onsiteEngineerName || (t.assignedEngineer && t.assignedEngineer !== "-" ? t.assignedEngineer : ""),
+    t.onsiteVisitDate || t.onsiteMarkedRepairedAt || "",
+    t.onsiteRemark || "",
+    t.inverterMake,
+    t.inverterModel,
+    t.capacity,
+    t.serialNumber,
+    t.faultDescription,
+    t.errorCode,
+    t.priority,
+    t.slaStatus,
+    t.createdAt,
+  ]);
+
+  const table = `<table border="1"><thead><tr>${headers
+    .map((h) => `<th>${escapeHtmlCell(h)}</th>`)
+    .join("")}</tr></thead><tbody>${bodyRows
+    .map((r) => `<tr>${r.map((c) => `<td>${escapeHtmlCell(c)}</td>`).join("")}</tr>`)
+    .join("")}</tbody></table>`;
+
+  const html = `<!doctype html><html><head><meta charset="utf-8" /></head><body>${table}</body></html>`;
+  const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${filenameBase}.xls`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function TicketsList({
   user,
   roles,
@@ -130,6 +198,7 @@ export default function TicketsList({
   const canSeeSerialNumber = !isCustomer;
   const canSeeSalesOwner = !isCustomer && (isSales || isAdmin);
   const canSeeAllTab = (isAdmin || isSales) && !isEngineer;
+  const canExport = (isAdmin || isSales) && canAccess(roles, user.role, "tickets", "view");
   const normalizedInitialStatus = String(initialStatusFilter || "").toUpperCase().trim();
 
   const derivedInitialTab:
@@ -760,6 +829,27 @@ export default function TicketsList({
                 }}
               />
             </div>
+
+            {canExport ? (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  const today = new Date();
+                  const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(
+                    today.getDate(),
+                  ).padStart(2, "0")}`;
+                  const base = `tickets_${ticketsTab}_${statusFilter || "ALL"}_${ymd}`;
+                  downloadTicketsAsExcel(rows, base);
+                }}
+                title="Download tickets as Excel"
+              >
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <LuDownload aria-hidden />
+                  Export Excel
+                </span>
+              </button>
+            ) : null}
 
             {statusOptions.length ? (
               <select
