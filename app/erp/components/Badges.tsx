@@ -2,6 +2,7 @@
 
 import { ENGINEER_OUTCOME_COLORS, PRIORITY_COLORS, SLA_COLORS, STATUS_COLORS } from "../constants";
 import type { TicketStatus } from "../types";
+import { formatTicketStatusLabel } from "../utils";
 
 export function Badge({ label, color }: { label: string; color: string }) {
   return (
@@ -16,7 +17,7 @@ export function Badge({ label, color }: { label: string; color: string }) {
 }
 
 export function StatusBadge({ status }: { status: TicketStatus }) {
-  return <Badge label={status.replace(/_/g, " ")} color={STATUS_COLORS[status]} />;
+  return <Badge label={formatTicketStatusLabel(status)} color={STATUS_COLORS[status]} />;
 }
 
 export function PriorityBadge({

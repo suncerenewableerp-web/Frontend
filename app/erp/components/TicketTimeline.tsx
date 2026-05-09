@@ -2,6 +2,7 @@
 
 import { STATUS_ORDER } from "../constants";
 import type { TicketStatus } from "../types";
+import { formatTicketStatusLabel } from "../utils";
 
 export default function TicketTimeline({
   currentStatus,
@@ -22,7 +23,7 @@ export default function TicketTimeline({
             <div
               className={`timeline-label ${i <= currentIdx ? (i === currentIdx ? "current" : "done") : ""}`}
             >
-              {s.replace(/_/g, " ")}
+              {formatTicketStatusLabel(s)}
             </div>
           </div>
           {i < STATUS_ORDER.length - 1 && (
@@ -33,4 +34,3 @@ export default function TicketTimeline({
     </div>
   );
 }
-

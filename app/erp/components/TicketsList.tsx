@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { STATUS_ORDER } from "../constants";
 import type { RoleDefinition, Ticket, TicketStatus, User } from "../types";
-import { canAccess } from "../utils";
-import { EngineerOutcomeBadge, PriorityBadge, SlaBadge, StatusBadge } from "./Badges";
+import { canAccess, formatTicketStatusLabel } from "../utils";
+import { EngineerOutcomeBadge, StatusBadge } from "./Badges";
 import { LuDownload, LuSearch, LuTicket, LuTrash2 } from "react-icons/lu";
 import {
   apiApprovedDispatchApprovalsList,
@@ -107,8 +107,6 @@ function downloadTicketsAsExcel(tickets: Ticket[], filenameBase: string) {
     "Serial No",
     "Fault",
     "Error Code",
-    "Priority",
-    "SLA",
     "Created",
   ];
 
@@ -127,8 +125,6 @@ function downloadTicketsAsExcel(tickets: Ticket[], filenameBase: string) {
     t.serialNumber,
     t.faultDescription,
     t.errorCode,
-    t.priority,
-    t.slaStatus,
     t.createdAt,
   ]);
 
@@ -271,7 +267,6 @@ export default function TicketsList({
   const [offlineBookingTab, setOfflineBookingTab] = useState<"running" | "done">("running");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState(safeInitialStatusFilter);
-  const [priorityFilter, setPriorityFilter] = useState(initialPriorityFilter || "ALL");
   const [dateFilter, setDateFilter] = useState<DateFilter>("ALL");
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 8;
@@ -577,15 +572,16 @@ export default function TicketsList({
       const matchSearch =
         !q ||
         t.ticketId.toLowerCase().includes(q) ||
+        String(t.serialNumber || "").toLowerCase().includes(q) ||
         inverter.includes(q) ||
         t.faultDescription.toLowerCase().includes(q) ||
+        String(t.errorCode || "").toLowerCase().includes(q) ||
         (!isCustomer && t.customer.toLowerCase().includes(q));
       const matchDate = matchesDateFilter(t.createdAt, dateFilter);
       const matchStatus = statusFilter === "ALL" ? true : t.status === statusFilter;
-      const matchPriority = priorityFilter === "ALL" || t.priority === priorityFilter;
-      return matchSearch && matchDate && matchStatus && matchPriority;
+      return matchSearch && matchDate && matchStatus;
     });
-  }, [baseTickets, search, statusFilter, priorityFilter, dateFilter, isCustomer]);
+  }, [baseTickets, search, statusFilter, dateFilter, isCustomer]);
 
   const filteredRepaired = useMemo(() => {
     if (ticketsTab !== "repaired" || !canLoadJobCards) return filtered;
@@ -629,14 +625,14 @@ export default function TicketsList({
         : [];
 
   const baseEmptyColSpanBase = isCustomer
-    ? 7
+    ? 6
     : ticketsTab === "repaired"
       ? canSeeSalesOwner
-        ? 11
-        : 10
+        ? 10
+        : 9
       : canSeeSalesOwner
-        ? 9
-        : 8;
+        ? 8
+        : 7;
   const offlineBookingExtraCols = ticketsTab === "offline_booking" ? 3 : 0; // engineer/date/remark
   const baseEmptyColSpan = baseEmptyColSpanBase + (canSeeSerialNumber ? 1 : 0) + offlineBookingExtraCols;
   const emptyColSpan = baseEmptyColSpan + (canDeleteTickets ? 1 : 0);
@@ -651,7 +647,7 @@ export default function TicketsList({
             {isCustomer
               ? "found for your account"
               : user.role === "ENGINEER"
-                ? "assigned to you or in Under Repaired"
+                ? "assigned to you or in Under Repair"
                 : "found"}
           </div>
         </div>
@@ -863,25 +859,9 @@ export default function TicketsList({
                 <option value="ALL">{statusFilterLabel}</option>
                 {statusOptions.map((s) => (
                   <option key={s} value={s}>
-                    {s.replace(/_/g, " ")}
+                    {formatTicketStatusLabel(s)}
                   </option>
                 ))}
-              </select>
-            ) : null}
-
-            {!isCustomer ? (
-              <select
-                className="select-filter"
-                value={priorityFilter}
-                onChange={(e) => {
-                  setPriorityFilter(e.target.value);
-                  setPage(1);
-                }}
-              >
-                <option value="ALL">All Priority</option>
-                <option value="HIGH">HIGH</option>
-                <option value="MEDIUM">MEDIUM</option>
-                <option value="LOW">LOW</option>
               </select>
             ) : null}
 
@@ -987,6 +967,8 @@ export default function TicketsList({
 	              <tr>
 		                <th style={{ width: 70 }}>Sr No.</th>
 		                <th>Ticket ID</th>
+                    <th style={{ width: 120 }}>Ticket Date</th>
+                    <th>Inverter</th>
                     {canSeeSerialNumber ? <th style={{ minWidth: 160 }}>Serial No.</th> : null}
                     {ticketsTab === "offline_booking" ? <th style={{ minWidth: 160 }}>Engineer</th> : null}
                     {ticketsTab === "offline_booking" ? <th style={{ width: 120 }}>Date</th> : null}
@@ -995,11 +977,8 @@ export default function TicketsList({
 		                {canSeeSalesOwner ? <th>Sales Owner</th> : null}
                     {ticketsTab === "repaired" ? <th>Repair Engineer</th> : null}
                     {ticketsTab === "repaired" ? <th>QA</th> : null}
-		                <th>Inverter</th>
 		                <th>Fault</th>
-                <th>Priority</th>
-                <th>Status / SLA</th>
-                <th>Created</th>
+                <th>Status</th>
                 {canDeleteTickets ? <th style={{ width: 64 }}>Delete</th> : null}
               </tr>
             </thead>
@@ -1059,6 +1038,20 @@ export default function TicketsList({
 	                          {t.ticketId}
 	                        </button>
 	                      </td>
+                        <td
+                          style={{
+                            fontSize: 12,
+                            color: "var(--text3)",
+                            fontFamily: "var(--mono)",
+                          }}
+                        >
+                          {t.createdAt}
+                        </td>
+	                      <td>
+	                        <span className="tag">
+	                          {t.inverterMake} {t.inverterModel}
+	                        </span>
+	                      </td>
                         {canSeeSerialNumber ? (
                           <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text2)" }}>
                             {String(t.serialNumber || "").trim() || "—"}
@@ -1106,11 +1099,6 @@ export default function TicketsList({
                             {meta?.qa || "—"}
                           </td>
                         ) : null}
-	                      <td>
-	                        <span className="tag">
-	                          {t.inverterMake} {t.inverterModel}
-	                        </span>
-	                      </td>
                       <td
                         style={{
                           maxWidth: 180,
@@ -1124,23 +1112,10 @@ export default function TicketsList({
                         {t.faultDescription}
                       </td>
                       <td>
-                        <PriorityBadge priority={t.priority} />
-                      </td>
-                      <td>
                         <div className="status-sla">
                           <StatusBadge status={t.status} />
-                          <SlaBadge status={t.slaStatus} />
                           {showOutcome && outcome ? <EngineerOutcomeBadge outcome={outcome} /> : null}
                         </div>
-                      </td>
-                      <td
-                        style={{
-                          fontSize: 12,
-                          color: "var(--text3)",
-                          fontFamily: "var(--mono)",
-                        }}
-                      >
-                        {t.createdAt}
                       </td>
                       {canDeleteTickets ? (
                         <td style={{ textAlign: "right" }}>

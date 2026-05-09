@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Ticket, User } from "../types";
-import { PriorityBadge, SlaBadge, StatusBadge } from "./Badges";
+import { StatusBadge } from "./Badges";
 import { STATUS_COLORS } from "../constants";
 import {
   LuCalendarClock,
@@ -548,55 +548,6 @@ export default function Dashboard({
                 </div>
               </div>
             </div>
-            <div className="table-card">
-              <div className="table-header">
-                <div className="table-title">Priority Breakdown</div>
-              </div>
-              <div style={{ padding: "20px" }}>
-                {(["HIGH", "MEDIUM", "LOW"] as const).map((p) => {
-                  const count = tickets.filter((t) => t.priority === p).length;
-                  return (
-                    <div key={p} style={{ marginBottom: 14 }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          marginBottom: 4,
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 12,
-                            color: "var(--text2)",
-                            fontWeight: 500,
-                          }}
-                        >
-                          {p}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: 12,
-                            fontFamily: "var(--mono)",
-                            fontWeight: 700,
-                          }}
-                        >
-                          {count}
-                        </span>
-                      </div>
-                      <div className="sla-bar">
-                        <div
-                          className="sla-fill"
-                          style={{
-                            width: `${(count / tickets.length) * 100}%`,
-                            background: p === "LOW" ? "#16a34a" : p === "MEDIUM" ? "#d97706" : "#dc2626",
-                          }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
           </div>
           <div className="table-card">
             <div className="table-header">
@@ -612,8 +563,7 @@ export default function Dashboard({
                     <th>Ticket ID</th>
                     <th>Customer</th>
                     <th>Inverter</th>
-                    <th>Priority</th>
-                    <th>Status / SLA</th>
+                    <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -636,12 +586,8 @@ export default function Dashboard({
                         </span>
                       </td>
                       <td>
-                        <PriorityBadge priority={t.priority} />
-                      </td>
-                      <td>
                         <div className="status-sla">
                           <StatusBadge status={t.status} />
-                          <SlaBadge status={t.slaStatus} />
                         </div>
                       </td>
                     </tr>

@@ -21,6 +21,13 @@ export const getNavItems = (roles: RoleDefinition[], userRole: Role) => {
   return ALL_MODULES.filter((m) => canAccess(roles, userRole, m.id, "view"));
 };
 
+export function formatTicketStatusLabel(status: string): string {
+  const raw = String(status || "").trim().toUpperCase();
+  if (!raw) return "";
+  if (raw === "UNDER_REPAIRED") return "UNDER REPAIR";
+  return raw.replace(/_/g, " ");
+}
+
 export function getPasswordStrength(pwd: string): {
   score: number;
   label: string;

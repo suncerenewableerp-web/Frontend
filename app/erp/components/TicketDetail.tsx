@@ -63,8 +63,8 @@ function toCatalogKey(input: any): string | null {
   if (!collapsed) return null;
   return collapsed.toLowerCase();
 }
-import { canAccess } from "../utils";
-import { Badge, PriorityBadge, SlaBadge, StatusBadge } from "./Badges";
+import { canAccess, formatTicketStatusLabel } from "../utils";
+import { Badge, SlaBadge, StatusBadge } from "./Badges";
 import DatePicker from "./DatePicker";
 import NameCombobox from "./NameCombobox";
 import TicketTimeline from "./TicketTimeline";
@@ -456,7 +456,7 @@ export default function TicketDetail({
       CREATED: "Created",
       PICKUP_SCHEDULED: "Pickup Scheduled",
       IN_TRANSIT: "In Transit",
-      UNDER_REPAIRED: "Under Repaired",
+      UNDER_REPAIRED: "Under Repair",
       UNDER_DISPATCH: "Under Dispatch",
       DISPATCHED: "Dispatched",
       INSTALLATION_DONE: "Installation Done",
@@ -1363,9 +1363,7 @@ export default function TicketDetail({
             </span>
             {canShowHeaderBadges ? (
               <>
-                <PriorityBadge priority={ticket.priority} />
                 <StatusBadge status={ticket.status} />
-                <SlaBadge status={ticket.slaStatus} />
               </>
             ) : null}
           </div>
@@ -1417,7 +1415,7 @@ export default function TicketDetail({
                     STATUS_ORDER.indexOf(s) > currentIdx + 1
                   }
                 >
-                  {s.replace(/_/g, " ")}
+                  {formatTicketStatusLabel(s)}
                 </option>
               ))}
             </select>
