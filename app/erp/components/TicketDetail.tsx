@@ -4616,21 +4616,17 @@ export default function TicketDetail({
                           >
                             {dispatchApprovalSaving ? "Approving..." : "Approve Dispatch"}
                           </button>
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            type="button"
-                            disabled={dispatchRejectSaving || dispatchApprovalSaving}
-                            onClick={() => {
-                              const r = String(dispatchRejectRemark || "").trim();
-                              if (!r) {
-                                setDispatchRejectError("Remark is required to reject.");
-                                return;
-                              }
-                              setDispatchRejectSaving(true);
-                              setDispatchRejectError("");
-                              setDispatchApprovalError("");
-                              setLogisticsSavedMsg("");
-                              apiDispatchReject(ticket.id, r)
+	                          <button
+	                            className="btn btn-ghost btn-sm"
+	                            type="button"
+	                            disabled={dispatchRejectSaving || dispatchApprovalSaving}
+	                            onClick={() => {
+	                              const r = String(dispatchRejectRemark || "").trim();
+	                              setDispatchRejectSaving(true);
+	                              setDispatchRejectError("");
+	                              setDispatchApprovalError("");
+	                              setLogisticsSavedMsg("");
+	                              apiDispatchReject(ticket.id, r)
                                 .then(() => apiLogisticsByTicket(ticket.id))
                                 .then((rows) => {
                                   const dispatch =
@@ -4648,16 +4644,16 @@ export default function TicketDetail({
                           >
                             {dispatchRejectSaving ? "Rejecting..." : "Not Approved"}
                           </button>
-                          <input
-                            className="form-input"
-                            placeholder="Remark (why not approved)"
-                            value={dispatchRejectRemark}
-                            onChange={(e) => setDispatchRejectRemark(e.target.value)}
-                            style={{ minWidth: 260 }}
-                            disabled={dispatchRejectSaving || dispatchApprovalSaving}
-                          />
-                        </div>
-                      ) : null}
+	                          <input
+	                            className="form-input"
+	                            placeholder="Remark (optional)"
+	                            value={dispatchRejectRemark}
+	                            onChange={(e) => setDispatchRejectRemark(e.target.value)}
+	                            style={{ minWidth: 260 }}
+	                            disabled={dispatchRejectSaving || dispatchApprovalSaving}
+	                          />
+	                        </div>
+	                      ) : null}
                     </div>
                     {dispatchApprovalError ? (
                       <div className="form-error" style={{ marginTop: 10 }}>
