@@ -323,6 +323,7 @@ export type BackendLogistics = {
     dispatchApproved?: boolean;
     dispatchApprovedAt?: string | Date;
     dispatchApprovedBy?: string;
+    dispatchApprovalRemark?: string;
     dispatchRejected?: boolean;
     dispatchRejectedAt?: string | Date;
     dispatchRejectedBy?: string;
@@ -730,6 +731,7 @@ export type JobCardListRow = {
   ticket: Ticket;
   jobStatus: string;
   engineerFinalStatus: string;
+  finalRemarks: string;
   repairActionsByName: string;
   checkedByName: string;
   updatedAt: string; // YYYY-MM-DD
@@ -756,6 +758,7 @@ export async function apiJobCardsList(): Promise<JobCardListRow[]> {
         ticket,
         jobStatus: String(jc?.currentStatus || ""),
         engineerFinalStatus: String(jc?.engineerFinalStatus || ""),
+        finalRemarks: String(jc?.finalRemarks || ""),
         repairActionsByName: String(jc?.repairActionsByName || ""),
         checkedByName: String(jc?.checkedByName || ""),
         updatedAt: toDateInput(jc?.updatedAt),
@@ -763,6 +766,13 @@ export async function apiJobCardsList(): Promise<JobCardListRow[]> {
       } satisfies JobCardListRow;
     })
     .filter(Boolean) as JobCardListRow[];
+}
+
+export async function apiJobCardDelete(jobCardId: string): Promise<void> {
+  const id = String(jobCardId || "").trim();
+  if (!id) throw new Error("jobCardId is required");
+  const env = await apiFetch<unknown>(`/api/jobcards/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!env.success) throw new Error(env.message || "Failed to delete job card");
 }
 
 export async function apiTicketJobCardFinalize(
@@ -1380,12 +1390,14 @@ export async function apiUnderDispatchSave(input: {
   invoiceGenerated: boolean;
   paymentDone: boolean;
   remark?: string;
+  requestApproval?: boolean;
 }): Promise<{ invoiceGenerated: boolean; paymentDone: boolean }> {
   const payload = {
     ticketId: input.ticketId,
     invoiceGenerated: input.invoiceGenerated,
     paymentDone: input.paymentDone,
     ...(typeof input.remark !== "undefined" ? { remark: String(input.remark || "") } : {}),
+    ...(typeof input.requestApproval !== "undefined" ? { requestApproval: Boolean(input.requestApproval) } : {}),
   };
   const env = await apiFetch<{ invoiceGenerated?: unknown; paymentDone?: unknown }>(
     "/api/logistics/under-dispatch",
@@ -1417,10 +1429,10 @@ export async function apiUnderDispatchProofUpload(
   };
 }
 
-export async function apiDispatchApprove(ticketId: string): Promise<{ dispatchApproved: boolean }> {
+export async function apiDispatchApprove(ticketId: string, remark?: string): Promise<{ dispatchApproved: boolean }> {
   const env = await apiFetch<{ dispatchApproved?: unknown }>("/api/logistics/approve-dispatch", {
     method: "POST",
-    body: JSON.stringify({ ticketId }),
+    body: JSON.stringify({ ticketId, ...(typeof remark !== "undefined" ? { remark: String(remark || "") } : {}) }),
   });
   if (!env.success) throw new Error(env.message || "Failed to approve dispatch");
   return { dispatchApproved: Boolean(env.data?.dispatchApproved ?? true) };

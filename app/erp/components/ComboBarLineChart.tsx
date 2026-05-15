@@ -36,6 +36,7 @@ export default function ComboBarLineChart({
   yTicks = 5,
   yLabel = "",
   showBarValues = false,
+  showLine = true,
   ariaLabel = "Chart",
 }: {
   points: ComboPoint[];
@@ -45,6 +46,7 @@ export default function ComboBarLineChart({
   yTicks?: number;
   yLabel?: string;
   showBarValues?: boolean;
+  showLine?: boolean;
   ariaLabel?: string;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -55,7 +57,7 @@ export default function ComboBarLineChart({
     const n = safePoints.length;
     const maxRaw = safePoints.reduce((best, p) => {
       const barsMax = (p.bars || []).reduce((b, bar) => Math.max(b, Number(bar.value) || 0), 0);
-      const lineV = Number(p.lineValue ?? (p.bars?.[0]?.value ?? 0)) || 0;
+      const lineV = showLine ? Number(p.lineValue ?? (p.bars?.[0]?.value ?? 0)) || 0 : 0;
       return Math.max(best, barsMax, lineV);
     }, 0);
     const yMax = Math.max(1, niceCeil(maxRaw));
@@ -65,7 +67,7 @@ export default function ComboBarLineChart({
     const tickValues = Array.from({ length: ticks }, (_, i) => i * tickStep);
     const labelStep = n ? Math.max(1, Math.ceil(n / 7)) : 1;
     return { n, yMax, tickValues, labelStep };
-  }, [points, yTicks]);
+  }, [points, yTicks, showLine]);
 
   const dims = useMemo(() => {
     const w = Math.max(0, Math.floor(width));
@@ -102,16 +104,20 @@ export default function ComboBarLineChart({
   const barGap = 4;
   const barW = Math.max(3, (barGroupW - barGap * (barsPerPoint - 1)) / barsPerPoint);
 
-  const linePts = points.map((p, idx) => {
-    const lineV = Number(p.lineValue ?? (p.bars?.[0]?.value ?? 0)) || 0;
-    const tip = p.xTooltip || p.xLabel;
-    const bars = Array.isArray(p.bars) ? p.bars : [];
-    const barStr = bars.map((b) => `${b.label} ${Number(b.value) || 0}`).join(" · ");
-    return { id: p.id, x: xCenter(idx), y: scaleY(lineV), value: lineV, title: `${tip} • ${barStr}` };
-  });
-  const lineD = linePts
-    .map((pt, i) => `${i === 0 ? "M" : "L"} ${pt.x.toFixed(2)} ${pt.y.toFixed(2)}`)
-    .join(" ");
+  const linePts = showLine
+    ? points.map((p, idx) => {
+        const lineV = Number(p.lineValue ?? (p.bars?.[0]?.value ?? 0)) || 0;
+        const tip = p.xTooltip || p.xLabel;
+        const bars = Array.isArray(p.bars) ? p.bars : [];
+        const barStr = bars.map((b) => `${b.label} ${Number(b.value) || 0}`).join(" · ");
+        return { id: p.id, x: xCenter(idx), y: scaleY(lineV), value: lineV, title: `${tip} • ${barStr}` };
+      })
+    : [];
+  const lineD = showLine
+    ? linePts
+        .map((pt, i) => `${i === 0 ? "M" : "L"} ${pt.x.toFixed(2)} ${pt.y.toFixed(2)}`)
+        .join(" ")
+    : "";
 
   return (
     <div
@@ -244,7 +250,7 @@ export default function ComboBarLineChart({
                 const h = Math.max(2, Math.round((v / metrics.yMax) * dims.innerH));
                 const x = groupX + j * (barW + barGap);
                 const y = baseY - h;
-                const showLabel = showBarValues && v > 0 && (barW >= 10 || isSelected);
+                const showLabel = showBarValues && v > 0;
                 const labelY = Math.max(dims.padT + 12, y - 4);
                 return (
                   <g key={b.id}>
@@ -289,46 +295,50 @@ export default function ComboBarLineChart({
           );
         })}
 
-        {/* line */}
-        <path
-          d={lineD}
-          fill="none"
-          stroke="#111827"
-          strokeWidth={2}
-          opacity={0.9}
-          vectorEffect="non-scaling-stroke"
-        />
-        {linePts.map((pt) => {
-          const isSelected = pt.id === selectedId;
-          return (
-            <g
-              key={pt.id}
-              onClick={() => onSelect?.(pt.id)}
-              onKeyDown={(e) => {
-                if (!onSelect) return;
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onSelect(pt.id);
-                }
-              }}
-              tabIndex={onSelect ? 0 : undefined}
-              role={onSelect ? "button" : undefined}
-              aria-label={onSelect ? pt.title : undefined}
-              style={{ cursor: onSelect ? "pointer" : "default" }}
-            >
-              <title>{pt.title}</title>
-              <circle
-                cx={pt.x}
-                cy={pt.y}
-                r={isSelected ? 5.5 : 4.5}
-                fill="white"
-                stroke="#111827"
-                strokeWidth={2}
-                vectorEffect="non-scaling-stroke"
-              />
-            </g>
-          );
-        })}
+        {/* line (optional) */}
+        {showLine ? (
+          <>
+            <path
+              d={lineD}
+              fill="none"
+              stroke="#111827"
+              strokeWidth={2}
+              opacity={0.9}
+              vectorEffect="non-scaling-stroke"
+            />
+            {linePts.map((pt) => {
+              const isSelected = pt.id === selectedId;
+              return (
+                <g
+                  key={pt.id}
+                  onClick={() => onSelect?.(pt.id)}
+                  onKeyDown={(e) => {
+                    if (!onSelect) return;
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onSelect(pt.id);
+                    }
+                  }}
+                  tabIndex={onSelect ? 0 : undefined}
+                  role={onSelect ? "button" : undefined}
+                  aria-label={onSelect ? pt.title : undefined}
+                  style={{ cursor: onSelect ? "pointer" : "default" }}
+                >
+                  <title>{pt.title}</title>
+                  <circle
+                    cx={pt.x}
+                    cy={pt.y}
+                    r={isSelected ? 5.5 : 4.5}
+                    fill="white"
+                    stroke="#111827"
+                    strokeWidth={2}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                </g>
+              );
+            })}
+          </>
+        ) : null}
       </svg>
 
       {selected ? (

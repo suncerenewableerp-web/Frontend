@@ -5,17 +5,17 @@ import type { Ticket, User } from "../types";
 import { StatusBadge } from "./Badges";
 import { STATUS_COLORS } from "../constants";
 import {
-  LuCalendarClock,
   LuCircleCheck,
   LuShieldAlert,
   LuTicket,
   LuTruck,
   LuWrench,
-  LuMapPin,
 } from "react-icons/lu";
 import {
   apiDashboardTicketTrends,
+  apiJobCardsList,
   apiPendingDispatchApprovalsList,
+  type JobCardListRow,
   type PendingDispatchApprovalTicket,
   type TicketTrendsPoint,
 } from "../api";
@@ -35,21 +35,36 @@ export default function Dashboard({
     t: Ticket,
     opts?: { tab?: "overview" | "jobcard" | "logistics" | "sla"; logisticsStage?: "pickup" | "under_dispatch" | "dispatch" },
   ) => void;
-  onOpenTickets: (preset?: { status?: string; priority?: string; tab?: "offline_booking" }) => void;
+  onOpenTickets: (preset?: {
+    status?: string;
+    priority?: string;
+    tab?:
+      | "open"
+      | "all"
+      | "inward"
+      | "repaired"
+      | "offline_booking"
+      | "outward"
+      | "approval_pending"
+      | "approved_by_admin"
+      | "closed";
+  }) => void;
 }) {
   const isCustomer = String(user.role || "").toUpperCase() === "CUSTOMER";
   const isAdmin = String(user.role || "").toUpperCase() === "ADMIN";
   const isSales = String(user.role || "").toUpperCase() === "SALES";
-  const inward = tickets.filter((t) =>
-    ["CREATED", "PICKUP_SCHEDULED", "IN_TRANSIT"].includes(String(t.status || "").toUpperCase()),
+  const inwardCreated = tickets.filter((t) => String(t.status || "").toUpperCase() === "CREATED").length;
+  const inwardUnderPickup = tickets.filter((t) =>
+    ["PICKUP_SCHEDULED", "IN_TRANSIT"].includes(String(t.status || "").toUpperCase()),
   ).length;
-  const pickupScheduled = tickets.filter((t) => t.status === "PICKUP_SCHEDULED").length;
-  const inTransit = tickets.filter((t) => t.status === "IN_TRANSIT").length;
-  const underDispatch = tickets.filter((t) => t.status === "UNDER_DISPATCH").length;
-  const underRepair = tickets.filter((t) => t.status === "UNDER_REPAIRED").length;
-  const onsiteRepair = tickets.filter(
-    (t) => String(t.serviceType || "").trim().toUpperCase() === "ONSITE" && t.status !== "CLOSED",
+  const inward = inwardCreated + inwardUnderPickup;
+
+  const underDispatch = tickets.filter((t) => String(t.status || "").toUpperCase() === "UNDER_DISPATCH").length;
+  const dispatched = tickets.filter((t) =>
+    ["DISPATCHED", "INSTALLATION_DONE"].includes(String(t.status || "").toUpperCase()),
   ).length;
+
+  const underRepairRaw = tickets.filter((t) => String(t.status || "").toUpperCase() === "UNDER_REPAIRED");
   const closed = tickets.filter((t) => t.status === "CLOSED").length;
   /*
   const breached = tickets.filter((t) => t.slaStatus === "BREACHED").length;
@@ -65,15 +80,17 @@ export default function Dashboard({
   const maxCount = Math.max(...Object.values(statusCounts), 1);
 
   const [approvalPending, setApprovalPending] = useState<PendingDispatchApprovalTicket[]>([]);
+  const [jobCards, setJobCards] = useState<JobCardListRow[]>([]);
 
   const showTrends = isAdmin || isSales;
   const [trendDays, setTrendDays] = useState(14);
   const [trends, setTrends] = useState<TicketTrendsPoint[]>([]);
   const [trendsErr, setTrendsErr] = useState("");
   const [selectedTrendDate, setSelectedTrendDate] = useState<string>("");
+  const [showAllDashboardTickets, setShowAllDashboardTickets] = useState(false);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isAdmin && !isSales) return;
     let cancelled = false;
 
     const tick = () => {
@@ -96,7 +113,65 @@ export default function Dashboard({
       cancelled = true;
       clearInterval(interval);
     };
-  }, [isAdmin]);
+  }, [isAdmin, isSales]);
+
+  useEffect(() => {
+    if (isCustomer) return;
+    let cancelled = false;
+    const tick = () => {
+      if (cancelled) return;
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      apiJobCardsList()
+        .then((rows) => {
+          if (cancelled) return;
+          setJobCards(rows || []);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setJobCards([]);
+        });
+    };
+    tick();
+    const interval = setInterval(tick, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isCustomer]);
+
+  const engineerFinalByTicketId = useMemo(() => {
+    const latestByTicket = new Map<string, JobCardListRow>();
+    (jobCards || []).forEach((r) => {
+      const t = r?.ticket;
+      const ticketId = String(t?.id || "");
+      if (!ticketId) return;
+      const prev = latestByTicket.get(ticketId);
+      if (!prev || (r.updatedAtMs || 0) >= (prev.updatedAtMs || 0)) latestByTicket.set(ticketId, r);
+    });
+    const out = new Map<string, string>();
+    latestByTicket.forEach((r, id) => {
+      const final = String(r?.engineerFinalStatus || "").toUpperCase().trim();
+      if (final) out.set(id, final);
+    });
+    return out;
+  }, [jobCards]);
+
+  const underProgressCounts = useMemo(() => {
+    let underRepair = 0;
+    let repaired = 0;
+    let scrap = 0;
+    (underRepairRaw || []).forEach((t) => {
+      const final = String(engineerFinalByTicketId.get(t.id) || "").toUpperCase().trim();
+      if (final === "REPAIRABLE") repaired++;
+      else if (final === "NOT_REPAIRABLE") scrap++;
+      else underRepair++;
+    });
+    return { underRepair, repaired, scrap, total: underRepair + repaired + scrap };
+  }, [underRepairRaw, engineerFinalByTicketId]);
+
+  const outwardCounts = useMemo(() => {
+    return { underDispatch, dispatched, total: underDispatch + dispatched };
+  }, [underDispatch, dispatched]);
 
   useEffect(() => {
     if (!showTrends) return;
@@ -166,8 +241,6 @@ export default function Dashboard({
         { id: "repaired", label: "Repaired", value: Math.max(0, Number(p.repaired) || 0), color: "#2563eb" },
         { id: "closed", label: "Closed", value: Math.max(0, Number(p.closed) || 0), color: "#16a34a" },
       ],
-      // Line touches Created bars (like the reference image)
-      lineValue: Math.max(0, Number(p.created) || 0),
     }));
   }, [trends]);
 
@@ -307,6 +380,7 @@ export default function Dashboard({
                 height={220}
                 yLabel="Tickets"
                 showBarValues
+                showLine={false}
                 ariaLabel="Tickets created vs repaired vs closed chart"
               />
 
@@ -349,11 +423,22 @@ export default function Dashboard({
           <div className="table-card">
             <div className="table-header">
               <div className="table-title">Your Tickets</div>
-              <button className="btn btn-ghost btn-sm" onClick={() => onNav("tickets")}>
-                View All →
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setShowAllDashboardTickets((v) => !v)}
+                >
+                  {showAllDashboardTickets ? "Show Less" : "Show All"}
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => onNav("tickets")}>
+                  View All →
+                </button>
+              </div>
             </div>
-            <div className="scroll-x">
+            <div
+              className="scroll-x"
+              style={showAllDashboardTickets ? { maxHeight: 420, overflowY: "auto" } : undefined}
+            >
               <table>
                 <thead>
                   <tr>
@@ -371,7 +456,7 @@ export default function Dashboard({
                       </td>
                     </tr>
                   ) : (
-                    myTickets.slice(0, 8).map((t) => (
+                    (showAllDashboardTickets ? myTickets : myTickets.slice(0, 8)).map((t) => (
                       <tr key={t.id}>
                         <td>
                           <button
@@ -406,72 +491,45 @@ export default function Dashboard({
         </>
       ) : (
         <>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => onNav("tickets")}>
+              View All →
+            </button>
+          </div>
           <div className="kpi-grid">
             {[
               {
                 label: "Inward Stage",
                 value: inward,
-                sub: "Created / Pickup / In transit",
+                sub: `Created: ${inwardCreated} · Under pickup: ${inwardUnderPickup}`,
                 color: "#6b3a1f",
                 Icon: LuTicket,
-                onClick: () => onOpenTickets({ status: "OPEN" }),
+                onClick: () => onOpenTickets({ tab: "inward" }),
               },
-              ...(isAdmin
-                ? [
-                    {
-                      label: "Approval Pending",
-                      value: approvalPending.length,
-                      sub: "Dispatch approvals waiting",
-                      color: "#7c3aed",
-                      Icon: LuShieldAlert,
-                      onClick: () => onOpenTickets({ status: "APPROVAL_PENDING" }),
-                    },
-                  ]
-                : []),
-              ...((isAdmin || isSales)
-                ? [
-                    {
-                      label: "Pickup Scheduled",
-                      value: pickupScheduled,
-                      sub: "Sales: pickup dates",
-                      color: "#2563eb",
-                      Icon: LuCalendarClock,
-                      onClick: () => onOpenTickets({ status: "PICKUP_SCHEDULED" }),
-                    },
-                    {
-                      label: "In Transit",
-                      value: inTransit,
-                      sub: "Sales: logistics moving",
-                      color: "#0ea5e9",
-                      Icon: LuTruck,
-                      onClick: () => onOpenTickets({ status: "IN_TRANSIT" }),
-                    },
-                    {
-                      label: "Under Dispatch",
-                      value: underDispatch,
-                      sub: "Sales: dispatch workflow",
-                      color: "#7c3aed",
-                      Icon: LuTruck,
-                      onClick: () => onOpenTickets({ status: "UNDER_DISPATCH" }),
-                    },
-                    {
-                      label: "Under Repair",
-                      value: underRepair,
-                      sub: "Servicing: workshop progress",
-                      color: "#f97316",
-                      Icon: LuWrench,
-                      onClick: () => onOpenTickets({ status: "UNDER_REPAIRED" }),
-                    },
-                    {
-                      label: "On-site Repairing",
-                      value: onsiteRepair,
-                      sub: "Servicing: on-site repairing",
-                      color: "#10b981",
-                      Icon: LuMapPin,
-                      onClick: () => onOpenTickets({ tab: "offline_booking" }),
-                    },
-                  ]
-                : []),
+              {
+                label: "Under Progress",
+                value: underProgressCounts.total,
+                sub: `Under repair: ${underProgressCounts.underRepair} · Repaired: ${underProgressCounts.repaired} · Scrap: ${underProgressCounts.scrap}`,
+                color: "#f97316",
+                Icon: LuWrench,
+                onClick: () => onOpenTickets({ tab: "repaired" }),
+              },
+              {
+                label: "Outward",
+                value: outwardCounts.total,
+                sub: `Under dispatch: ${outwardCounts.underDispatch} · Dispatched: ${outwardCounts.dispatched}`,
+                color: "#0ea5e9",
+                Icon: LuTruck,
+                onClick: () => onOpenTickets({ tab: "outward" }),
+              },
+              {
+                label: "Under Approval",
+                value: approvalPending.length,
+                sub: "Waiting for Admin approval",
+                color: "#7c3aed",
+                Icon: LuShieldAlert,
+                onClick: () => onOpenTickets({ tab: "approval_pending" }),
+              },
               /*
               {
                 label: "High Priority",
@@ -552,11 +610,22 @@ export default function Dashboard({
           <div className="table-card">
             <div className="table-header">
               <div className="table-title">Recent Tickets</div>
-              <button className="btn btn-ghost btn-sm" onClick={() => onNav("tickets")}>
-                View All →
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setShowAllDashboardTickets((v) => !v)}
+                >
+                  {showAllDashboardTickets ? "Show Less" : "Show All"}
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => onNav("tickets")}>
+                  View All →
+                </button>
+              </div>
             </div>
-            <div className="scroll-x">
+            <div
+              className="scroll-x"
+              style={showAllDashboardTickets ? { maxHeight: 420, overflowY: "auto" } : undefined}
+            >
               <table>
                 <thead>
                   <tr>
@@ -567,7 +636,7 @@ export default function Dashboard({
                   </tr>
                 </thead>
                 <tbody>
-                  {myTickets.slice(0, 5).map((t) => (
+                  {(showAllDashboardTickets ? myTickets : myTickets.slice(0, 5)).map((t) => (
                     <tr key={t.id}>
                       <td>
                         <button

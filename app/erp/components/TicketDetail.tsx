@@ -635,15 +635,17 @@ export default function TicketDetail({
   const [dispatchProofFile, setDispatchProofFile] = useState<File | null>(null);
   const [dispatchProofError, setDispatchProofError] = useState("");
 
-  const [logisticsStage, setLogisticsStage] = useState<"pickup" | "under_dispatch" | "dispatch">(() => {
-    if (initialLogisticsStage) return initialLogisticsStage;
-    return ticket.status === "UNDER_DISPATCH" ||
-      ticket.status === "DISPATCHED" ||
-      ticket.status === "INSTALLATION_DONE" ||
-      ticket.status === "CLOSED"
-      ? "dispatch"
-      : "pickup";
-  });
+	  const [logisticsStage, setLogisticsStage] = useState<"pickup" | "under_dispatch" | "dispatch">(() => {
+	    if (initialLogisticsStage) return initialLogisticsStage;
+      // Sales must get Admin approval before Dispatch; default Sales to Under Dispatch review.
+      if (roleName === "SALES" && ticket.status === "UNDER_DISPATCH") return "under_dispatch";
+	    return ticket.status === "UNDER_DISPATCH" ||
+	      ticket.status === "DISPATCHED" ||
+	      ticket.status === "INSTALLATION_DONE" ||
+	      ticket.status === "CLOSED"
+	      ? "dispatch"
+	      : "pickup";
+	  });
 
   const [, setPickupLogistics] = useState<BackendLogistics | null>(null);
   const [dispatchLogistics, setDispatchLogistics] = useState<BackendLogistics | null>(null);
@@ -659,6 +661,7 @@ export default function TicketDetail({
   const [dispatchRejectSaving, setDispatchRejectSaving] = useState(false);
   const [dispatchApprovalError, setDispatchApprovalError] = useState("");
   const [dispatchRejectError, setDispatchRejectError] = useState("");
+  const [dispatchApproveRemark, setDispatchApproveRemark] = useState("");
   const [dispatchRejectRemark, setDispatchRejectRemark] = useState("");
   const [logisticsError, setLogisticsError] = useState("");
   const [logisticsSavedMsg, setLogisticsSavedMsg] = useState("");
@@ -856,10 +859,11 @@ export default function TicketDetail({
         const nextDispatchCourier = String(dispatch?.courierDetails?.courierName || "BlueDart");
         const nextDispatchLr = String(dispatch?.courierDetails?.lrNumber || "");
         const nextDispatchLoc = String(dispatch?.pickupDetails?.pickupLocation || "");
-        const nextInvoice = Boolean(dispatch?.billing?.invoiceGenerated);
-        const nextPayment = Boolean(dispatch?.billing?.paymentDone);
-        const nextRemark = String(dispatch?.billing?.salesRemark || "");
-        const nextAdminRejectRemark = String(dispatch?.billing?.dispatchRejectionRemark || "");
+	        const nextInvoice = Boolean(dispatch?.billing?.invoiceGenerated);
+	        const nextPayment = Boolean(dispatch?.billing?.paymentDone);
+	        const nextRemark = String(dispatch?.billing?.salesRemark || "");
+	        const nextAdminApproveRemark = String(dispatch?.billing?.dispatchApprovalRemark || "");
+	        const nextAdminRejectRemark = String(dispatch?.billing?.dispatchRejectionRemark || "");
 
         setDispatchDate(nextDispatchDate);
         setDispatchCourierName(nextDispatchCourier);
@@ -869,10 +873,11 @@ export default function TicketDetail({
         setDispatchPaymentDone(nextPayment);
         setDispatchSalesRemark(nextRemark);
         setDispatchSalesRemarkBaseline(dispatch ? nextRemark : null);
-        setDispatchProofFile(null);
-        setDispatchProofError("");
-        setDispatchRejectRemark(nextAdminRejectRemark);
-        setDispatchRejectError("");
+	        setDispatchProofFile(null);
+	        setDispatchProofError("");
+	        setDispatchApproveRemark(nextAdminApproveRemark);
+	        setDispatchRejectRemark(nextAdminRejectRemark);
+	        setDispatchRejectError("");
         setDispatchBaseline(
           dispatch
             ? {
@@ -1230,7 +1235,7 @@ export default function TicketDetail({
     apiTicketJobCardFinalize(ticket.id, decision, finalizedAt)
       .then((saved) => {
         setJobCard(saved);
-        setJobSavedMsg(decision === "REPAIRABLE" ? "Finalized as REPAIRABLE." : "Finalized as NOT REPAIRABLE (SCRAP).");
+        setJobSavedMsg(decision === "REPAIRABLE" ? "Finalized as REPAIRED." : "Finalized as SCRAP.");
       })
       .catch((e) => setJobError(e instanceof Error ? e.message : "Failed to finalize job card"))
       .finally(() => setJobSaving(false));
@@ -2851,7 +2856,7 @@ export default function TicketDetail({
                           setJobCard((p) => (p ? { ...p, currentStatus: "NOT_REPAIRABLE" } : p))
                         }
                       />
-                      Not Repairable
+	                      Scrap
                     </label>
                     {!jobCard.currentStatus.trim() ? (
                       <div style={{ fontSize: 12, color: "var(--text3)" }}>
@@ -2873,7 +2878,7 @@ export default function TicketDetail({
                         lineHeight: 1.5,
                       }}
                     >
-                      Selecting <b>Not Repairable</b> will close this ticket after saving and notify the sales team.
+	                      Selecting <b>Scrap</b> marks this unit as scrap (non-repairable) for Sales/Admin visibility.
                     </div>
                   ) : null}
 
@@ -3250,14 +3255,19 @@ export default function TicketDetail({
 	                          disabled={jobSaving}
 	                          onClick={() => finalizeJobCard("NOT_REPAIRABLE")}
 	                        >
-	                          Scrap (Not Repairable)
+		                          Scrap
 	                        </button>
 	                        {String(jobCard.engineerFinalStatus || "").trim() ? (
 	                          <span style={{ fontSize: 12, color: "var(--text3)" }}>
-	                            Final:{" "}
-	                            <span className="tag">
-	                              {String(jobCard.engineerFinalStatus || "").toUpperCase()}
-	                            </span>
+		                            Final:{" "}
+		                            <span className="tag">
+		                              {(() => {
+		                                const s = String(jobCard.engineerFinalStatus || "").toUpperCase().trim();
+		                                if (s === "NOT_REPAIRABLE") return "SCRAP";
+		                                if (s === "REPAIRABLE") return "REPAIRED";
+		                                return s || "—";
+		                              })()}
+		                            </span>
 	                            {jobCard.engineerFinalizedAt ? (
 	                              <span style={{ marginLeft: 8, fontFamily: "var(--mono)" }}>
 	                                {jobCard.engineerFinalizedAt}
@@ -3404,7 +3414,7 @@ export default function TicketDetail({
                         lineHeight: 1.5,
                       }}
                     >
-                      This job card was marked <b>NOT REPAIRABLE</b> by the engineer.
+	                      This job card was marked <b>SCRAP</b> by the engineer.
                     </div>
                   ) : null}
 
@@ -4432,10 +4442,23 @@ export default function TicketDetail({
                       </label>
                     </div>
 
-                    {dispatchInvoiceGenerated && dispatchPaymentDone ? (
                       <div style={{ marginTop: 12 }}>
                         <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 8 }}>
-                          Upload billing proof PDF and add a remark for Admin approval.
+                          Remarks by Sales (visible to Admin)
+                        </div>
+                        <textarea
+                          className="form-input"
+                          rows={2}
+                          placeholder="Remarks by Sales"
+                          value={dispatchSalesRemark}
+                          disabled={underDispatchSaving || roleName === "ADMIN"}
+                          onChange={(e) => setDispatchSalesRemark(e.target.value)}
+                        />
+                      </div>
+
+                      <div style={{ marginTop: 12 }}>
+                        <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 8 }}>
+                          Billing proof PDF (optional)
                         </div>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
                           <input
@@ -4457,16 +4480,6 @@ export default function TicketDetail({
                           />
                           <div style={{ fontSize: 12, color: "var(--text3)" }}>PDF up to 5MB</div>
                         </div>
-                        <div style={{ marginTop: 10 }}>
-                          <textarea
-                            className="form-input"
-                            rows={2}
-                            placeholder="Remark for Admin (optional)"
-                            value={dispatchSalesRemark}
-                            disabled={underDispatchSaving || roleName === "ADMIN"}
-                            onChange={(e) => setDispatchSalesRemark(e.target.value)}
-                          />
-                        </div>
                         {dispatchProofError ? (
                           <div className="form-error" style={{ marginTop: 10 }}>
                             {dispatchProofError}
@@ -4483,37 +4496,24 @@ export default function TicketDetail({
                           )}
                         </div>
                       </div>
-                    ) : null}
 
                     <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center" }}>
-                      <button
-                        className="btn btn-accent btn-sm"
-                        type="button"
-                        disabled={underDispatchSaving || (!dispatchBillingDirty && !dispatchRemarkDirty && !dispatchProofFile)}
-                        onClick={() => {
-                          const existingProof = String(dispatchLogistics?.billing?.proofDocument?.url || "").trim();
-                          if (
-                            roleName === "SALES" &&
-                            dispatchInvoiceGenerated &&
-                            dispatchPaymentDone &&
-                            !existingProof &&
-                            !dispatchProofFile
-                          ) {
-                            setDispatchProofError("Please choose a billing proof PDF.");
-                            return;
-                          }
-
-                          setUnderDispatchSaving(true);
-                          setDispatchApprovalError("");
-                          setLogisticsError("");
-                          setLogisticsSavedMsg("");
-                          const uploadFirst =
-                            dispatchProofFile && dispatchInvoiceGenerated && dispatchPaymentDone && roleName !== "ADMIN"
-                              ? apiUnderDispatchProofUpload(ticket.id, dispatchProofFile, dispatchSalesRemark)
-                                  .then(() => setDispatchProofFile(null))
-                                  .catch((e) => {
-                                    throw e;
-                                  })
+	                      <button
+	                        className="btn btn-accent btn-sm"
+	                        type="button"
+	                        disabled={underDispatchSaving || (!dispatchBillingDirty && !dispatchRemarkDirty && !dispatchProofFile)}
+	                        onClick={() => {
+	                          setUnderDispatchSaving(true);
+	                          setDispatchApprovalError("");
+	                          setLogisticsError("");
+	                          setLogisticsSavedMsg("");
+	                          const uploadFirst =
+	                            dispatchProofFile && roleName !== "ADMIN"
+	                              ? apiUnderDispatchProofUpload(ticket.id, dispatchProofFile, dispatchSalesRemark)
+	                                  .then(() => setDispatchProofFile(null))
+	                                  .catch((e) => {
+	                                    throw e;
+	                                  })
                               : Promise.resolve();
 
                           uploadFirst
@@ -4558,10 +4558,76 @@ export default function TicketDetail({
                             )
                             .finally(() => setUnderDispatchSaving(false));
                         }}
-                      >
-                        {underDispatchSaving ? "Saving..." : "Save Under Dispatch"}
-                      </button>
-                    </div>
+	                      >
+	                        {underDispatchSaving ? "Saving..." : "Save Under Dispatch"}
+	                      </button>
+                        {roleName === "SALES" ? (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            type="button"
+                            disabled={underDispatchSaving}
+                            onClick={() => {
+                              setUnderDispatchSaving(true);
+                              setDispatchApprovalError("");
+                              setLogisticsError("");
+                              setLogisticsSavedMsg("");
+                              const uploadFirst =
+                                dispatchProofFile
+                                  ? apiUnderDispatchProofUpload(ticket.id, dispatchProofFile, dispatchSalesRemark)
+                                      .then(() => setDispatchProofFile(null))
+                                      .catch((e) => {
+                                        throw e;
+                                      })
+                                  : Promise.resolve();
+
+                              uploadFirst
+                                .then(() =>
+                                  apiUnderDispatchSave({
+                                    ticketId: ticket.id,
+                                    invoiceGenerated: dispatchInvoiceGenerated,
+                                    paymentDone: dispatchPaymentDone,
+                                    remark: dispatchSalesRemark,
+                                    requestApproval: true,
+                                  }),
+                                )
+                                .then(() => Promise.all([apiTicketGet(ticket.id), apiLogisticsByTicket(ticket.id)]))
+                                .then(([fresh, rows]) => {
+                                  onTicketUpdated(fresh);
+                                  if (fresh.status && fresh.status !== ticket.status) {
+                                    offerWhatsAppShare(fresh.status, fresh);
+                                  }
+                                  const dispatch =
+                                    rows.find((r) => String(r?.type || "").toUpperCase() === "DELIVERY") || null;
+                                  const invoiceSaved = Boolean(dispatch?.billing?.invoiceGenerated);
+                                  const paymentSaved = Boolean(dispatch?.billing?.paymentDone);
+                                  const approved = Boolean(dispatch?.billing?.dispatchApproved);
+                                  const remarkSaved = String(dispatch?.billing?.salesRemark || "");
+                                  setDispatchInvoiceGenerated(invoiceSaved);
+                                  setDispatchPaymentDone(paymentSaved);
+                                  setDispatchSalesRemark(remarkSaved);
+                                  setDispatchSalesRemarkBaseline(remarkSaved);
+                                  setDispatchBillingBaseline({ invoiceGenerated: invoiceSaved, paymentDone: paymentSaved });
+                                  setDispatchLogistics(dispatch);
+                                  if (!approved) {
+                                    setLogisticsSavedMsg("Sent for approval. Waiting for Admin approval.");
+                                    setLogisticsStage("under_dispatch");
+                                  } else {
+                                    setLogisticsSavedMsg("Approved. You can proceed to Dispatch.");
+                                    setLogisticsStage("dispatch");
+                                  }
+                                })
+                                .catch((e) =>
+                                  setLogisticsError(
+                                    e instanceof Error ? e.message : "Failed to send for approval",
+                                  ),
+                                )
+                                .finally(() => setUnderDispatchSaving(false));
+                            }}
+                          >
+                            {underDispatchSaving ? "Sending..." : "Send for Approval"}
+                          </button>
+                        ) : null}
+	                    </div>
 
                     <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
                       <span className="tag">
@@ -4574,38 +4640,53 @@ export default function TicketDetail({
                             ? "PENDING"
                             : "—"}
                       </span>
-                      {Boolean(dispatchLogistics?.billing?.dispatchRejected) &&
-                      String(dispatchLogistics?.billing?.dispatchRejectionRemark || "").trim() ? (
-                        <div style={{ fontSize: 12, color: "var(--red)" }}>
-                          Rejection: {String(dispatchLogistics?.billing?.dispatchRejectionRemark || "").trim()}
+	                      {Boolean(dispatchLogistics?.billing?.dispatchRejected) &&
+	                      String(dispatchLogistics?.billing?.dispatchRejectionRemark || "").trim() ? (
+	                        <div style={{ fontSize: 12, color: "var(--red)" }}>
+	                          Rejection: {String(dispatchLogistics?.billing?.dispatchRejectionRemark || "").trim()}
+	                        </div>
+	                      ) : null}
+                        {Boolean(dispatchLogistics?.billing?.dispatchApproved) &&
+                        String(dispatchLogistics?.billing?.dispatchApprovalRemark || "").trim() ? (
+                          <div style={{ fontSize: 12, color: "var(--text2)" }}>
+                            Approval: {String(dispatchLogistics?.billing?.dispatchApprovalRemark || "").trim()}
+                          </div>
+                        ) : null}
+	                      {roleName === "SALES" && !dispatchApprovedForSales ? (
+	                        <div style={{ fontSize: 12, color: "var(--text3)" }}>
+	                          {Boolean(dispatchLogistics?.billing?.dispatchRejected)
+	                            ? "Admin rejected dispatch approval. Update proof/remark and save again to re-request."
+	                            : "Dispatch will be available after Admin approval."}
                         </div>
                       ) : null}
-                      {roleName === "SALES" && !dispatchApprovedForSales ? (
-                        <div style={{ fontSize: 12, color: "var(--text3)" }}>
-                          {Boolean(dispatchLogistics?.billing?.dispatchRejected)
-                            ? "Admin rejected dispatch approval. Update proof/remark and save again to re-request."
-                            : "Dispatch will be available after Admin approval."}
-                        </div>
-                      ) : null}
-                      {roleName === "ADMIN" && !Boolean(dispatchLogistics?.billing?.dispatchApproved) ? (
-                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            type="button"
-                            disabled={dispatchApprovalSaving || dispatchRejectSaving}
+	                      {roleName === "ADMIN" && !Boolean(dispatchLogistics?.billing?.dispatchApproved) ? (
+	                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                            <input
+                              className="form-input"
+                              placeholder="Approval remark (optional)"
+                              value={dispatchApproveRemark}
+                              onChange={(e) => setDispatchApproveRemark(e.target.value)}
+                              style={{ minWidth: 260 }}
+                              disabled={dispatchRejectSaving || dispatchApprovalSaving}
+                            />
+	                          <button
+	                            className="btn btn-ghost btn-sm"
+	                            type="button"
+	                            disabled={dispatchApprovalSaving || dispatchRejectSaving}
                             onClick={() => {
                               setDispatchApprovalSaving(true);
                               setDispatchApprovalError("");
                               setDispatchRejectError("");
                               setLogisticsSavedMsg("");
-                              apiDispatchApprove(ticket.id)
-                                .then(() => apiLogisticsByTicket(ticket.id))
-                                .then((rows) => {
-                                  const dispatch =
-                                    rows.find((r) => String(r?.type || "").toUpperCase() === "DELIVERY") || null;
-                                  setDispatchLogistics(dispatch);
-                                  setLogisticsSavedMsg("Dispatch approved.");
-                                })
+	                              apiDispatchApprove(ticket.id, dispatchApproveRemark)
+	                                .then(() => apiLogisticsByTicket(ticket.id))
+		                                .then((rows) => {
+		                                  const dispatch =
+		                                    rows.find((r) => String(r?.type || "").toUpperCase() === "DELIVERY") || null;
+		                                  setDispatchLogistics(dispatch);
+                                      setDispatchApproveRemark(String(dispatch?.billing?.dispatchApprovalRemark || ""));
+		                                  setLogisticsSavedMsg("Dispatch approved.");
+		                                })
                                 .catch((e) =>
                                   setDispatchApprovalError(
                                     e instanceof Error ? e.message : "Failed to approve dispatch",

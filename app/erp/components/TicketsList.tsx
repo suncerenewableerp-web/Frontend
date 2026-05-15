@@ -269,6 +269,7 @@ export default function TicketsList({
   const [statusFilter, setStatusFilter] = useState(safeInitialStatusFilter);
   const [dateFilter, setDateFilter] = useState<DateFilter>("ALL");
   const [page, setPage] = useState(1);
+  const [showAllRows, setShowAllRows] = useState(false);
   const PAGE_SIZE = 8;
 
   const [jobCards, setJobCards] = useState<JobCardListRow[]>([]);
@@ -314,7 +315,7 @@ export default function TicketsList({
   };
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isAdmin && !isSales) return;
     let cancelled = false;
     const tick = () => {
       if (cancelled) return;
@@ -339,7 +340,7 @@ export default function TicketsList({
       cancelled = true;
       clearInterval(interval);
     };
-  }, [isAdmin]);
+  }, [isAdmin, isSales]);
 
   useEffect(() => {
     if (!isSales) return;
@@ -427,6 +428,23 @@ export default function TicketsList({
       const engineer = String(r?.checkedByName || "").trim();
       const qa = String(r?.repairActionsByName || "").trim();
       if (engineer || qa) out.set(id, { engineer, qa });
+    });
+    return out;
+  }, [jobCards]);
+
+  const engineerRemarksByTicketId = useMemo(() => {
+    const latestByTicket = new Map<string, JobCardListRow>();
+    (jobCards || []).forEach((r) => {
+      const t = r?.ticket;
+      const ticketId = String(t?.id || "");
+      if (!ticketId) return;
+      const prev = latestByTicket.get(ticketId);
+      if (!prev || (r.updatedAtMs || 0) >= (prev.updatedAtMs || 0)) latestByTicket.set(ticketId, r);
+    });
+    const out = new Map<string, string>();
+    latestByTicket.forEach((r, id) => {
+      const remark = String(r?.finalRemarks || "").trim();
+      if (remark) out.set(id, remark);
     });
     return out;
   }, [jobCards]);
@@ -595,12 +613,12 @@ export default function TicketsList({
 
   const rows = ticketsTab === "repaired" ? filteredRepaired : filtered;
 
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const startIndex = (currentPage - 1) * PAGE_SIZE;
-  const pageRows = rows.slice(startIndex, startIndex + PAGE_SIZE);
+  const totalPages = showAllRows ? 1 : Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const currentPage = showAllRows ? 1 : Math.min(page, totalPages);
+  const startIndex = showAllRows ? 0 : (currentPage - 1) * PAGE_SIZE;
+  const pageRows = showAllRows ? rows : rows.slice(startIndex, startIndex + PAGE_SIZE);
   const showingFrom = rows.length ? startIndex + 1 : 0;
-  const showingTo = Math.min(startIndex + PAGE_SIZE, rows.length);
+  const showingTo = showAllRows ? rows.length : Math.min(startIndex + PAGE_SIZE, rows.length);
 
   const statusFilterLabel =
     ticketsTab === "all"
@@ -633,8 +651,13 @@ export default function TicketsList({
       : canSeeSalesOwner
         ? 8
         : 7;
+  const showEngineerRemarksCol = !isCustomer && canLoadJobCards && ticketsTab !== "offline_booking";
   const offlineBookingExtraCols = ticketsTab === "offline_booking" ? 3 : 0; // engineer/date/remark
-  const baseEmptyColSpan = baseEmptyColSpanBase + (canSeeSerialNumber ? 1 : 0) + offlineBookingExtraCols;
+  const baseEmptyColSpan =
+    baseEmptyColSpanBase +
+    (canSeeSerialNumber ? 1 : 0) +
+    offlineBookingExtraCols +
+    (showEngineerRemarksCol ? 1 : 0);
   const emptyColSpan = baseEmptyColSpan + (canDeleteTickets ? 1 : 0);
 
   return (
@@ -753,20 +776,20 @@ export default function TicketsList({
                   Outward ({outwardCount})
                 </div>
               ) : null}
-              {isAdmin ? (
-                <div
-                  className={`tab ${ticketsTab === "approval_pending" ? "active" : ""}`}
-                  onClick={() => {
-                    setTicketsTab("approval_pending");
-                    setStatusFilter("ALL");
-                    setRepairedTab("all");
-                    setPage(1);
-                  }}
-                  title={approvalPendingError ? approvalPendingError : undefined}
-                >
-                  Approval Pending ({approvalPendingCount})
-                </div>
-              ) : null}
+	              {isAdmin || isSales ? (
+	                <div
+	                  className={`tab ${ticketsTab === "approval_pending" ? "active" : ""}`}
+	                  onClick={() => {
+	                    setTicketsTab("approval_pending");
+	                    setStatusFilter("ALL");
+	                    setRepairedTab("all");
+	                    setPage(1);
+	                  }}
+	                  title={approvalPendingError ? approvalPendingError : undefined}
+	                >
+	                  {isAdmin ? "Approval Pending" : "Under Approval"} ({approvalPendingCount})
+	                </div>
+	              ) : null}
               {isSales ? (
                 <div
                   className={`tab ${ticketsTab === "approved_by_admin" ? "active" : ""}`}
@@ -847,6 +870,18 @@ export default function TicketsList({
               </button>
             ) : null}
 
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                setShowAllRows((v) => !v);
+                setPage(1);
+              }}
+              title={showAllRows ? "Switch to paginated view" : "Show all tickets in one scrollable list"}
+            >
+              {showAllRows ? "Paginate" : "Show All"}
+            </button>
+
             {statusOptions.length ? (
               <select
                 className="select-filter"
@@ -909,7 +944,7 @@ export default function TicketsList({
                     setPage(1);
                   }}
                 >
-                  Repairable ({repairedTabCounts.repairable})
+                  Repaired ({repairedTabCounts.repairable})
                 </div>
                 <div
                   className={`tab ${repairedTab === "not_repairable" ? "active" : ""}`}
@@ -918,7 +953,7 @@ export default function TicketsList({
                     setPage(1);
                   }}
                 >
-                  Non-Repairable ({repairedTabCounts.notRepairable})
+                  Scrap ({repairedTabCounts.notRepairable})
                 </div>
               </div>
             )}
@@ -961,7 +996,10 @@ export default function TicketsList({
           </div>
         ) : null}
 
-        <div className="scroll-x">
+        <div
+          className="scroll-x"
+          style={showAllRows ? { maxHeight: "70vh", overflowY: "auto" } : undefined}
+        >
           <table>
 	            <thead>
 	              <tr>
@@ -975,9 +1013,10 @@ export default function TicketsList({
                     {ticketsTab === "offline_booking" ? <th style={{ minWidth: 220 }}>Remark</th> : null}
 		                {!isCustomer ? <th>Customer</th> : null}
 		                {canSeeSalesOwner ? <th>Sales Owner</th> : null}
-                    {ticketsTab === "repaired" ? <th>Repair Engineer</th> : null}
-                    {ticketsTab === "repaired" ? <th>QA</th> : null}
-		                <th>Fault</th>
+	                    {ticketsTab === "repaired" ? <th>Repair Engineer</th> : null}
+	                    {ticketsTab === "repaired" ? <th>QA</th> : null}
+			                <th>Fault</th>
+                      {showEngineerRemarksCol ? <th style={{ minWidth: 240 }}>Engineer Remarks</th> : null}
                 <th>Status</th>
                 {canDeleteTickets ? <th style={{ width: 64 }}>Delete</th> : null}
               </tr>
@@ -995,14 +1034,17 @@ export default function TicketsList({
                   </td>
                 </tr>
               ) : (
-                pageRows.map((t, idx) => {
-                  const final = String(engineerFinalByTicketId.get(t.id) || "").toUpperCase().trim();
-                  const showOutcome = ticketsTab === "repaired" && canLoadJobCards && !!final;
-                  const outcome =
-                    final === "NOT_REPAIRABLE" ? "SCRAP" : final === "REPAIRABLE" ? "REPAIRED" : null;
-                  const meta = ticketsTab === "repaired" ? repairMetaByTicketId.get(t.id) : null;
+	                pageRows.map((t, idx) => {
+	                  const final = String(engineerFinalByTicketId.get(t.id) || "").toUpperCase().trim();
+	                  const showOutcome = ticketsTab === "repaired" && canLoadJobCards && !!final;
+	                  const outcome =
+	                    final === "NOT_REPAIRABLE" ? "SCRAP" : final === "REPAIRABLE" ? "REPAIRED" : null;
+	                  const meta = ticketsTab === "repaired" ? repairMetaByTicketId.get(t.id) : null;
+                    const engineerRemark = showEngineerRemarksCol
+                      ? String(engineerRemarksByTicketId.get(t.id) || "").trim()
+                      : "";
 
-                  return (
+	                  return (
                     <tr key={t.id}>
                       <td
                         style={{
@@ -1099,23 +1141,38 @@ export default function TicketsList({
                             {meta?.qa || "—"}
                           </td>
                         ) : null}
-                      <td
-                        style={{
-                          maxWidth: 180,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          color: "var(--text2)",
-                          fontSize: 12,
-                        }}
-                      >
-                        {t.faultDescription}
-                      </td>
-                      <td>
-                        <div className="status-sla">
-                          <StatusBadge status={t.status} />
-                          {showOutcome && outcome ? <EngineerOutcomeBadge outcome={outcome} /> : null}
-                        </div>
+	                      <td
+	                        style={{
+	                          maxWidth: 180,
+	                          overflow: "hidden",
+	                          textOverflow: "ellipsis",
+	                          whiteSpace: "nowrap",
+	                          color: "var(--text2)",
+	                          fontSize: 12,
+	                        }}
+	                      >
+	                        {t.faultDescription}
+	                      </td>
+                        {showEngineerRemarksCol ? (
+                          <td
+                            style={{
+                              maxWidth: 260,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              color: "var(--text2)",
+                              fontSize: 12,
+                            }}
+                            title={engineerRemark || undefined}
+                          >
+                            {engineerRemark || "—"}
+                          </td>
+                        ) : null}
+	                      <td>
+	                        <div className="status-sla">
+	                          <StatusBadge status={t.status} />
+	                          {showOutcome && outcome ? <EngineerOutcomeBadge outcome={outcome} /> : null}
+	                        </div>
                       </td>
                       {canDeleteTickets ? (
                         <td style={{ textAlign: "right" }}>
@@ -1157,7 +1214,7 @@ export default function TicketsList({
           onDelete={doDelete}
         />
 
-        {rows.length > PAGE_SIZE ? (
+        {!showAllRows && rows.length > PAGE_SIZE ? (
           <div
             style={{
               padding: "12px 20px",

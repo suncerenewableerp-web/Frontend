@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { apiJobCardsList, type JobCardListRow } from "../api";
+import { apiJobCardDelete, apiJobCardsList, type JobCardListRow } from "../api";
 import type { Ticket, User } from "../types";
 import { StatusBadge } from "./Badges";
-import { LuWrench } from "react-icons/lu";
+import { LuTrash2, LuWrench } from "react-icons/lu";
 
 export default function JobCards({
   tickets,
@@ -16,10 +16,12 @@ export default function JobCards({
   onOpenTicket?: (t: Ticket) => void;
 }) {
   const isEngineer = user.role === "ENGINEER";
+  const canDeleteJobCards = user.role === "ADMIN";
 
   const [jobCards, setJobCards] = useState<JobCardListRow[]>([]);
   const [jobCardsLoading, setJobCardsLoading] = useState(false);
   const [jobCardsError, setJobCardsError] = useState("");
+  const [jobCardDeletingId, setJobCardDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (isEngineer) return;
@@ -60,6 +62,8 @@ export default function JobCards({
     return jobCards;
   }, [isEngineer, jobCards]);
 
+  const tableColSpan = isEngineer ? 5 : canDeleteJobCards ? 8 : 7;
+
   return (
     <div className="content">
       <div className="page-header">
@@ -74,43 +78,44 @@ export default function JobCards({
         </div>
         <div className="scroll-x">
           <table>
-            <thead>
-              <tr>
-                <th>Job Card</th>
-                <th>Ticket</th>
-                <th>Customer</th>
-                <th>Ticket Status</th>
-                <th>Engineer</th>
-                {!isEngineer ? <th>Repairability</th> : null}
-                {!isEngineer ? <th>Updated</th> : null}
-              </tr>
-            </thead>
-            <tbody>
-              {!isEngineer && jobCardsError ? (
-                <tr>
-                  <td colSpan={7}>
-                    <div className="empty-state">
-                      <div className="empty-icon" aria-hidden>
-                        <LuWrench />
+	            <thead>
+	              <tr>
+	                <th>Job Card</th>
+	                <th>Ticket</th>
+	                <th>Customer</th>
+	                <th>Ticket Status</th>
+	                <th>Engineer</th>
+	                {!isEngineer ? <th>Repairability</th> : null}
+	                {!isEngineer ? <th>Updated</th> : null}
+                  {!isEngineer && canDeleteJobCards ? <th style={{ width: 64 }}>Delete</th> : null}
+	              </tr>
+	            </thead>
+	            <tbody>
+	              {!isEngineer && jobCardsError ? (
+	                <tr>
+	                  <td colSpan={tableColSpan}>
+	                    <div className="empty-state">
+	                      <div className="empty-icon" aria-hidden>
+	                        <LuWrench />
                       </div>
                       <div className="empty-text">{jobCardsError}</div>
                     </div>
                   </td>
                 </tr>
-              ) : !isEngineer && jobCardsLoading ? (
-                <tr>
-                  <td colSpan={7}>
-                    <div className="empty-state">
-                      <div className="empty-icon" aria-hidden>
+	              ) : !isEngineer && jobCardsLoading ? (
+	                <tr>
+	                  <td colSpan={tableColSpan}>
+	                    <div className="empty-state">
+	                      <div className="empty-icon" aria-hidden>
                         <LuWrench />
                       </div>
                       <div className="empty-text">Loading job cards…</div>
                     </div>
                   </td>
                 </tr>
-              ) : isEngineer && myTickets.length === 0 ? (
-                <tr>
-                  <td colSpan={5}>
+	              ) : isEngineer && myTickets.length === 0 ? (
+	                <tr>
+	                  <td colSpan={5}>
                     <div className="empty-state">
                       <div className="empty-icon" aria-hidden>
                         <LuWrench />
@@ -119,18 +124,18 @@ export default function JobCards({
                     </div>
                   </td>
                 </tr>
-              ) : !isEngineer && visibleJobCards.length === 0 ? (
-                <tr>
-                  <td colSpan={7}>
-                    <div className="empty-state">
-                      <div className="empty-icon" aria-hidden>
+	              ) : !isEngineer && visibleJobCards.length === 0 ? (
+	                <tr>
+	                  <td colSpan={tableColSpan}>
+	                    <div className="empty-state">
+	                      <div className="empty-icon" aria-hidden>
                         <LuWrench />
                       </div>
                       <div className="empty-text">No job cards found</div>
                     </div>
                   </td>
                 </tr>
-              ) : isEngineer ? (
+	              ) : isEngineer ? (
                 myTickets.map((t) => (
                   <tr key={t.id}>
                     <td>
@@ -157,11 +162,11 @@ export default function JobCards({
                     <td>{t.assignedEngineer}</td>
                   </tr>
                 ))
-              ) : (
-                visibleJobCards.map((row) => {
-                  const t = row.ticket;
-                  return (
-                    <tr key={row.jobCardId || t.id}>
+	              ) : (
+	                visibleJobCards.map((row) => {
+	                  const t = row.ticket;
+	                  return (
+	                    <tr key={row.jobCardId || t.id}>
                       <td>
                         {onOpenTicket ? (
                           <button
@@ -186,18 +191,49 @@ export default function JobCards({
                       <td>{t.assignedEngineer}</td>
                       <td>
                         {String(row.jobStatus || "").trim() ? (
-                          <span className="tag">{String(row.jobStatus || "").toUpperCase()}</span>
+                          <span className="tag">
+                            {String(row.jobStatus || "")
+                              .toUpperCase()
+                              .replaceAll("NOT_REPAIRABLE", "SCRAP")}
+                          </span>
                         ) : (
                           <span style={{ color: "var(--text3)" }}>—</span>
                         )}
                       </td>
-                      <td style={{ fontFamily: "var(--mono)", color: "var(--text3)" }}>
-                        {row.updatedAt || "—"}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
+	                      <td style={{ fontFamily: "var(--mono)", color: "var(--text3)" }}>
+	                        {row.updatedAt || "—"}
+	                      </td>
+                        {canDeleteJobCards ? (
+                          <td style={{ textAlign: "right" }}>
+                            <button
+                              type="button"
+                              className="btn btn-danger btn-sm"
+                              disabled={jobCardDeletingId === row.jobCardId}
+                              onClick={() => {
+                                if (!row.jobCardId) return;
+                                const ok = window.confirm("Delete this job card? This cannot be undone.");
+                                if (!ok) return;
+                                setJobCardDeletingId(row.jobCardId);
+                                setJobCardsError("");
+                                apiJobCardDelete(row.jobCardId)
+                                  .then(() => setJobCards((prev) => prev.filter((x) => x.jobCardId !== row.jobCardId)))
+                                  .catch((e) =>
+                                    setJobCardsError(e instanceof Error ? e.message : "Failed to delete job card"),
+                                  )
+                                  .finally(() => setJobCardDeletingId(null));
+                              }}
+                              title="Delete job card"
+                              aria-label="Delete job card"
+                              style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                            >
+                              <LuTrash2 aria-hidden />
+                            </button>
+                          </td>
+                        ) : null}
+	                    </tr>
+	                  );
+	                })
+	              )}
             </tbody>
           </table>
         </div>
