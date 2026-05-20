@@ -40,7 +40,7 @@ export const INITIAL_ROLES: RoleDefinition[] = [
     id: "ADMIN",
     name: "ADMIN",
     label: "Administrator",
-    color: "#8B4513",
+    color: "#0d9488",
     isSystem: true,
     permissions: {
       dashboard: { view: true, create: true, edit: true, delete: true },
@@ -251,7 +251,7 @@ export const ENGINEER_OUTCOME_COLORS = {
 } as const;
 
 export const PRESET_COLORS = [
-  "#8B4513",
+  "#0d9488",
   "#B8860B",
   "#4682B4",
   "#2E8B57",

@@ -381,7 +381,7 @@ type BackendJobCard = {
 };
 
 const ROLE_UI: Record<string, { label: string; color: string }> = {
-  ADMIN: { label: "Administrator", color: "#8B4513" },
+  ADMIN: { label: "Administrator", color: "#0d9488" },
   SALES: { label: "Sales / BD", color: "#B8860B" },
   ENGINEER: { label: "Service Engineer", color: "#4682B4" },
   CUSTOMER: { label: "Customer", color: "#2E8B57" },
@@ -389,7 +389,7 @@ const ROLE_UI: Record<string, { label: string; color: string }> = {
 
 function toRoleDefinition(role: BackendRole): RoleDefinition {
   const name = String(role?.name || "").trim().toUpperCase();
-  const ui = ROLE_UI[name] || { label: name || "ROLE", color: "#8B4513" };
+  const ui = ROLE_UI[name] || { label: name || "ROLE", color: "#0d9488" };
   return {
     id: name,
     dbId: String(role?._id || ""),

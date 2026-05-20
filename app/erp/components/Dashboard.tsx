@@ -237,7 +237,7 @@ export default function Dashboard({
       xLabel: formatTrendDate(p.date),
       xTooltip: formatTrendTooltip(p.date),
       bars: [
-        { id: "created", label: "Created", value: Math.max(0, Number(p.created) || 0), color: "#6b3a1f" },
+        { id: "created", label: "Created", value: Math.max(0, Number(p.created) || 0), color: "#0d9488" },
         { id: "repaired", label: "Repaired", value: Math.max(0, Number(p.repaired) || 0), color: "#2563eb" },
         { id: "closed", label: "Closed", value: Math.max(0, Number(p.closed) || 0), color: "#16a34a" },
       ],
@@ -304,7 +304,7 @@ export default function Dashboard({
                         width: 10,
                         height: 10,
                         borderRadius: 999,
-                        background: "#6b3a1f",
+                        background: "#0d9488",
                         display: "inline-block",
                       }}
                     />
@@ -502,7 +502,7 @@ export default function Dashboard({
                 label: "Inward Stage",
                 value: inward,
                 sub: `Created: ${inwardCreated} · Under pickup: ${inwardUnderPickup}`,
-                color: "#6b3a1f",
+                color: "#0d9488",
                 Icon: LuTicket,
                 onClick: () => onOpenTickets({ tab: "inward" }),
               },

@@ -45,7 +45,7 @@ export default function Sidebar({
         <div
           className="user-avatar"
           style={{
-            background: `linear-gradient(135deg, ${roleDef?.color || "#8B4513"}, ${(roleDef?.color || "#a0522d") + "cc"})`,
+            background: `linear-gradient(135deg, ${roleDef?.color || "#0d9488"}, ${(roleDef?.color || "#0f766e") + "cc"})`,
           }}
         >
           {user.name[0]}

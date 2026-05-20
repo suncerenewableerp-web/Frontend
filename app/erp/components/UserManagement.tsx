@@ -221,7 +221,7 @@ export default function UserManagement({
                               width: 30,
                               height: 30,
                               borderRadius: 7,
-                              background: `linear-gradient(135deg, ${roleDef?.color || "#8B4513"}, ${(roleDef?.color || "#a0522d") + "aa"})`,
+                              background: `linear-gradient(135deg, ${roleDef?.color || "#0d9488"}, ${(roleDef?.color || "#0f766e") + "aa"})`,
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
@@ -274,7 +274,7 @@ export default function UserManagement({
                               fontWeight: 800,
                               padding: "4px 10px",
                               borderRadius: 999,
-                              border: "1px solid rgba(44,26,14,0.18)",
+                              border: "1px solid rgba(13,148,136,0.18)",
                               background: "rgba(255,255,255,0.9)",
                               color: "var(--brown)",
                               cursor: updatingRoleForId === u.id ? "not-allowed" : "pointer",
@@ -290,7 +290,7 @@ export default function UserManagement({
                         ) : (
                           <Badge
                             label={roleDef?.label || u.role}
-                            color={roleDef?.color || "#8B4513"}
+                            color={roleDef?.color || "#0d9488"}
                           />
                         )}
                       </td>

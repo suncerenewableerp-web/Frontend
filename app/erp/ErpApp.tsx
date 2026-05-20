@@ -367,7 +367,7 @@ export default function ErpApp({
                     width: 32,
                     height: 32,
                     borderRadius: 8,
-                    background: `linear-gradient(135deg, ${roles.find((r) => r.id === user.role)?.color || "#8B4513"}, ${(roles.find((r) => r.id === user.role)?.color || "#a0522d") + "bb"})`,
+                    background: `linear-gradient(135deg, ${roles.find((r) => r.id === user.role)?.color || "#0d9488"}, ${(roles.find((r) => r.id === user.role)?.color || "#0f766e") + "bb"})`,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",

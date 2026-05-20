@@ -215,7 +215,7 @@ export default function SLAMonitor({
             label: "Compliance",
             value: tickets.length ? `${Math.round((met.length / tickets.length) * 100)}%` : "—",
             sub: "Overall SLA rate",
-            color: "#6b3a1f",
+            color: "#0d9488",
             Icon: LuChartBar,
           },
         ].map((k) => (

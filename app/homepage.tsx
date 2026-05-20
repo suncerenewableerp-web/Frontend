@@ -19,8 +19,8 @@ import {
 
 
 const GLOBAL_CSS = `
-  .gi { font-style: normal; color: var(--gold-warm); }
-  .slabel { display: block; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.15em; text-transform: uppercase; color: var(--gold-site); margin-bottom: 12px; }
+  .gi { font-style: normal; color: #0f766e; }
+  .slabel { display: block; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.15em; text-transform: uppercase; color: #0f766e; margin-bottom: 12px; }
   .sc { background: #fff; border: 1px solid var(--border-site); border-radius: 14px; overflow: hidden; transition: transform 0.4s cubic-bezier(.22,1,.36,1), box-shadow 0.4s; }
   .sc:hover { transform: translateY(-8px); box-shadow: 0 20px 45px rgba(44,26,14,0.1); }
   .sc-img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.6s cubic-bezier(.22,1,.36,1); }
@@ -195,7 +195,7 @@ function Hero() {
               fontFamily: "'Cormorant Garamond', serif",
               fontSize: "clamp(2.8rem, 5.5vw, 5.2rem)",
               fontWeight: 700,
-              color: "var(--brown)",
+              color: "#052e2b",
               lineHeight: 1.06,
               margin: "0 0 24px",
             }}
@@ -208,7 +208,7 @@ function Hero() {
             style={{
               ...fade(0.38),
               fontSize: "clamp(0.93rem, 1.4vw, 1.08rem)",
-              color: "var(--brown-light)",
+              color: "rgba(5, 46, 43, 0.82)",
               lineHeight: 1.82,
               maxWidth: "480px",
               margin: "0 0 40px",
@@ -502,11 +502,11 @@ function CuttingEdgeIntro() {
                 lineHeight: 1,
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "rgba(44,26,14,0.42)";
-                e.currentTarget.style.background = "rgba(44,26,14,0.06)";
+                e.currentTarget.style.borderColor = "rgba(13,148,136,0.42)";
+                e.currentTarget.style.background = "rgba(13,148,136,0.06)";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "rgba(44,26,14,0.22)";
+                e.currentTarget.style.borderColor = "rgba(13,148,136,0.22)";
                 e.currentTarget.style.background = "transparent";
               }}
             >
@@ -517,7 +517,7 @@ function CuttingEdgeIntro() {
               style={{
                 padding: "12px 18px",
                 borderRadius: 10,
-                background: "linear-gradient(135deg,#6b3a1f,#8B4513)",
+                background: "linear-gradient(135deg,#0d9488,#14b8a6)",
                 color: "#fff",
                 border: "none",
                 fontFamily: "'Outfit', sans-serif",
@@ -528,7 +528,7 @@ function CuttingEdgeIntro() {
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 6,
-                boxShadow: "0 6px 18px rgba(107,58,31,.22)",
+                boxShadow: "0 6px 18px rgba(13,148,136,.22)",
                 transition: "transform .2s, box-shadow .2s",
                 lineHeight: 1,
                 whiteSpace: "nowrap",

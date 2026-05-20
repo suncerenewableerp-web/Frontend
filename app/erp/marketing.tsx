@@ -174,7 +174,7 @@ export default function HomePage() {
         .hp-card-hover:hover {
           transform: translateY(-5px);
           box-shadow: 0 20px 50px rgba(26,22,18,.1);
-          border-color: rgba(107,58,31,.22) !important;
+          border-color: rgba(13,148,136,.22) !important;
         }
 
         /* Responsive helpers (override inline styles with !important) */
@@ -273,7 +273,7 @@ export default function HomePage() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                boxShadow: "0 3px 12px rgba(107,58,31,.32)",
+                boxShadow: "0 3px 12px rgba(13,148,136,.28)",
                 transition: "transform .22s",
                 position: "relative",
                 overflow: "hidden",
@@ -333,7 +333,7 @@ export default function HomePage() {
                   textDecoration: "none",
                   transition: "color .2s",
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = "#6b3a1f")}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "#0d9488")}
                 onMouseLeave={(e) => (e.currentTarget.style.color = "#5c5044")}
               >
                 {label}
@@ -360,9 +360,9 @@ export default function HomePage() {
                 transition: "all .2s",
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "#6b3a1f";
-                e.currentTarget.style.color = "#6b3a1f";
-                e.currentTarget.style.background = "rgba(107,58,31,0.07)";
+                e.currentTarget.style.borderColor = "#0d9488";
+                e.currentTarget.style.color = "#0d9488";
+                e.currentTarget.style.background = "rgba(13,148,136,0.07)";
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.borderColor = "#d6cfc3";
@@ -377,7 +377,7 @@ export default function HomePage() {
               style={{
                 padding: "8px 22px",
                 borderRadius: 8,
-                background: "linear-gradient(135deg,#6b3a1f,#8B4513)",
+                background: "linear-gradient(135deg,#0d9488,#14b8a6)",
                 color: "#fff",
                 border: "none",
                 fontFamily: "'DM Sans',sans-serif",
@@ -388,18 +388,18 @@ export default function HomePage() {
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 6,
-                boxShadow: "0 3px 12px rgba(107,58,31,.30)",
+                boxShadow: "0 3px 12px rgba(13,148,136,.28)",
                 transition: "all .2s",
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = "translateY(-1px)";
                 e.currentTarget.style.boxShadow =
-                  "0 6px 18px rgba(107,58,31,.4)";
+                  "0 6px 18px rgba(13,148,136,.34)";
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.transform = "translateY(0)";
                 e.currentTarget.style.boxShadow =
-                  "0 3px 12px rgba(107,58,31,.3)";
+                  "0 3px 12px rgba(13,148,136,.28)";
               }}
             >
               {"Raise a Ticket\u00A0→"}
@@ -435,7 +435,7 @@ export default function HomePage() {
               position: "absolute",
               inset: 0,
               backgroundImage:
-                "radial-gradient(circle,rgba(107,58,31,.09) 1px,transparent 1px)",
+                "radial-gradient(circle,rgba(13,148,136,.09) 1px,transparent 1px)",
               backgroundSize: "36px 36px",
               opacity: 0.5,
               pointerEvents: "none",
@@ -462,7 +462,7 @@ export default function HomePage() {
               height: 600,
               borderRadius: "50%",
               background:
-                "radial-gradient(circle,rgba(107,58,31,.06) 0%,transparent 65%)",
+                "radial-gradient(circle,rgba(13,148,136,.06) 0%,transparent 65%)",
               bottom: -200,
               right: -100,
               pointerEvents: "none",
@@ -490,7 +490,7 @@ export default function HomePage() {
               width: 180,
               height: 180,
               borderRadius: "50%",
-              border: "1px solid rgba(107,58,31,.10)",
+              border: "1px solid rgba(13,148,136,.12)",
               bottom: 160,
               right: "10%",
               animation: "hp-float 9s ease-in-out infinite 2s",
@@ -566,7 +566,7 @@ export default function HomePage() {
               <span
                 style={{
                   fontStyle: "italic",
-                  color: "#6b3a1f",
+                  color: "#0d9488",
                   position: "relative",
                   display: "inline-block",
                 }}
@@ -579,7 +579,7 @@ export default function HomePage() {
                     right: 0,
                     bottom: 1,
                     height: 4,
-                    background: "linear-gradient(90deg,#6b3a1f,#B8860B)",
+                    background: "linear-gradient(90deg,#0d9488,#B8860B)",
                     borderRadius: 2,
                     transform: "scaleX(0)",
                     transformOrigin: "left",
@@ -622,7 +622,7 @@ export default function HomePage() {
                 style={{
                   padding: "16px 42px",
                   borderRadius: 12,
-                  background: "linear-gradient(135deg,#6b3a1f,#8B4513)",
+                  background: "linear-gradient(135deg,#0d9488,#14b8a6)",
                   color: "#fff",
                   border: "none",
                   fontFamily: "'DM Sans',sans-serif",
@@ -633,18 +633,18 @@ export default function HomePage() {
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 10,
-                  boxShadow: "0 6px 20px rgba(107,58,31,.35)",
+                  boxShadow: "0 6px 20px rgba(13,148,136,.28)",
                   transition: "all .22s",
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.transform = "translateY(-2px)";
                   e.currentTarget.style.boxShadow =
-                    "0 12px 30px rgba(107,58,31,.42)";
+                    "0 12px 30px rgba(13,148,136,.32)";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.transform = "translateY(0)";
                   e.currentTarget.style.boxShadow =
-                    "0 6px 20px rgba(107,58,31,.35)";
+                    "0 6px 20px rgba(13,148,136,.28)";
                 }}
               >
                 Raise a Ticket <LuArrowRight size={16} aria-hidden />
@@ -669,9 +669,9 @@ export default function HomePage() {
                   backdropFilter: "blur(8px)",
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "#6b3a1f";
-                  e.currentTarget.style.color = "#6b3a1f";
-                  e.currentTarget.style.background = "rgba(107,58,31,0.06)";
+                  e.currentTarget.style.borderColor = "#0d9488";
+                  e.currentTarget.style.color = "#0d9488";
+                  e.currentTarget.style.background = "rgba(13,148,136,0.06)";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.borderColor = "#d6cfc3";
@@ -893,7 +893,7 @@ export default function HomePage() {
                         right: 0,
                         height: 3,
                         background:
-                          "linear-gradient(90deg,#6b3a1f,#B8860B,#6b3a1f)",
+                          "linear-gradient(90deg,#0d9488,#B8860B,#0d9488)",
                         backgroundSize: "200% 100%",
                         animation: "hp-shimmer 3s linear infinite",
                       }}
@@ -916,7 +916,7 @@ export default function HomePage() {
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          color: "#6b3a1f",
+                          color: "#0d9488",
                         }}
                       >
                         <Icon size={22} aria-hidden />
@@ -955,7 +955,7 @@ export default function HomePage() {
         {/* ══════════════ STATS DARK BAND ══════════════ */}
         <div
           style={{
-            background: "linear-gradient(135deg,#1a0e08,#2d1810,#1a0e08)",
+            background: "linear-gradient(135deg,#042f2e,#0b4f4b,#042f2e)",
             padding: "72px 72px",
           }}
           className="hp-reveal hp-band"
@@ -1127,7 +1127,7 @@ export default function HomePage() {
                 left: "calc(12.5% + 28px)",
                 right: "calc(12.5% + 28px)",
                 height: 2,
-                background: "linear-gradient(90deg,#6b3a1f,#B8860B,#6b3a1f)",
+                background: "linear-gradient(90deg,#0d9488,#B8860B,#0d9488)",
                 backgroundSize: "200%",
                 animation: "hp-shimmer 4s linear infinite",
                 zIndex: 0,
@@ -1163,12 +1163,12 @@ export default function HomePage() {
                         width: 64,
                         height: 64,
                         borderRadius: "50%",
-                        background: "linear-gradient(135deg,#6b3a1f,#8B4513)",
+                        background: "linear-gradient(135deg,#0d9488,#14b8a6)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                         margin: "0 auto 20px",
-                        boxShadow: "0 6px 18px rgba(107,58,31,.3)",
+                        boxShadow: "0 6px 18px rgba(13,148,136,.26)",
                         color: "#fff",
                       }}
                     >
@@ -1242,13 +1242,13 @@ export default function HomePage() {
                         height: 64,
                         borderRadius: 18,
                         background:
-                          "linear-gradient(135deg,rgba(107,58,31,0.1),rgba(184,134,11,0.1))",
-                        border: "1px solid rgba(107,58,31,0.12)",
+                          "linear-gradient(135deg,rgba(13,148,136,0.1),rgba(45,212,191,0.1))",
+                        border: "1px solid rgba(13,148,136,0.12)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                         margin: "0 auto 22px",
-                        color: "#6b3a1f",
+                        color: "#0d9488",
                       }}
                     >
                       <Icon size={28} aria-hidden />
@@ -1272,7 +1272,7 @@ export default function HomePage() {
             className="hp-cta"
             style={{
               background:
-                "linear-gradient(135deg,#1a0e08 0%,#3d1e0a 35%,#6b3a1f 70%,#8B4513 100%)",
+                "linear-gradient(135deg,#042f2e 0%,#0b4f4b 35%,#0d9488 70%,#14b8a6 100%)",
               borderRadius: 24,
               paddingTop: 80,
               paddingBottom: 80,
@@ -1416,7 +1416,7 @@ export default function HomePage() {
                   padding: "16px 38px",
                   borderRadius: 12,
                   background: "#fff",
-                  color: "#6b3a1f",
+                  color: "#0d9488",
                   border: "none",
                   fontFamily: "'DM Sans',sans-serif",
                   fontSize: 15,

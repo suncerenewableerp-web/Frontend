@@ -146,7 +146,7 @@ export default function SignupScreen({
                 <div
                   className="success-avatar"
                   style={{
-                    background: `linear-gradient(135deg, ${roleDef?.color || "#8B4513"}, ${(roleDef?.color || "#a0522d") + "cc"})`,
+                    background: `linear-gradient(135deg, ${roleDef?.color || "#0d9488"}, ${(roleDef?.color || "#0f766e") + "cc"})`,
                   }}
                 >
                   {createdUser.name[0]}
@@ -167,7 +167,7 @@ export default function SignupScreen({
                   <div style={{ marginTop: 6 }}>
                     <Badge
                       label={roleDef?.label || createdUser.role}
-                      color={roleDef?.color || "#8B4513"}
+                      color={roleDef?.color || "#0d9488"}
                     />
                   </div>
                 </div>
