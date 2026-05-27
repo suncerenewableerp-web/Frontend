@@ -124,3 +124,14 @@ export interface Ticket {
   slaStatus: "MET" | "BREACHED" | "AT_RISK";
   jobCard?: JobCard;
 }
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  kind: string;
+  href: string;
+  meta: any;
+  createdAt: string | null;
+  read: boolean;
+}

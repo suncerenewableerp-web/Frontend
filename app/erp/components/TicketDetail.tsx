@@ -745,6 +745,17 @@ export default function TicketDetail({
   const [jobError, setJobError] = useState("");
   const [jobSavedMsg, setJobSavedMsg] = useState("");
 
+  const dispatchGateFinalStatus = useMemo(() => {
+    const fromJobCard = String(jobCard?.engineerFinalStatus || "").toUpperCase().trim();
+    const fromTicket = String((ticket as any)?.jobCard?.engineerFinalStatus || "").toUpperCase().trim();
+    return fromJobCard || fromTicket;
+  }, [jobCard?.engineerFinalStatus, (ticket as any)?.jobCard?.engineerFinalStatus]);
+
+  const canAdvanceToUnderDispatch = useMemo(() => {
+    if (ticket.status !== "UNDER_REPAIRED") return true;
+    return ["REPAIRABLE", "NOT_REPAIRABLE"].includes(dispatchGateFinalStatus);
+  }, [ticket.status, dispatchGateFinalStatus]);
+
   useEffect(() => {
     if (activeTab !== "jobcard") return;
     let cancelled = false;
@@ -757,10 +768,9 @@ export default function TicketDetail({
     apiTicketJobCardGet(ticket.id)
       .then((jc) => {
         if (cancelled) return;
-        const minRows = roleName === "ENGINEER" ? 1 : 5;
         setJobCard({
           ...jc,
-          serviceJobs: normalizeServiceJobs(jc.serviceJobs || [], minRows),
+          serviceJobs: normalizeServiceJobs(jc.serviceJobs || [], 5),
           finalTestingActivities: normalizeFinalTesting(jc.finalTestingActivities),
         });
       })
@@ -773,6 +783,28 @@ export default function TicketDetail({
       cancelled = true;
     };
   }, [activeTab, ticket.id, roleName]);
+
+  useEffect(() => {
+    if (isOnsite) return;
+    if (ticket.status !== "UNDER_REPAIRED") return;
+    if (roleName !== "ADMIN" && roleName !== "SALES") return;
+    // Prefetch job card so the UNDER_DISPATCH gate reflects the engineer's final decision
+    // even if user never opens the Jobcard tab.
+    let cancelled = false;
+    apiTicketJobCardGet(ticket.id)
+      .then((jc) => {
+        if (cancelled) return;
+        setJobCard({
+          ...jc,
+          serviceJobs: normalizeServiceJobs(jc.serviceJobs || [], 5),
+          finalTestingActivities: normalizeFinalTesting(jc.finalTestingActivities),
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [ticket.id, ticket.status, roleName, isOnsite]);
 
   useEffect(() => {
     if (roleName !== "ENGINEER") return;
@@ -1418,6 +1450,7 @@ export default function TicketDetail({
                   disabled={
                     STATUS_ORDER.indexOf(s) < currentIdx ||
                     STATUS_ORDER.indexOf(s) > currentIdx + 1
+                    || (s === "UNDER_DISPATCH" && !canAdvanceToUnderDispatch)
                   }
                 >
                   {formatTicketStatusLabel(s)}
@@ -1465,6 +1498,12 @@ export default function TicketDetail({
                   }
 
 	                  if (newStatus === "UNDER_DISPATCH") {
+                      if (!canAdvanceToUnderDispatch) {
+                        setStatusError(
+                          "Engineer must finalize the Job Card as REPAIRABLE or SCRAP (NOT REPAIRABLE) before moving to Under Dispatch.",
+                        );
+                        return;
+                      }
 	                    openLogistics(
 	                      "under_dispatch",
 	                      "Please review Under Dispatch (invoice/payment) and save it before scheduling dispatch.",
@@ -4497,12 +4536,24 @@ export default function TicketDetail({
                         </div>
                       </div>
 
+                      {!canAdvanceToUnderDispatch ? (
+                        <div className="form-error" style={{ marginTop: 12 }}>
+                          Engineer must finalize the Job Card as REPAIRABLE or SCRAP (NOT REPAIRABLE) before you can
+                          save Under Dispatch or request approval.
+                        </div>
+                      ) : null}
+
                     <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center" }}>
 	                      <button
 	                        className="btn btn-accent btn-sm"
 	                        type="button"
-	                        disabled={underDispatchSaving || (!dispatchBillingDirty && !dispatchRemarkDirty && !dispatchProofFile)}
+	                        disabled={
+                            underDispatchSaving ||
+                            (!dispatchBillingDirty && !dispatchRemarkDirty && !dispatchProofFile) ||
+                            !canAdvanceToUnderDispatch
+                          }
 	                        onClick={() => {
+                            if (!canAdvanceToUnderDispatch) return;
 	                          setUnderDispatchSaving(true);
 	                          setDispatchApprovalError("");
 	                          setLogisticsError("");
@@ -4565,8 +4616,9 @@ export default function TicketDetail({
                           <button
                             className="btn btn-ghost btn-sm"
                             type="button"
-                            disabled={underDispatchSaving}
+                            disabled={underDispatchSaving || !canAdvanceToUnderDispatch}
                             onClick={() => {
+                              if (!canAdvanceToUnderDispatch) return;
                               setUnderDispatchSaving(true);
                               setDispatchApprovalError("");
                               setLogisticsError("");

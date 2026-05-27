@@ -13,8 +13,14 @@ import {
 } from "react-icons/lu";
 import {
   apiDashboardTicketTrends,
+  apiDashboardServicingStatus,
+  apiDashboardClientDetailsDaily,
+  apiDashboardClientDetailsList,
   apiJobCardsList,
   apiPendingDispatchApprovalsList,
+  type ClientSummaryRow,
+  type DashboardPeriodInput,
+  type ServicingStatusDayRow,
   type JobCardListRow,
   type PendingDispatchApprovalTicket,
   type TicketTrendsPoint,
@@ -88,6 +94,43 @@ export default function Dashboard({
   const [trendsErr, setTrendsErr] = useState("");
   const [selectedTrendDate, setSelectedTrendDate] = useState<string>("");
   const [showAllDashboardTickets, setShowAllDashboardTickets] = useState(false);
+
+  const now = useMemo(() => new Date(), []);
+  const defaultYear = now.getFullYear();
+  const defaultMonth = now.getMonth() + 1;
+  const defaultFortnight = now.getDate() >= 16 ? 2 : 1;
+
+  const [reportPeriod, setReportPeriod] = useState<DashboardPeriodInput["period"]>("fortnightly");
+  const [reportYear, setReportYear] = useState(defaultYear);
+  const [reportMonth, setReportMonth] = useState(defaultMonth);
+  const [reportFortnight, setReportFortnight] = useState<1 | 2>(defaultFortnight as 1 | 2);
+
+  const reportInput = useMemo<DashboardPeriodInput>(() => {
+    return {
+      period: reportPeriod,
+      year: reportYear,
+      ...(reportPeriod === "yearly" ? {} : { month: reportMonth }),
+      ...(reportPeriod === "fortnightly" ? { fortnight: reportFortnight } : {}),
+      tz: "Asia/Kolkata",
+    };
+  }, [reportPeriod, reportYear, reportMonth, reportFortnight]);
+
+  const [svcLoading, setSvcLoading] = useState(false);
+  const [svcErr, setSvcErr] = useState("");
+  const [svcPeriodLabel, setSvcPeriodLabel] = useState<{ from: string; to: string } | null>(null);
+  const [svcTotals, setSvcTotals] = useState<{ received: number; repaired: number; scrap: number; dispatched: number } | null>(null);
+  const [svcDaily, setSvcDaily] = useState<ServicingStatusDayRow[]>([]);
+  const [svcDetailsOpen, setSvcDetailsOpen] = useState(false);
+
+  const [clientsLoading, setClientsLoading] = useState(false);
+  const [clientsErr, setClientsErr] = useState("");
+  const [clients, setClients] = useState<ClientSummaryRow[]>([]);
+  const [clientDetailsOpen, setClientDetailsOpen] = useState(false);
+  const [clientDetailsLoading, setClientDetailsLoading] = useState(false);
+  const [clientDetailsErr, setClientDetailsErr] = useState("");
+  const [clientDetailsDaily, setClientDetailsDaily] = useState<ServicingStatusDayRow[]>([]);
+  const [clientDetailsTotals, setClientDetailsTotals] = useState<{ received: number; repaired: number; scrap: number; dispatched: number } | null>(null);
+  const [clientPicked, setClientPicked] = useState<{ name: string; address: string } | null>(null);
 
   useEffect(() => {
     if (!isAdmin && !isSales) return;
@@ -196,6 +239,140 @@ export default function Dashboard({
       cancelled = true;
     };
   }, [showTrends, trendDays]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    setSvcLoading(true);
+    setSvcErr("");
+    apiDashboardServicingStatus(reportInput)
+      .then((r) => {
+        if (cancelled) return;
+        setSvcPeriodLabel({ from: r.period.from, to: r.period.to });
+        setSvcTotals(r.totals);
+        setSvcDaily(r.daily || []);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setSvcErr(e instanceof Error ? e.message : "Failed to load servicing status");
+        setSvcPeriodLabel(null);
+        setSvcTotals(null);
+        setSvcDaily([]);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setSvcLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin, reportInput]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    setClientsLoading(true);
+    setClientsErr("");
+    apiDashboardClientDetailsList(reportInput)
+      .then((r) => {
+        if (cancelled) return;
+        setClients(r.clients || []);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setClientsErr(e instanceof Error ? e.message : "Failed to load client details");
+        setClients([]);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setClientsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin, reportInput]);
+
+  const reportYears = useMemo(() => {
+    const y = defaultYear;
+    const out: number[] = [];
+    for (let i = 0; i < 6; i += 1) out.push(y - i);
+    return out;
+  }, [defaultYear]);
+
+  const reportMonths = useMemo(() => {
+    return Array.from({ length: 12 }, (_, i) => i + 1);
+  }, []);
+
+  const formatRange = (fromYmd: string, toYmd: string) => {
+    const fmt = (s: string) => {
+      const d = new Date(`${s}T00:00:00`);
+      if (Number.isNaN(d.getTime())) return s;
+      return new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(d);
+    };
+    const a = String(fromYmd || "").trim();
+    const b = String(toYmd || "").trim();
+    if (!a || !b) return "";
+    return `${fmt(a)} → ${fmt(b)}`;
+  };
+
+  const PeriodControls = (
+    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      <select
+        className="form-select"
+        value={reportPeriod}
+        onChange={(e) => setReportPeriod(e.target.value as DashboardPeriodInput["period"])}
+        style={{ width: 150, fontFamily: "var(--mono)", fontSize: 12 }}
+        aria-label="Select report period"
+      >
+        <option value="fortnightly">Fortnightly</option>
+        <option value="monthly">Monthly</option>
+        <option value="yearly">Yearly</option>
+      </select>
+
+      {reportPeriod !== "yearly" ? (
+        <select
+          className="form-select"
+          value={String(reportMonth)}
+          onChange={(e) => setReportMonth(Number(e.target.value) || defaultMonth)}
+          style={{ width: 140, fontFamily: "var(--mono)", fontSize: 12 }}
+          aria-label="Select month"
+        >
+          {reportMonths.map((m) => (
+            <option key={m} value={String(m)}>
+              {new Intl.DateTimeFormat("en-IN", { month: "short" }).format(new Date(2020, m - 1, 1))}
+            </option>
+          ))}
+        </select>
+      ) : null}
+
+      <select
+        className="form-select"
+        value={String(reportYear)}
+        onChange={(e) => setReportYear(Number(e.target.value) || defaultYear)}
+        style={{ width: 110, fontFamily: "var(--mono)", fontSize: 12 }}
+        aria-label="Select year"
+      >
+        {reportYears.map((y) => (
+          <option key={y} value={String(y)}>
+            {y}
+          </option>
+        ))}
+      </select>
+
+      {reportPeriod === "fortnightly" ? (
+        <select
+          className="form-select"
+          value={String(reportFortnight)}
+          onChange={(e) => setReportFortnight((Number(e.target.value) === 2 ? 2 : 1) as 1 | 2)}
+          style={{ width: 110, fontFamily: "var(--mono)", fontSize: 12 }}
+          aria-label="Select fortnight"
+        >
+          <option value="1">1–15</option>
+          <option value="2">16–End</option>
+        </select>
+      ) : null}
+    </div>
+  );
 
   const formatTrendDate = (raw: string) => {
     const s = String(raw || "").trim();
@@ -580,6 +757,311 @@ export default function Dashboard({
           {/* Keep the KPI tile for admins, but don’t show the full approval list on dashboard. */}
 
           {trendsCard}
+
+          {isAdmin ? (
+            <>
+              <div className="table-card" style={{ marginBottom: 16 }}>
+                <div className="table-header">
+                  <div className="table-title">Servicing Status</div>
+                  {PeriodControls}
+                </div>
+                <div className="scroll-x">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th style={{ minWidth: 220 }}>
+                          {svcPeriodLabel ? formatRange(svcPeriodLabel.from, svcPeriodLabel.to) : "Period"}
+                        </th>
+                        <th>No of Inverters Received</th>
+                        <th>No of Inverters Repaired</th>
+                        <th>No of Inverters declared as SCRAP</th>
+                        <th>No of Inverters Dispatched</th>
+                        <th>Details</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {svcErr ? (
+                        <tr>
+                          <td colSpan={6} style={{ padding: 18, color: "var(--text3)" }}>
+                            {svcErr}
+                          </td>
+                        </tr>
+                      ) : svcLoading && !svcTotals ? (
+                        <tr>
+                          <td colSpan={6} style={{ padding: 18, color: "var(--text3)" }}>
+                            Loading…
+                          </td>
+                        </tr>
+                      ) : svcTotals ? (
+                        <tr>
+                          <td style={{ fontFamily: "var(--mono)", color: "var(--text3)" }}>
+                            {svcPeriodLabel ? `${svcPeriodLabel.from} → ${svcPeriodLabel.to}` : "—"}
+                          </td>
+                          <td style={{ fontFamily: "var(--mono)" }}>{svcTotals.received}</td>
+                          <td style={{ fontFamily: "var(--mono)" }}>{svcTotals.repaired}</td>
+                          <td style={{ fontFamily: "var(--mono)" }}>{svcTotals.scrap}</td>
+                          <td style={{ fontFamily: "var(--mono)" }}>{svcTotals.dispatched}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => setSvcDetailsOpen(true)}
+                              disabled={!svcDaily.length}
+                            >
+                              Details
+                            </button>
+                          </td>
+                        </tr>
+                      ) : (
+                        <tr>
+                          <td colSpan={6} style={{ padding: 18, color: "var(--text3)" }}>
+                            No data.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="table-card" style={{ marginBottom: 16 }}>
+                <div className="table-header">
+                  <div className="table-title">Client Details</div>
+                  {PeriodControls}
+                </div>
+                <div className="scroll-x" style={{ maxHeight: 360, overflowY: "auto" }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th style={{ minWidth: 260 }}>Client Name and Address</th>
+                        <th>No of Inverters Received</th>
+                        <th>No of Inverters Repaired</th>
+                        <th>No of Inverters declared as SCRAP</th>
+                        <th>No of Inverters Dispatched</th>
+                        <th>Details</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {clientsErr ? (
+                        <tr>
+                          <td colSpan={6} style={{ padding: 18, color: "var(--text3)" }}>
+                            {clientsErr}
+                          </td>
+                        </tr>
+                      ) : clientsLoading && !clients.length ? (
+                        <tr>
+                          <td colSpan={6} style={{ padding: 18, color: "var(--text3)" }}>
+                            Loading…
+                          </td>
+                        </tr>
+                      ) : !clients.length ? (
+                        <tr>
+                          <td colSpan={6} style={{ padding: 18, color: "var(--text3)" }}>
+                            No data.
+                          </td>
+                        </tr>
+                      ) : (
+                        clients.map((c) => (
+                          <tr key={`${c.name}|||${c.address}`}>
+                            <td>
+                              <button
+                                type="button"
+                                className="table-link"
+                                onClick={() => {
+                                  setClientPicked({ name: c.name, address: c.address });
+                                  setClientDetailsOpen(true);
+                                  setClientDetailsLoading(true);
+                                  setClientDetailsErr("");
+                                  setClientDetailsDaily([]);
+                                  setClientDetailsTotals(null);
+                                  apiDashboardClientDetailsDaily({
+                                    ...reportInput,
+                                    clientName: c.name,
+                                    clientAddress: c.address,
+                                  })
+                                    .then((r) => {
+                                      setClientDetailsDaily(r.daily || []);
+                                      setClientDetailsTotals(r.totals);
+                                    })
+                                    .catch((e) => setClientDetailsErr(e instanceof Error ? e.message : "Failed to load details"))
+                                    .finally(() => setClientDetailsLoading(false));
+                                }}
+                                title="View client details"
+                              >
+                                {c.name || "—"}
+                              </button>
+                              {c.address ? (
+                                <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>{c.address}</div>
+                              ) : null}
+                            </td>
+                            <td style={{ fontFamily: "var(--mono)" }}>{c.received}</td>
+                            <td style={{ fontFamily: "var(--mono)" }}>{c.repaired}</td>
+                            <td style={{ fontFamily: "var(--mono)" }}>{c.scrap}</td>
+                            <td style={{ fontFamily: "var(--mono)" }}>{c.dispatched}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                onClick={() => {
+                                  setClientPicked({ name: c.name, address: c.address });
+                                  setClientDetailsOpen(true);
+                                  setClientDetailsLoading(true);
+                                  setClientDetailsErr("");
+                                  setClientDetailsDaily([]);
+                                  setClientDetailsTotals(null);
+                                  apiDashboardClientDetailsDaily({
+                                    ...reportInput,
+                                    clientName: c.name,
+                                    clientAddress: c.address,
+                                  })
+                                    .then((r) => {
+                                      setClientDetailsDaily(r.daily || []);
+                                      setClientDetailsTotals(r.totals);
+                                    })
+                                    .catch((e) => setClientDetailsErr(e instanceof Error ? e.message : "Failed to load details"))
+                                    .finally(() => setClientDetailsLoading(false));
+                                }}
+                                disabled={clientDetailsLoading}
+                              >
+                                Details
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          ) : null}
+
+          {svcDetailsOpen ? (
+            <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setSvcDetailsOpen(false)}>
+              <div className="modal" style={{ width: 920, maxWidth: "95vw" }} role="dialog" aria-modal="true">
+                <div className="modal-header">
+                  <div className="modal-title">
+                    Servicing Status · {svcPeriodLabel ? formatRange(svcPeriodLabel.from, svcPeriodLabel.to) : ""}
+                  </div>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setSvcDetailsOpen(false)}>
+                    Close
+                  </button>
+                </div>
+                <div className="modal-body">
+                  <div className="scroll-x" style={{ maxHeight: "60vh", overflowY: "auto" }}>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th style={{ minWidth: 120 }}>Date</th>
+                          <th>No of Inverters Received</th>
+                          <th>No of Inverters Repaired</th>
+                          <th>No of Inverters declared as SCRAP</th>
+                          <th>No of Inverters Dispatched</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {!svcDaily.length ? (
+                          <tr>
+                            <td colSpan={5} style={{ padding: 18, color: "var(--text3)" }}>
+                              No data.
+                            </td>
+                          </tr>
+                        ) : (
+                          svcDaily.map((r) => (
+                            <tr key={r.date}>
+                              <td style={{ fontFamily: "var(--mono)", color: "var(--text3)" }}>{r.date}</td>
+                              <td style={{ fontFamily: "var(--mono)" }}>{r.received}</td>
+                              <td style={{ fontFamily: "var(--mono)" }}>{r.repaired}</td>
+                              <td style={{ fontFamily: "var(--mono)" }}>{r.scrap}</td>
+                              <td style={{ fontFamily: "var(--mono)" }}>{r.dispatched}</td>
+                            </tr>
+                          ))
+                        )}
+                        {svcTotals ? (
+                          <tr>
+                            <td style={{ fontWeight: 700 }}>Total</td>
+                            <td style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>{svcTotals.received}</td>
+                            <td style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>{svcTotals.repaired}</td>
+                            <td style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>{svcTotals.scrap}</td>
+                            <td style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>{svcTotals.dispatched}</td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {clientDetailsOpen ? (
+            <div
+              className="modal-overlay"
+              onClick={(e) => e.target === e.currentTarget && setClientDetailsOpen(false)}
+            >
+              <div className="modal" style={{ width: 920, maxWidth: "95vw" }} role="dialog" aria-modal="true">
+                <div className="modal-header">
+                  <div className="modal-title">
+                    Client · {clientPicked?.name || "—"}{" "}
+                    {svcPeriodLabel ? `· ${formatRange(svcPeriodLabel.from, svcPeriodLabel.to)}` : ""}
+                  </div>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setClientDetailsOpen(false)}>
+                    Close
+                  </button>
+                </div>
+                <div className="modal-body">
+                  {clientDetailsErr ? <div className="form-error" style={{ marginBottom: 10 }}>{clientDetailsErr}</div> : null}
+                  <div className="scroll-x" style={{ maxHeight: "60vh", overflowY: "auto" }}>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th style={{ minWidth: 120 }}>Date</th>
+                          <th>No of Inverters Received</th>
+                          <th>No of Inverters Repaired</th>
+                          <th>No of Inverters declared as SCRAP</th>
+                          <th>No of Inverters Dispatched</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {clientDetailsLoading ? (
+                          <tr>
+                            <td colSpan={5} style={{ padding: 18, color: "var(--text3)" }}>
+                              Loading…
+                            </td>
+                          </tr>
+                        ) : !clientDetailsDaily.length ? (
+                          <tr>
+                            <td colSpan={5} style={{ padding: 18, color: "var(--text3)" }}>
+                              No data.
+                            </td>
+                          </tr>
+                        ) : (
+                          clientDetailsDaily.map((r) => (
+                            <tr key={r.date}>
+                              <td style={{ fontFamily: "var(--mono)", color: "var(--text3)" }}>{r.date}</td>
+                              <td style={{ fontFamily: "var(--mono)" }}>{r.received}</td>
+                              <td style={{ fontFamily: "var(--mono)" }}>{r.repaired}</td>
+                              <td style={{ fontFamily: "var(--mono)" }}>{r.scrap}</td>
+                              <td style={{ fontFamily: "var(--mono)" }}>{r.dispatched}</td>
+                            </tr>
+                          ))
+                        )}
+                        {clientDetailsTotals ? (
+                          <tr>
+                            <td style={{ fontWeight: 700 }}>Total</td>
+                            <td style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>{clientDetailsTotals.received}</td>
+                            <td style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>{clientDetailsTotals.repaired}</td>
+                            <td style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>{clientDetailsTotals.scrap}</td>
+                            <td style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>{clientDetailsTotals.dispatched}</td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <div className="two-col">
             <div className="table-card">

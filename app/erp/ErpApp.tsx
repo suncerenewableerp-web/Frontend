@@ -36,6 +36,7 @@ import UserManagement from "./components/UserManagement";
 import Settings from "./components/Settings";
 import NewTicketModal from "./components/NewTicketModal";
 import Notification from "./components/Notification";
+import NotificationsMenu from "./components/NotificationsMenu";
 
 export default function ErpApp({
   initialAuthView = "login",
@@ -255,6 +256,28 @@ export default function ErpApp({
     await loadTickets();
   };
 
+  const openTicketByDbId = async (ticketDbId: string) => {
+    const id = String(ticketDbId || "").trim();
+    if (!id) return;
+    try {
+      const local = tickets.find((t) => String(t.id) === id) || null;
+      const t = local || (await apiTicketGet(id));
+      setSelectedTicket(t);
+      const nextTab = user?.role === "ENGINEER" ? "jobcard" : "overview";
+      setTicketDetailTab(nextTab);
+      setTicketDetailLogisticsStage(
+        t.status === "DISPATCHED" || t.status === "INSTALLATION_DONE" || t.status === "CLOSED"
+          ? "dispatch"
+          : t.status === "UNDER_DISPATCH"
+            ? "under_dispatch"
+            : "pickup",
+      );
+      setPage("ticket_detail");
+    } catch {
+      notify("Failed to open ticket from notification.");
+    }
+  };
+
   const getPageTitle = () => {
     const titles: Record<string, string> = {
       dashboard: "Dashboard",
@@ -362,6 +385,13 @@ export default function ErpApp({
                       + New Ticket
                     </button>
                   )}
+                <NotificationsMenu
+                  onViewAll={() => {
+                    setPage("tickets");
+                    setTicketsListPreset(null);
+                  }}
+                  onOpenTicket={(id) => void openTicketByDbId(id)}
+                />
                 <div
                   style={{
                     width: 32,

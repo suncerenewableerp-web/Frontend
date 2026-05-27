@@ -5,6 +5,7 @@ import type {
   JobCardComponentUsed,
   JobCardFinalTestingActivity,
   JobCardServiceJob,
+  AppNotification,
   ModulePermission,
   RoleDefinition,
   Ticket,
@@ -1596,6 +1597,166 @@ export type PendingDispatchApprovalTicket = {
 
 export type TicketTrendsPoint = { date: string; created: number; closed: number; repaired: number };
 
+export type DashboardPeriodKind = "FORTNIGHTLY" | "MONTHLY" | "YEARLY";
+
+export type DashboardPeriodInput = {
+  period: "fortnightly" | "monthly" | "yearly";
+  year?: number;
+  month?: number; // 1-12
+  fortnight?: 1 | 2; // for fortnightly
+  tz?: string; // defaults on server
+};
+
+export type ServicingStatusTotals = { received: number; repaired: number; scrap: number; dispatched: number };
+
+export type ServicingStatusDayRow = ServicingStatusTotals & { date: string };
+
+export async function apiDashboardServicingStatus(input: DashboardPeriodInput): Promise<{
+  period: { kind: DashboardPeriodKind; from: string; to: string; tz: string };
+  totals: ServicingStatusTotals;
+  daily: ServicingStatusDayRow[];
+}> {
+  const qs = new URLSearchParams();
+  qs.set("period", String(input.period || "fortnightly"));
+  if (typeof input.year === "number") qs.set("year", String(input.year));
+  if (typeof input.month === "number") qs.set("month", String(input.month));
+  if (typeof input.fortnight === "number") qs.set("fortnight", String(input.fortnight));
+  if (input.tz) qs.set("tz", String(input.tz));
+
+  const env = await apiFetch<{ period?: unknown; totals?: unknown; daily?: unknown }>(
+    `/api/dashboard/servicing-status?${qs.toString()}`,
+    { method: "GET" },
+  );
+  if (!env.success) throw new Error(env.message || "Failed to fetch servicing status");
+  const p = env.data?.period as any;
+  const totalsRaw = env.data?.totals as any;
+  const dailyRaw = env.data?.daily;
+  const daily: ServicingStatusDayRow[] = Array.isArray(dailyRaw)
+    ? (dailyRaw as any[]).map((r) => ({
+        date: String(r?.date || ""),
+        received: Number(r?.received || 0) || 0,
+        repaired: Number(r?.repaired || 0) || 0,
+        scrap: Number(r?.scrap || 0) || 0,
+        dispatched: Number(r?.dispatched || 0) || 0,
+      }))
+    : [];
+  return {
+    period: {
+      kind: String(p?.kind || "FORTNIGHTLY") as DashboardPeriodKind,
+      from: String(p?.from || ""),
+      to: String(p?.to || ""),
+      tz: String(p?.tz || "UTC"),
+    },
+    totals: {
+      received: Number(totalsRaw?.received || 0) || 0,
+      repaired: Number(totalsRaw?.repaired || 0) || 0,
+      scrap: Number(totalsRaw?.scrap || 0) || 0,
+      dispatched: Number(totalsRaw?.dispatched || 0) || 0,
+    },
+    daily: daily.filter((d) => d.date),
+  };
+}
+
+export type ClientSummaryRow = {
+  name: string;
+  address: string;
+  received: number;
+  repaired: number;
+  scrap: number;
+  dispatched: number;
+};
+
+export async function apiDashboardClientDetailsList(input: DashboardPeriodInput): Promise<{
+  period: { kind: DashboardPeriodKind; from: string; to: string; tz: string };
+  clients: ClientSummaryRow[];
+}> {
+  const qs = new URLSearchParams();
+  qs.set("period", String(input.period || "fortnightly"));
+  if (typeof input.year === "number") qs.set("year", String(input.year));
+  if (typeof input.month === "number") qs.set("month", String(input.month));
+  if (typeof input.fortnight === "number") qs.set("fortnight", String(input.fortnight));
+  if (input.tz) qs.set("tz", String(input.tz));
+  const env = await apiFetch<{ period?: unknown; clients?: unknown }>(
+    `/api/dashboard/client-details?${qs.toString()}`,
+    { method: "GET" },
+  );
+  if (!env.success) throw new Error(env.message || "Failed to fetch client details");
+  const p = env.data?.period as any;
+  const raw = env.data?.clients;
+  const clients: ClientSummaryRow[] = Array.isArray(raw)
+    ? (raw as any[]).map((r) => ({
+        name: String(r?.name || ""),
+        address: String(r?.address || ""),
+        received: Number(r?.received || 0) || 0,
+        repaired: Number(r?.repaired || 0) || 0,
+        scrap: Number(r?.scrap || 0) || 0,
+        dispatched: Number(r?.dispatched || 0) || 0,
+      }))
+    : [];
+  return {
+    period: {
+      kind: String(p?.kind || "FORTNIGHTLY") as DashboardPeriodKind,
+      from: String(p?.from || ""),
+      to: String(p?.to || ""),
+      tz: String(p?.tz || "UTC"),
+    },
+    clients: clients.filter((c) => c.name || c.address),
+  };
+}
+
+export async function apiDashboardClientDetailsDaily(
+  input: DashboardPeriodInput & { clientName: string; clientAddress?: string },
+): Promise<{
+  period: { kind: DashboardPeriodKind; from: string; to: string; tz: string };
+  client: { name: string; address: string };
+  totals: ServicingStatusTotals;
+  daily: ServicingStatusDayRow[];
+}> {
+  const qs = new URLSearchParams();
+  qs.set("period", String(input.period || "fortnightly"));
+  if (typeof input.year === "number") qs.set("year", String(input.year));
+  if (typeof input.month === "number") qs.set("month", String(input.month));
+  if (typeof input.fortnight === "number") qs.set("fortnight", String(input.fortnight));
+  if (input.tz) qs.set("tz", String(input.tz));
+  qs.set("clientName", String(input.clientName || ""));
+  if (input.clientAddress) qs.set("clientAddress", String(input.clientAddress || ""));
+
+  const env = await apiFetch<{ period?: unknown; client?: unknown; totals?: unknown; daily?: unknown }>(
+    `/api/dashboard/client-details?${qs.toString()}`,
+    { method: "GET" },
+  );
+  if (!env.success) throw new Error(env.message || "Failed to fetch client daily details");
+  const p = env.data?.period as any;
+  const clientRaw = env.data?.client as any;
+  const totalsRaw = env.data?.totals as any;
+  const dailyRaw = env.data?.daily;
+  const daily: ServicingStatusDayRow[] = Array.isArray(dailyRaw)
+    ? (dailyRaw as any[]).map((r) => ({
+        date: String(r?.date || ""),
+        received: Number(r?.received || 0) || 0,
+        repaired: Number(r?.repaired || 0) || 0,
+        scrap: Number(r?.scrap || 0) || 0,
+        dispatched: Number(r?.dispatched || 0) || 0,
+      }))
+    : [];
+  return {
+    period: {
+      kind: String(p?.kind || "FORTNIGHTLY") as DashboardPeriodKind,
+      from: String(p?.from || ""),
+      to: String(p?.to || ""),
+      tz: String(p?.tz || "UTC"),
+    },
+    client: { name: String(clientRaw?.name || ""), address: String(clientRaw?.address || "") },
+    totals: {
+      received: Number(totalsRaw?.received || 0) || 0,
+      repaired: Number(totalsRaw?.repaired || 0) || 0,
+      scrap: Number(totalsRaw?.scrap || 0) || 0,
+      dispatched: Number(totalsRaw?.dispatched || 0) || 0,
+    },
+    daily: daily.filter((d) => d.date),
+  };
+}
+
 export async function apiDashboardTicketTrends(days = 14): Promise<{
   days: number;
   tz: string;
@@ -1805,4 +1966,60 @@ export async function apiTicketJobCardUpdate(
   });
   if (!env.success) throw new Error(env.message || "Failed to update job card");
   return toJobCard(env.data, ticketId);
+}
+
+type BackendNotification = {
+  id?: unknown;
+  title?: unknown;
+  message?: unknown;
+  kind?: unknown;
+  href?: unknown;
+  meta?: unknown;
+  createdAt?: unknown;
+  read?: unknown;
+};
+
+function toNotification(n: BackendNotification): AppNotification {
+  return {
+    id: String(n?.id || ""),
+    title: String(n?.title || ""),
+    message: String(n?.message || ""),
+    kind: String(n?.kind || ""),
+    href: String(n?.href || ""),
+    meta: (n as any)?.meta ?? null,
+    createdAt: n?.createdAt ? String(n.createdAt) : null,
+    read: Boolean((n as any)?.read),
+  };
+}
+
+export async function apiNotificationsList(input?: { limit?: number }): Promise<{
+  items: AppNotification[];
+  unreadCount: number;
+}> {
+  const limit =
+    input?.limit && Number.isFinite(input.limit)
+      ? Math.max(1, Math.min(50, Math.trunc(input.limit)))
+      : 12;
+  const env = await apiFetch<{ items: BackendNotification[]; unreadCount: number }>(
+    `/api/notifications?limit=${encodeURIComponent(String(limit))}`,
+    { method: "GET" },
+  );
+  if (!env.success) throw new Error(env.message || "Failed to load notifications");
+  const items = Array.isArray(env.data?.items) ? env.data.items.map(toNotification) : [];
+  const unreadCount = Number.isFinite(env.data?.unreadCount)
+    ? Math.max(0, Math.trunc(env.data.unreadCount))
+    : 0;
+  return { items, unreadCount };
+}
+
+export async function apiNotificationsReadAll(): Promise<void> {
+  const env = await apiFetch<{ ok: boolean }>("/api/notifications/read-all", { method: "POST" });
+  if (!env.success) throw new Error(env.message || "Failed to mark notifications read");
+}
+
+export async function apiNotificationMarkRead(id: string): Promise<void> {
+  const env = await apiFetch<{ id: string }>(`/api/notifications/${encodeURIComponent(id)}/read`, {
+    method: "POST",
+  });
+  if (!env.success) throw new Error(env.message || "Failed to mark notification read");
 }
