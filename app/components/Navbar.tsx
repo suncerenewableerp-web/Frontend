@@ -64,8 +64,9 @@ export default function Navbar({ onOpen }: { onOpen?: () => void }) {
           transition: "border-color 0.4s,background 0.4s",
         }}
       >
-        <Link href="/" style={{ display: "flex", alignItems: "center", gap: 11, textDecoration: "none" }}>
+        <Link href="/" className="nv-brand" style={{ display: "flex", alignItems: "center", gap: 11, textDecoration: "none" }}>
           <div
+            className="nv-logo"
             style={{
               width: 40,
               height: 40,
@@ -90,8 +91,9 @@ export default function Navbar({ onOpen }: { onOpen?: () => void }) {
               }}
             />
           </div>
-          <div>
+          <div className="nv-brand-copy">
             <div
+              className="nv-brand-name"
               style={{
                 fontFamily: "'Cormorant Garamond', serif",
                 fontSize: "1.1rem",
@@ -103,6 +105,7 @@ export default function Navbar({ onOpen }: { onOpen?: () => void }) {
               Sunce Renewables
             </div>
             <div
+              className="nv-brand-sub"
               style={{
                 fontSize: "0.58rem",
                 color: "var(--brown-light)",

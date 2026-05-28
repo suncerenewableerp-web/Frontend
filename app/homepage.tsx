@@ -42,12 +42,6 @@ const GLOBAL_CSS = `
   }
   @media (max-width:540px) {
     .wg { grid-template-columns:1fr!important; }
-    .sb-inner { flex-wrap:wrap!important; }
-    .sb-item { width:50%!important;border-right:none!important;border-bottom:1px solid var(--border)!important; }
-    .nv { padding: 0 14px !important; height: 62px !important; }
-    .nv-r { gap: 8px !important; }
-    .nv-erp { padding: 8px 12px !important; font-size: 0.75rem !important; }
-    .nv-qt { padding: 9px 14px !important; font-size: 0.75rem !important; }
   }
 `;
 
@@ -136,6 +130,7 @@ function Hero() {
 
   return (
     <section
+      className="home-hero"
       style={{
         minHeight: "100vh",
         backgroundColor: "#000",
@@ -147,6 +142,7 @@ function Hero() {
       }}
     >
       <div
+        className="home-hero-bg"
         style={{
           position: "absolute",
           inset: 0,
@@ -162,6 +158,7 @@ function Hero() {
         aria-hidden="true"
       />
       <div
+        className="home-hero-overlay"
         style={{
           position: "absolute",
           inset: 0,
@@ -190,6 +187,7 @@ function Hero() {
             </span>
           </div>
           <h1
+            className="home-hero-title"
             style={{
               ...fade(0.22),
               fontFamily: "'Cormorant Garamond', serif",
@@ -205,6 +203,7 @@ function Hero() {
             Solar Inverter <em className="gi">Doctors.</em>
           </h1>
           <p
+            className="home-hero-copy"
             style={{
               ...fade(0.38),
               fontSize: "clamp(0.93rem, 1.4vw, 1.08rem)",
@@ -219,6 +218,7 @@ function Hero() {
             full project management from a single expert team.
           </p>
           <div
+            className="home-hero-actions"
             style={{
               ...fade(0.52),
               display: "flex",
@@ -244,6 +244,7 @@ function Hero() {
             </button>
           </div>
           <div
+            className="home-stats-card"
             style={{
               ...fade(0.66),
               background: "#fff",
