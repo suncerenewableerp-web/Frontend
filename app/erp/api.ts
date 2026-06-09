@@ -1789,6 +1789,50 @@ export async function apiDashboardTicketTrends(days = 14): Promise<{
   };
 }
 
+// ── Inventory Summary ────────────────────────────────────────────────────────
+
+export type InventoryVendorRow = { vendor: string; count: number };
+export type InventoryModelRow = { model: string; vendor: string; count: number };
+export type InventoryStatusRow = { status: string; count: number };
+
+export type InventorySummaryResult = {
+  total: number;
+  vendors: InventoryVendorRow[];
+  models: InventoryModelRow[];
+  statuses: InventoryStatusRow[];
+};
+
+export async function apiDashboardInventorySummary(input: {
+  period: "all" | "weekly" | "monthly" | "quarterly" | "halfyearly" | "yearly";
+  year?: number;
+  month?: number;
+  tz?: string;
+}): Promise<InventorySummaryResult> {
+  const qs = new URLSearchParams();
+  qs.set("period", input.period);
+  if (typeof input.year === "number") qs.set("year", String(input.year));
+  if (typeof input.month === "number") qs.set("month", String(input.month));
+  if (input.tz) qs.set("tz", input.tz);
+
+  const env = await apiFetch<{ total?: unknown; vendors?: unknown; models?: unknown; statuses?: unknown }>(
+    `/api/dashboard/inventory-summary?${qs.toString()}`,
+    { method: "GET" },
+  );
+  if (!env.success) throw new Error(env.message || "Failed to fetch inventory summary");
+
+  const vendors: InventoryVendorRow[] = Array.isArray(env.data?.vendors)
+    ? (env.data!.vendors as any[]).map((r) => ({ vendor: String(r?.vendor || ""), count: Number(r?.count || 0) || 0 }))
+    : [];
+  const models: InventoryModelRow[] = Array.isArray(env.data?.models)
+    ? (env.data!.models as any[]).map((r) => ({ model: String(r?.model || ""), vendor: String(r?.vendor || ""), count: Number(r?.count || 0) || 0 }))
+    : [];
+  const statuses: InventoryStatusRow[] = Array.isArray(env.data?.statuses)
+    ? (env.data!.statuses as any[]).map((r) => ({ status: String(r?.status || ""), count: Number(r?.count || 0) || 0 }))
+    : [];
+
+  return { total: Number(env.data?.total || 0) || 0, vendors, models, statuses };
+}
+
 export async function apiPendingDispatchApprovalsList(): Promise<{
   count: number;
   tickets: PendingDispatchApprovalTicket[];

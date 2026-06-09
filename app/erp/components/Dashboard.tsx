@@ -16,10 +16,12 @@ import {
   apiDashboardServicingStatus,
   apiDashboardClientDetailsDaily,
   apiDashboardClientDetailsList,
+  apiDashboardInventorySummary,
   apiJobCardsList,
   apiPendingDispatchApprovalsList,
   type ClientSummaryRow,
   type DashboardPeriodInput,
+  type InventorySummaryResult,
   type ServicingStatusDayRow,
   type JobCardListRow,
   type PendingDispatchApprovalTicket,
@@ -28,6 +30,17 @@ import {
 import ComboBarLineChart from "./ComboBarLineChart";
 
 const VENDOR_PIE_COLORS = ["#0d9488", "#f97316", "#0ea5e9", "#7c3aed", "#16a34a", "#dc2626", "#2563eb", "#d97706"];
+
+const STATUS_PIE_COLORS: Record<string, string> = {
+  CREATED: "#0d9488",
+  PICKUP_SCHEDULED: "#0ea5e9",
+  IN_TRANSIT: "#38bdf8",
+  UNDER_REPAIRED: "#f97316",
+  UNDER_DISPATCH: "#7c3aed",
+  DISPATCHED: "#16a34a",
+  INSTALLATION_DONE: "#4ade80",
+  CLOSED: "#6b7280",
+};
 
 type VendorPieSlice = {
   vendor: string;
@@ -121,14 +134,16 @@ export default function Dashboard({
   const [jobCards, setJobCards] = useState<JobCardListRow[]>([]);
 
   const showTrends = isAdmin || isSales;
-  const [trendDays, setTrendDays] = useState(14);
+  const [trendDays, setTrendDays] = useState(7);
+  const [trendChartType, setTrendChartType] = useState<"bar" | "line" | "pie">("bar");
   const [trends, setTrends] = useState<TicketTrendsPoint[]>([]);
   const [trendsErr, setTrendsErr] = useState("");
   const [selectedTrendDate, setSelectedTrendDate] = useState<string>("");
   const [showAllDashboardTickets, setShowAllDashboardTickets] = useState(false);
-  const [inventoryFilter, setInventoryFilter] = useState<{ type: "vendor" | "model"; label: string; vendor: string; model?: string } | null>(null);
+  const [inventoryFilter, setInventoryFilter] = useState<{ type: "vendor" | "model" | "status"; label: string; vendor: string; model?: string; status?: string } | null>(null);
   const [showAllInventoryVendors, setShowAllInventoryVendors] = useState(false);
   const [showAllInventoryModels, setShowAllInventoryModels] = useState(false);
+  const [showAllInventoryStatuses, setShowAllInventoryStatuses] = useState(false);
 
   const now = useMemo(() => new Date(), []);
   const defaultYear = now.getFullYear();
@@ -140,11 +155,14 @@ export default function Dashboard({
   const [reportMonth, setReportMonth] = useState(defaultMonth);
   const [reportFortnight, setReportFortnight] = useState<1 | 2>(defaultFortnight as 1 | 2);
 
-  const [invPeriod, setInvPeriod] = useState<"all" | "weekly" | "monthly" | "yearly">("all");
+  const [invPeriod, setInvPeriod] = useState<"all" | "weekly" | "monthly" | "quarterly" | "halfyearly" | "yearly">("all");
   const [invYear, setInvYear] = useState(defaultYear);
   const [invMonth, setInvMonth] = useState(defaultMonth);
+  const [invData, setInvData] = useState<InventorySummaryResult | null>(null);
+  const [invLoading, setInvLoading] = useState(false);
+  const [invError, setInvError] = useState("");
 
-  const [invModalPeriod, setInvModalPeriod] = useState<"all" | "weekly" | "monthly" | "yearly">("all");
+  const [invModalPeriod, setInvModalPeriod] = useState<"all" | "weekly" | "monthly" | "quarterly" | "halfyearly" | "yearly">("all");
   const [invModalYear, setInvModalYear] = useState(defaultYear);
   const [invModalMonth, setInvModalMonth] = useState(defaultMonth);
 
@@ -259,69 +277,82 @@ export default function Dashboard({
     return { underDispatch, dispatched, total: underDispatch + dispatched };
   }, [underDispatch, dispatched]);
 
-  const inventoryTickets = useMemo(() => {
-    if (invPeriod === "all") return tickets || [];
-    return (tickets || []).filter((t) => {
-      const d = new Date(t.createdAt);
-      if (Number.isNaN(d.getTime())) return false;
-      if (invPeriod === "weekly") {
-        const diffDays = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
-        return diffDays >= 0 && diffDays < 7;
-      }
-      if (invPeriod === "monthly") {
-        return d.getFullYear() === invYear && d.getMonth() + 1 === invMonth;
-      }
-      if (invPeriod === "yearly") {
-        return d.getFullYear() === invYear;
-      }
-      return true;
-    });
-  }, [tickets, invPeriod, invYear, invMonth, now]);
+  // Fetch inventory summary from backend whenever period changes
+  useEffect(() => {
+    let cancelled = false;
+    setInvLoading(true);
+    setInvError("");
+    apiDashboardInventorySummary({
+      period: invPeriod,
+      year: invYear,
+      month: invMonth,
+      tz: "Asia/Kolkata",
+    })
+      .then((data) => { if (!cancelled) { setInvData(data); setInvLoading(false); } })
+      .catch((e) => { if (!cancelled) { setInvError(e instanceof Error ? e.message : "Failed to load inventory"); setInvLoading(false); } });
+    return () => { cancelled = true; };
+  }, [invPeriod, invYear, invMonth]);
 
+  // Compute vendor pie slices from API data
   const inventoryVendorChart = useMemo(() => {
-    const vendorCounts = new Map<string, number>();
-    const modelCounts = new Map<string, { vendor: string; model: string; count: number }>();
-
-    inventoryTickets.forEach((t) => {
-      const vendor = normalizeInventoryLabel(t.inverterMake, "Unknown Vendor");
-      const model = normalizeInventoryLabel(t.inverterModel, "Unknown Model");
-
-      vendorCounts.set(vendor, (vendorCounts.get(vendor) || 0) + 1);
-
-      const modelKey = `${vendor}|||${model}`;
-      const prev = modelCounts.get(modelKey);
-      modelCounts.set(modelKey, {
-        vendor,
-        model,
-        count: (prev?.count || 0) + 1,
-      });
-    });
-
-    const vendorRows = Array.from(vendorCounts.entries())
-      .map(([vendor, count]) => ({ vendor, count }))
-      .sort((a, b) => b.count - a.count || a.vendor.localeCompare(b.vendor));
-    const total = vendorRows.reduce((sum, row) => sum + row.count, 0);
+    const vendors = invData?.vendors ?? [];
+    const total = invData?.total ?? 0;
     let cursor = 0;
-    const slices: VendorPieSlice[] = vendorRows.map((row, idx) => {
+    const vendorRows: VendorPieSlice[] = vendors.map((row, idx) => {
+      const startAngle = total ? (cursor / total) * 360 : 0;
+      cursor += row.count;
+      const endAngle = total ? (cursor / total) * 360 : 0;
+      return {
+        vendor: row.vendor,
+        count: row.count,
+        percent: total ? (row.count / total) * 100 : 0,
+        color: VENDOR_PIE_COLORS[idx % VENDOR_PIE_COLORS.length]!,
+        startAngle,
+        endAngle,
+      };
+    });
+    return { vendorRows, total };
+  }, [invData]);
+
+  // Compute model pie slices from API data
+  const inventoryModelChart = useMemo(() => {
+    const models = invData?.models ?? [];
+    const total = invData?.total ?? 0;
+    let cursor = 0;
+    const modelSlices = models.map((entry, idx) => {
+      const startAngle = total ? (cursor / total) * 360 : 0;
+      cursor += entry.count;
+      const endAngle = total ? (cursor / total) * 360 : 0;
+      return {
+        ...entry,
+        percent: total ? (entry.count / total) * 100 : 0,
+        color: VENDOR_PIE_COLORS[idx % VENDOR_PIE_COLORS.length]!,
+        startAngle,
+        endAngle,
+      };
+    });
+    return { modelSlices, total };
+  }, [invData]);
+
+  // Compute status pie slices from API data
+  const inventoryStatusChart = useMemo(() => {
+    const statuses = invData?.statuses ?? [];
+    const total = invData?.total ?? 0;
+    let cursor = 0;
+    const slices = statuses.map((row) => {
       const startAngle = total ? (cursor / total) * 360 : 0;
       cursor += row.count;
       const endAngle = total ? (cursor / total) * 360 : 0;
       return {
         ...row,
         percent: total ? (row.count / total) * 100 : 0,
-        color: VENDOR_PIE_COLORS[idx % VENDOR_PIE_COLORS.length],
+        color: STATUS_PIE_COLORS[row.status] || "#94a3b8",
         startAngle,
         endAngle,
       };
     });
-
-    const allModelEntries = Array.from(modelCounts.values())
-      .sort((a, b) => b.count - a.count || a.model.localeCompare(b.model));
-
-    const topModel = allModelEntries[0] || null;
-
-    return { vendorRows: slices, total, topModel, allModelEntries };
-  }, [inventoryTickets]);
+    return { slices, total };
+  }, [invData]);
 
   useEffect(() => {
     if (inventoryFilter) {
@@ -337,6 +368,7 @@ export default function Dashboard({
       const vendor = normalizeInventoryLabel(t.inverterMake, "Unknown Vendor");
       const model = normalizeInventoryLabel(t.inverterModel, "Unknown Model");
       if (inventoryFilter.type === "vendor") return vendor === inventoryFilter.vendor;
+      if (inventoryFilter.type === "status") return String(t.status || "").toUpperCase().trim() === inventoryFilter.status;
       return vendor === inventoryFilter.vendor && model === inventoryFilter.model;
     });
     if (invModalPeriod === "all") return byVendorModel;
@@ -566,7 +598,30 @@ export default function Dashboard({
     <div className="table-card" style={{ marginBottom: 16 }}>
       <div className="table-header">
         <div className="table-title">Tickets Created vs Repaired vs Closed</div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
+            {(["bar", "line", "pie"] as const).map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setTrendChartType(type)}
+                style={{
+                  padding: "4px 12px",
+                  fontSize: 12,
+                  fontFamily: "var(--mono)",
+                  cursor: "pointer",
+                  border: "none",
+                  borderRight: type !== "pie" ? "1px solid var(--border)" : "none",
+                  background: trendChartType === type ? "var(--primary)" : "var(--bg2)",
+                  color: trendChartType === type ? "#fff" : "var(--text2)",
+                  fontWeight: trendChartType === type ? 600 : 400,
+                  transition: "background 0.15s",
+                }}
+              >
+                {type === "bar" ? "Bar" : type === "line" ? "Line" : "Pie"}
+              </button>
+            ))}
+          </div>
           <select
             className="form-select"
             value={String(trendDays)}
@@ -578,8 +633,9 @@ export default function Dashboard({
             style={{ width: 150, fontFamily: "var(--mono)", fontSize: 12 }}
           >
             <option value="7">Weekly</option>
-            <option value="14">Fortnightly</option>
             <option value="30">Monthly</option>
+            <option value="90">Quarterly</option>
+            <option value="182">Half Yearly</option>
             <option value="365">Yearly</option>
           </select>
         </div>
@@ -675,10 +731,12 @@ export default function Dashboard({
                     </span>
                   </span>
                 </div>
-                <div style={{ fontSize: 12, color: "var(--text3)" }}>Tap bars/points for details</div>
+                <div style={{ fontSize: 12, color: "var(--text3)" }}>
+                {trendChartType === "pie" ? "Total breakdown" : "Tap bars/points for details"}
+              </div>
               </div>
 
-              {selectedTrendSummary ? (
+              {trendChartType !== "pie" && selectedTrendSummary ? (
                 <div style={{ marginBottom: 10, fontSize: 12, color: "var(--text2)" }}>
                   Selected:{" "}
                   <span className="tag" style={{ fontFamily: "var(--mono)" }}>
@@ -691,31 +749,106 @@ export default function Dashboard({
                 </div>
               ) : null}
 
-              <ComboBarLineChart
-                points={trendsChartPoints}
-                selectedId={selectedTrendDate}
-                onSelect={setSelectedTrendDate}
-                height={220}
-                yLabel="Tickets"
-                showBarValues
-                showLine={false}
-                ariaLabel="Tickets created vs repaired vs closed chart"
-              />
+              {trendChartType === "bar" && (
+                <ComboBarLineChart
+                  points={trendsChartPoints}
+                  selectedId={selectedTrendDate}
+                  onSelect={setSelectedTrendDate}
+                  height={220}
+                  yLabel="Tickets"
+                  showBarValues
+                  showLine={false}
+                  ariaLabel="Tickets created vs repaired vs closed bar chart"
+                />
+              )}
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  flexWrap: "wrap",
-                  fontSize: 12,
-                  color: "var(--text3)",
-                  marginTop: 8,
-                }}
-              >
-                <span style={{ fontFamily: "var(--mono)" }}>
-                  Tip: tap any point to see counts for that date.
-                </span>
-              </div>
+              {trendChartType === "line" && (
+                <ComboBarLineChart
+                  points={trendsChartPoints}
+                  selectedId={selectedTrendDate}
+                  onSelect={setSelectedTrendDate}
+                  height={220}
+                  yLabel="Tickets"
+                  showBarValues={false}
+                  showLine={true}
+                  ariaLabel="Tickets created vs repaired vs closed line chart"
+                />
+              )}
+
+              {trendChartType === "pie" && (() => {
+                const pieData = [
+                  { id: "created", label: "Created", value: trendTotals.created, color: "#0d9488" },
+                  { id: "repaired", label: "Repaired", value: trendTotals.repaired, color: "#2563eb" },
+                  { id: "closed", label: "Closed", value: trendTotals.closed, color: "#16a34a" },
+                ];
+                const total = pieData.reduce((s, d) => s + d.value, 0);
+                const cx = 100, cy = 100, r = 75, ir = 45;
+                let cumAngle = -Math.PI / 2;
+                return (
+                  <div style={{ display: "flex", gap: 24, alignItems: "center", flexWrap: "wrap", justifyContent: "center", padding: "8px 0" }}>
+                    <svg width={200} height={200} viewBox="0 0 200 200" aria-label="Tickets pie chart">
+                      {total === 0 ? (
+                        <circle cx={cx} cy={cy} r={r} fill="var(--border)" />
+                      ) : pieData.map((d) => {
+                        if (d.value === 0) return null;
+                        const frac = d.value / total;
+                        const startAngle = cumAngle;
+                        const endAngle = cumAngle + frac * 2 * Math.PI;
+                        cumAngle = endAngle;
+                        const largeArc = frac > 0.5 ? 1 : 0;
+                        const x1 = cx + r * Math.cos(startAngle);
+                        const y1 = cy + r * Math.sin(startAngle);
+                        const x2 = cx + r * Math.cos(endAngle);
+                        const y2 = cy + r * Math.sin(endAngle);
+                        const ix1 = cx + ir * Math.cos(startAngle);
+                        const iy1 = cy + ir * Math.sin(startAngle);
+                        const ix2 = cx + ir * Math.cos(endAngle);
+                        const iy2 = cy + ir * Math.sin(endAngle);
+                        const pathD = [
+                          `M ${ix1} ${iy1}`,
+                          `L ${x1} ${y1}`,
+                          `A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`,
+                          `L ${ix2} ${iy2}`,
+                          `A ${ir} ${ir} 0 ${largeArc} 0 ${ix1} ${iy1}`,
+                          "Z",
+                        ].join(" ");
+                        return <path key={d.id} d={pathD} fill={d.color} stroke="var(--bg)" strokeWidth={2} />;
+                      })}
+                      <text x={cx} y={cy - 8} textAnchor="middle" fontSize={13} fontWeight={700} fill="var(--text1)">{total}</text>
+                      <text x={cx} y={cy + 10} textAnchor="middle" fontSize={10} fill="var(--text3)">Total</text>
+                    </svg>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {pieData.map((d) => (
+                        <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                          <span style={{ width: 12, height: 12, borderRadius: 3, background: d.color, display: "inline-block", flexShrink: 0 }} />
+                          <span style={{ color: "var(--text2)", minWidth: 64 }}>{d.label}</span>
+                          <span style={{ fontFamily: "var(--mono)", fontWeight: 600, color: "var(--text1)" }}>{d.value}</span>
+                          <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--text3)" }}>
+                            ({total > 0 ? ((d.value / total) * 100).toFixed(1) : "0.0"}%)
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {trendChartType !== "pie" && (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    flexWrap: "wrap",
+                    fontSize: 12,
+                    color: "var(--text3)",
+                    marginTop: 8,
+                  }}
+                >
+                  <span style={{ fontFamily: "var(--mono)" }}>
+                    Tip: tap any point to see counts for that date.
+                  </span>
+                </div>
+              )}
             </div>
           </>
         ) : (
@@ -902,23 +1035,25 @@ export default function Dashboard({
               <div>
                 <div className="table-title">Inverter Inventory by Vendor</div>
                 <div style={{ marginTop: 4, fontSize: 12, color: "var(--text3)" }}>
-                  Click any vendor or model to view its tickets
+                  Click any slice to view vendor tickets
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <select
                   className="form-select"
                   value={invPeriod}
-                  onChange={(e) => setInvPeriod(e.target.value as "all" | "weekly" | "monthly" | "yearly")}
+                  onChange={(e) => setInvPeriod(e.target.value as "all" | "weekly" | "monthly" | "quarterly" | "halfyearly" | "yearly")}
                   style={{ width: 130, fontFamily: "var(--mono)", fontSize: 12 }}
                   aria-label="Inventory period"
                 >
                   <option value="all">All Time</option>
                   <option value="weekly">This Week</option>
                   <option value="monthly">Monthly</option>
+                  <option value="quarterly">Quarterly</option>
+                  <option value="halfyearly">Half Yearly</option>
                   <option value="yearly">Yearly</option>
                 </select>
-                {invPeriod === "monthly" || invPeriod === "yearly" ? (
+                {invPeriod === "monthly" || invPeriod === "quarterly" || invPeriod === "halfyearly" || invPeriod === "yearly" ? (
                   <select
                     className="form-select"
                     value={String(invYear)}
@@ -952,183 +1087,140 @@ export default function Dashboard({
               </div>
             </div>
             <div style={{ padding: 20 }}>
-              {inventoryVendorChart.total ? (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "minmax(220px, 320px) minmax(260px, 1fr)",
-                    gap: 24,
-                    alignItems: "start",
-                  }}
-                >
-                  {/* Pie chart */}
-                  <div style={{ display: "grid", placeItems: "center", minHeight: 250 }}>
-                    <svg
-                      viewBox="0 0 220 220"
-                      width="100%"
-                      height="250"
-                      role="img"
-                      aria-label="Inverter vendor pie chart"
-                      style={{ maxWidth: 280, display: "block" }}
-                    >
+              {invLoading && !invData ? (
+                <div style={{ fontSize: 12, color: "var(--text3)", padding: 24, textAlign: "center" }}>Loading inventory data…</div>
+              ) : invError ? (
+                <div style={{ fontSize: 12, color: "#dc2626", padding: 12 }}>{invError}</div>
+              ) : inventoryVendorChart.total ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+
+                  {/* Chart 1 — By Vendor */}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text3)", letterSpacing: "0.06em", textTransform: "uppercase" }}>By Vendor</div>
+                    <svg viewBox="0 0 220 220" width="100%" height="220" role="img" aria-label="Vendor pie chart" style={{ maxWidth: 260, display: "block" }}>
                       {inventoryVendorChart.vendorRows.length === 1 ? (
-                        <circle cx="110" cy="110" r="92" fill={inventoryVendorChart.vendorRows[0]!.color}>
-                          <title>
-                            {inventoryVendorChart.vendorRows[0]!.vendor}: {inventoryVendorChart.vendorRows[0]!.count}
-                          </title>
+                        <circle cx="110" cy="110" r="92" fill={inventoryVendorChart.vendorRows[0]!.color} style={{ cursor: "pointer" }}
+                          onClick={() => setInventoryFilter({ type: "vendor", label: inventoryVendorChart.vendorRows[0]!.vendor, vendor: inventoryVendorChart.vendorRows[0]!.vendor })}>
+                          <title>{inventoryVendorChart.vendorRows[0]!.vendor}: {inventoryVendorChart.vendorRows[0]!.count}</title>
                         </circle>
                       ) : (
                         inventoryVendorChart.vendorRows.map((slice) => (
-                          <path
-                            key={slice.vendor}
-                            d={describePieSlice(110, 110, 92, slice.startAngle, slice.endAngle)}
-                            fill={slice.color}
-                            stroke="var(--surface)"
-                            strokeWidth="2"
-                            style={{ cursor: "pointer" }}
-                            onClick={() =>
-                              setInventoryFilter({ type: "vendor", label: slice.vendor, vendor: slice.vendor })
-                            }
-                          >
-                            <title>
-                              {slice.vendor}: {slice.count} ({slice.percent.toFixed(1)}%) — click to view tickets
-                            </title>
+                          <path key={slice.vendor} d={describePieSlice(110, 110, 92, slice.startAngle, slice.endAngle)}
+                            fill={slice.color} stroke="var(--surface)" strokeWidth="2" style={{ cursor: "pointer" }}
+                            onClick={() => setInventoryFilter({ type: "vendor", label: slice.vendor, vendor: slice.vendor })}>
+                            <title>{slice.vendor}: {slice.count} ({slice.percent.toFixed(1)}%)</title>
                           </path>
                         ))
                       )}
                       <circle cx="110" cy="110" r="54" fill="var(--surface)" stroke="var(--border)" strokeWidth="1" />
-                      <text x="110" y="103" textAnchor="middle" fill="var(--text3)" fontSize="11" fontFamily="var(--mono)">
-                        Inventory
-                      </text>
-                      <text x="110" y="126" textAnchor="middle" fill="var(--text)" fontSize="28" fontWeight="700" fontFamily="var(--mono)">
-                        {inventoryVendorChart.total}
-                      </text>
+                      <text x="110" y="105" textAnchor="middle" fill="var(--text3)" fontSize="10" fontFamily="var(--mono)">Vendors</text>
+                      <text x="110" y="124" textAnchor="middle" fill="var(--text)" fontSize="22" fontWeight="700" fontFamily="var(--mono)">{inventoryVendorChart.total}</text>
                     </svg>
+                    {/* Vendor legend — top 5 + expand */}
+                    <div style={{ display: "grid", gap: 5, width: "100%", maxWidth: 240 }}>
+                      {(showAllInventoryVendors ? inventoryVendorChart.vendorRows : inventoryVendorChart.vendorRows.slice(0, 5)).map((row) => (
+                        <button key={row.vendor} type="button" onClick={() => setInventoryFilter({ type: "vendor", label: row.vendor, vendor: row.vendor })}
+                          style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", fontSize: 12, textAlign: "left", padding: "2px 0" }}>
+                          <span style={{ width: 8, height: 8, borderRadius: 999, background: row.color, flex: "0 0 auto" }} />
+                          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.vendor}</span>
+                          <span style={{ fontFamily: "var(--mono)", color: "var(--text3)", fontSize: 11 }}>{row.count}</span>
+                        </button>
+                      ))}
+                      {inventoryVendorChart.vendorRows.length > 5 && (
+                        <button type="button" onClick={() => setShowAllInventoryVendors(v => !v)}
+                          style={{ fontSize: 11, color: "var(--primary, #0d9488)", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "2px 0 2px 14px", fontWeight: 500 }}>
+                          {showAllInventoryVendors ? "Show less ▲" : `+ ${inventoryVendorChart.vendorRows.length - 5} more vendors ▼`}
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Right panel: Top 5 Models + Top 5 Vendors */}
-                  <div style={{ display: "grid", gap: 18, minWidth: 0 }}>
-
-                    {/* Top 5 Models */}
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text3)", marginBottom: 8, letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                        Top Models
-                      </div>
-                      <div style={{ display: "grid", gap: 8 }}>
-                        {(showAllInventoryModels
-                          ? inventoryVendorChart.allModelEntries
-                          : inventoryVendorChart.allModelEntries.slice(0, 5)
-                        ).map((entry, idx) => {
-                          const percent = inventoryVendorChart.total ? (entry.count / inventoryVendorChart.total) * 100 : 0;
-                          const color = VENDOR_PIE_COLORS[idx % VENDOR_PIE_COLORS.length]!;
-                          return (
-                            <button
-                              key={`${entry.vendor}|||${entry.model}`}
-                              type="button"
-                              onClick={() =>
-                                setInventoryFilter({ type: "model", label: entry.model, vendor: entry.vendor, model: entry.model })
-                              }
-                              style={{
-                                background: "none",
-                                border: "none",
-                                padding: 0,
-                                cursor: "pointer",
-                                textAlign: "left",
-                                display: "grid",
-                                gap: 4,
-                              }}
-                            >
-                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, fontSize: 13 }}>
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                                  <span style={{ width: 10, height: 10, borderRadius: 999, background: color, flex: "0 0 auto" }} />
-                                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: idx === 0 ? 700 : 400 }}>
-                                    {entry.model}
-                                  </span>
-                                </span>
-                                <span style={{ fontFamily: "var(--mono)", color: "var(--text3)", flex: "0 0 auto", fontSize: 12 }}>
-                                  {entry.count} / {percent.toFixed(1)}%
-                                </span>
-                              </div>
-                              <div style={{ fontSize: 11, color: "var(--text3)", paddingLeft: 18 }}>{entry.vendor}</div>
-                              <div style={{ height: 4, borderRadius: 999, background: "var(--border)", overflow: "hidden" }}>
-                                <div style={{ width: `${Math.max(2, percent)}%`, height: "100%", background: color, borderRadius: 999 }} />
-                              </div>
-                            </button>
-                          );
-                        })}
-                        {inventoryVendorChart.allModelEntries.length > 5 && (
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-sm"
-                            style={{ justifySelf: "start", marginTop: 2 }}
-                            onClick={() => setShowAllInventoryModels((v) => !v)}
-                          >
-                            {showAllInventoryModels
-                              ? "Show less"
-                              : `+ ${inventoryVendorChart.allModelEntries.length - 5} more models`}
-                          </button>
-                        )}
-                      </div>
+                  {/* Chart 2 — By Model */}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text3)", letterSpacing: "0.06em", textTransform: "uppercase" }}>By Model</div>
+                    <svg viewBox="0 0 220 220" width="100%" height="220" role="img" aria-label="Model pie chart" style={{ maxWidth: 260, display: "block" }}>
+                      {inventoryModelChart.modelSlices.length === 0 ? (
+                        <circle cx="110" cy="110" r="92" fill="var(--border)" />
+                      ) : inventoryModelChart.modelSlices.length === 1 ? (
+                        <circle cx="110" cy="110" r="92" fill={inventoryModelChart.modelSlices[0]!.color} style={{ cursor: "pointer" }}
+                          onClick={() => setInventoryFilter({ type: "model", label: inventoryModelChart.modelSlices[0]!.model, vendor: inventoryModelChart.modelSlices[0]!.vendor, model: inventoryModelChart.modelSlices[0]!.model })}>
+                          <title>{inventoryModelChart.modelSlices[0]!.model}: {inventoryModelChart.modelSlices[0]!.count}</title>
+                        </circle>
+                      ) : (
+                        inventoryModelChart.modelSlices.map((slice) => (
+                          <path key={`${slice.vendor}|||${slice.model}`} d={describePieSlice(110, 110, 92, slice.startAngle, slice.endAngle)}
+                            fill={slice.color} stroke="var(--surface)" strokeWidth="2" style={{ cursor: "pointer" }}
+                            onClick={() => setInventoryFilter({ type: "model", label: slice.model, vendor: slice.vendor, model: slice.model })}>
+                            <title>{slice.model} ({slice.vendor}): {slice.count} ({slice.percent.toFixed(1)}%)</title>
+                          </path>
+                        ))
+                      )}
+                      <circle cx="110" cy="110" r="54" fill="var(--surface)" stroke="var(--border)" strokeWidth="1" />
+                      <text x="110" y="105" textAnchor="middle" fill="var(--text3)" fontSize="10" fontFamily="var(--mono)">Models</text>
+                      <text x="110" y="124" textAnchor="middle" fill="var(--text)" fontSize="22" fontWeight="700" fontFamily="var(--mono)">{inventoryModelChart.modelSlices.length}</text>
+                    </svg>
+                    {/* Model legend — top 5 + expand */}
+                    <div style={{ display: "grid", gap: 5, width: "100%", maxWidth: 240 }}>
+                      {(showAllInventoryModels ? inventoryModelChart.modelSlices : inventoryModelChart.modelSlices.slice(0, 5)).map((entry) => (
+                        <button key={`${entry.vendor}|||${entry.model}`} type="button"
+                          onClick={() => setInventoryFilter({ type: "model", label: entry.model, vendor: entry.vendor, model: entry.model })}
+                          style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", fontSize: 12, textAlign: "left", padding: "2px 0" }}>
+                          <span style={{ width: 8, height: 8, borderRadius: 999, background: entry.color, flex: "0 0 auto" }} />
+                          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.model}</span>
+                          <span style={{ fontFamily: "var(--mono)", color: "var(--text3)", fontSize: 11 }}>{entry.count}</span>
+                        </button>
+                      ))}
+                      {inventoryModelChart.modelSlices.length > 5 && (
+                        <button type="button" onClick={() => setShowAllInventoryModels(v => !v)}
+                          style={{ fontSize: 11, color: "var(--primary, #0d9488)", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "2px 0 2px 14px", fontWeight: 500 }}>
+                          {showAllInventoryModels ? "Show less ▲" : `+ ${inventoryModelChart.modelSlices.length - 5} more models ▼`}
+                        </button>
+                      )}
                     </div>
-
-                    {/* Top 5 Vendors */}
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text3)", marginBottom: 8, letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                        Top Vendors
-                      </div>
-                      <div style={{ display: "grid", gap: 8 }}>
-                        {(showAllInventoryVendors
-                          ? inventoryVendorChart.vendorRows
-                          : inventoryVendorChart.vendorRows.slice(0, 5)
-                        ).map((row) => (
-                          <button
-                            key={row.vendor}
-                            type="button"
-                            onClick={() =>
-                              setInventoryFilter({ type: "vendor", label: row.vendor, vendor: row.vendor })
-                            }
-                            style={{
-                              background: "none",
-                              border: "none",
-                              padding: 0,
-                              cursor: "pointer",
-                              textAlign: "left",
-                              display: "grid",
-                              gap: 4,
-                            }}
-                          >
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, fontSize: 13 }}>
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                                <span style={{ width: 10, height: 10, borderRadius: 999, background: row.color, flex: "0 0 auto" }} />
-                                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                  {row.vendor}
-                                </span>
-                              </span>
-                              <span style={{ fontFamily: "var(--mono)", color: "var(--text3)", flex: "0 0 auto" }}>
-                                {row.count} / {row.percent.toFixed(1)}%
-                              </span>
-                            </div>
-                            <div style={{ height: 6, borderRadius: 999, background: "var(--border)", overflow: "hidden" }}>
-                              <div style={{ width: `${Math.max(2, row.percent)}%`, height: "100%", background: row.color, borderRadius: 999 }} />
-                            </div>
-                          </button>
-                        ))}
-                        {inventoryVendorChart.vendorRows.length > 5 && (
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-sm"
-                            style={{ justifySelf: "start", marginTop: 2 }}
-                            onClick={() => setShowAllInventoryVendors((v) => !v)}
-                          >
-                            {showAllInventoryVendors
-                              ? "Show less"
-                              : `+ ${inventoryVendorChart.vendorRows.length - 5} more vendors`}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
                   </div>
+
+                  {/* Chart 3 — By Dispatch Status */}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text3)", letterSpacing: "0.06em", textTransform: "uppercase" }}>By Status</div>
+                    <svg viewBox="0 0 220 220" width="100%" height="220" role="img" aria-label="Status pie chart" style={{ maxWidth: 260, display: "block" }}>
+                      {inventoryStatusChart.slices.length === 1 ? (
+                        <circle cx="110" cy="110" r="92" fill={inventoryStatusChart.slices[0]!.color} style={{ cursor: "pointer" }}
+                          onClick={() => setInventoryFilter({ type: "status", label: inventoryStatusChart.slices[0]!.status, vendor: "", status: inventoryStatusChart.slices[0]!.status })}>
+                          <title>{inventoryStatusChart.slices[0]!.status}: {inventoryStatusChart.slices[0]!.count}</title>
+                        </circle>
+                      ) : (
+                        inventoryStatusChart.slices.map((slice) => (
+                          <path key={slice.status} d={describePieSlice(110, 110, 92, slice.startAngle, slice.endAngle)}
+                            fill={slice.color} stroke="var(--surface)" strokeWidth="2" style={{ cursor: "pointer" }}
+                            onClick={() => setInventoryFilter({ type: "status", label: slice.status, vendor: "", status: slice.status })}>
+                            <title>{slice.status}: {slice.count} ({slice.percent.toFixed(1)}%)</title>
+                          </path>
+                        ))
+                      )}
+                      <circle cx="110" cy="110" r="54" fill="var(--surface)" stroke="var(--border)" strokeWidth="1" />
+                      <text x="110" y="105" textAnchor="middle" fill="var(--text3)" fontSize="10" fontFamily="var(--mono)">Status</text>
+                      <text x="110" y="124" textAnchor="middle" fill="var(--text)" fontSize="22" fontWeight="700" fontFamily="var(--mono)">{inventoryStatusChart.total}</text>
+                    </svg>
+                    {/* Status legend — top 5 + expand */}
+                    <div style={{ display: "grid", gap: 5, width: "100%", maxWidth: 240 }}>
+                      {(showAllInventoryStatuses ? inventoryStatusChart.slices : inventoryStatusChart.slices.slice(0, 5)).map((slice) => (
+                        <button key={slice.status} type="button"
+                          onClick={() => setInventoryFilter({ type: "status", label: slice.status, vendor: "", status: slice.status })}
+                          style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", fontSize: 12, textAlign: "left", padding: "2px 0" }}>
+                          <span style={{ width: 8, height: 8, borderRadius: 999, background: slice.color, flex: "0 0 auto" }} />
+                          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{slice.status.replace(/_/g, " ")}</span>
+                          <span style={{ fontFamily: "var(--mono)", color: "var(--text3)", fontSize: 11 }}>{slice.count}</span>
+                        </button>
+                      ))}
+                      {inventoryStatusChart.slices.length > 5 && (
+                        <button type="button" onClick={() => setShowAllInventoryStatuses(v => !v)}
+                          style={{ fontSize: 11, color: "var(--primary, #0d9488)", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "2px 0 2px 14px", fontWeight: 500 }}>
+                          {showAllInventoryStatuses ? "Show less ▲" : `+ ${inventoryStatusChart.slices.length - 5} more statuses ▼`}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
                 </div>
               ) : (
                 <div style={{ fontSize: 12, color: "var(--text3)" }}>No inventory data.</div>
@@ -1143,7 +1235,7 @@ export default function Dashboard({
                 <div className="modal-header" style={{ flexWrap: "wrap", gap: 12 }}>
                   <div>
                     <div className="modal-title">
-                      {inventoryFilter.type === "vendor" ? "Vendor" : "Model"} · {inventoryFilter.label}
+                      {inventoryFilter.type === "vendor" ? "Vendor" : inventoryFilter.type === "model" ? "Model" : "Status"} · {inventoryFilter.label.replace(/_/g, " ")}
                     </div>
                     <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
                       {modalFilteredTickets.length} ticket{modalFilteredTickets.length !== 1 ? "s" : ""}
@@ -1154,16 +1246,18 @@ export default function Dashboard({
                     <select
                       className="form-select"
                       value={invModalPeriod}
-                      onChange={(e) => setInvModalPeriod(e.target.value as "all" | "weekly" | "monthly" | "yearly")}
+                      onChange={(e) => setInvModalPeriod(e.target.value as "all" | "weekly" | "monthly" | "quarterly" | "halfyearly" | "yearly")}
                       style={{ width: 130, fontFamily: "var(--mono)", fontSize: 12 }}
                       aria-label="Modal period filter"
                     >
                       <option value="all">All Time</option>
                       <option value="weekly">This Week</option>
                       <option value="monthly">Monthly</option>
+                      <option value="quarterly">Quarterly</option>
+                      <option value="halfyearly">Half Yearly</option>
                       <option value="yearly">Yearly</option>
                     </select>
-                    {invModalPeriod === "monthly" || invModalPeriod === "yearly" ? (
+                    {invModalPeriod === "monthly" || invModalPeriod === "quarterly" || invModalPeriod === "halfyearly" || invModalPeriod === "yearly" ? (
                       <select
                         className="form-select"
                         value={String(invModalYear)}
