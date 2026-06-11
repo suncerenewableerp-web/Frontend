@@ -656,9 +656,9 @@ export default function Dashboard({
         xLabel: m.label,
         xTooltip: m.tooltip,
         bars: [
-          { id: "created", label: "Created", value: m.created, color: "#0d9488" },
-          { id: "repaired", label: "Repaired", value: m.repaired, color: "#2563eb" },
-          { id: "closed", label: "Closed", value: m.closed, color: "#16a34a" },
+          { id: "created", label: "Created", value: m.created, color: "#f59e0b" },
+          { id: "repaired", label: "Repaired", value: m.repaired, color: "#3b82f6" },
+          { id: "closed", label: "Closed", value: m.closed, color: "#22c55e" },
         ],
       }));
     }
@@ -669,9 +669,9 @@ export default function Dashboard({
         xLabel: formatTrendDate(p.date),
         xTooltip: formatTrendTooltip(p.date),
         bars: [
-          { id: "created", label: "Created", value: Math.max(0, Number(p.created) || 0), color: "#0d9488" },
-          { id: "repaired", label: "Repaired", value: Math.max(0, Number(p.repaired) || 0), color: "#2563eb" },
-          { id: "closed", label: "Closed", value: Math.max(0, Number(p.closed) || 0), color: "#16a34a" },
+          { id: "created", label: "Created", value: Math.max(0, Number(p.created) || 0), color: "#f59e0b" },
+          { id: "repaired", label: "Repaired", value: Math.max(0, Number(p.repaired) || 0), color: "#3b82f6" },
+          { id: "closed", label: "Closed", value: Math.max(0, Number(p.closed) || 0), color: "#22c55e" },
         ],
       }));
     }
@@ -696,9 +696,9 @@ export default function Dashboard({
       xLabel: formatTrendDate(weekKey),
       xTooltip: `Week of ${formatTrendTooltip(weekKey)}`,
       bars: [
-        { id: "created", label: "Created", value: w.created, color: "#0d9488" },
-        { id: "repaired", label: "Repaired", value: w.repaired, color: "#2563eb" },
-        { id: "closed", label: "Closed", value: w.closed, color: "#16a34a" },
+        { id: "created", label: "Created", value: w.created, color: "#f59e0b" },
+        { id: "repaired", label: "Repaired", value: w.repaired, color: "#3b82f6" },
+        { id: "closed", label: "Closed", value: w.closed, color: "#22c55e" },
       ],
     }));
   }, [trends, trendDays]);
@@ -900,9 +900,9 @@ export default function Dashboard({
 
               {trendChartType === "pie" && (() => {
                 const pieData = [
-                  { id: "created", label: "Created", value: trendTotals.created, color: "#0d9488" },
-                  { id: "repaired", label: "Repaired", value: trendTotals.repaired, color: "#2563eb" },
-                  { id: "closed", label: "Closed", value: trendTotals.closed, color: "#16a34a" },
+                  { id: "created", label: "Created", value: trendTotals.created, color: "#f59e0b" },
+                  { id: "repaired", label: "Repaired", value: trendTotals.repaired, color: "#3b82f6" },
+                  { id: "closed", label: "Closed", value: trendTotals.closed, color: "#22c55e" },
                 ];
                 const total = pieData.reduce((s, d) => s + d.value, 0);
                 const cx = 100, cy = 100, r = 75, ir = 45;
