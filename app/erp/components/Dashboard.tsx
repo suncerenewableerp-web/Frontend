@@ -142,7 +142,6 @@ export default function Dashboard({
   const [showAllDashboardTickets, setShowAllDashboardTickets] = useState(false);
   const [inventoryFilter, setInventoryFilter] = useState<{ type: "vendor" | "model" | "status"; label: string; vendor: string; model?: string; status?: string } | null>(null);
   const [showAllInventoryVendors, setShowAllInventoryVendors] = useState(false);
-  const [showAllInventoryModels, setShowAllInventoryModels] = useState(false);
   const [showAllInventoryStatuses, setShowAllInventoryStatuses] = useState(false);
 
   const now = useMemo(() => new Date(), []);
@@ -333,6 +332,62 @@ export default function Dashboard({
     });
     return { modelSlices, total };
   }, [invData]);
+
+  // Top 5 make & model with an "Others" aggregate slice for the pie
+  const top5ModelChart = useMemo(() => {
+    const { modelSlices, total } = inventoryModelChart;
+    const top5 = modelSlices.slice(0, 5);
+    const othersCount = modelSlices.slice(5).reduce((s, r) => s + r.count, 0);
+    const rows = othersCount > 0
+      ? [...top5, { vendor: "", model: "Others", count: othersCount, percent: total ? (othersCount / total) * 100 : 0, color: "#94a3b8" }]
+      : top5;
+    let cursor = 0;
+    const slices = rows.map(row => {
+      const startAngle = total ? (cursor / total) * 360 : 0;
+      cursor += row.count;
+      const endAngle = total ? (cursor / total) * 360 : 0;
+      return { ...row, startAngle, endAngle };
+    });
+    return { slices, top5, total, totalModels: modelSlices.length };
+  }, [inventoryModelChart]);
+
+  // Compute customer pie slices from API data
+  const inventoryCustomerChart = useMemo(() => {
+    const customers = invData?.customers ?? [];
+    const total = invData?.total ?? 0;
+    let cursor = 0;
+    const customerSlices = customers.map((row, idx) => {
+      const startAngle = total ? (cursor / total) * 360 : 0;
+      cursor += row.count;
+      const endAngle = total ? (cursor / total) * 360 : 0;
+      return {
+        ...row,
+        percent: total ? (row.count / total) * 100 : 0,
+        color: VENDOR_PIE_COLORS[idx % VENDOR_PIE_COLORS.length]!,
+        startAngle,
+        endAngle,
+      };
+    });
+    return { customerSlices, total };
+  }, [invData]);
+
+  // Top 5 customers with an "Others" aggregate slice for the pie
+  const top5CustomerChart = useMemo(() => {
+    const { customerSlices, total } = inventoryCustomerChart;
+    const top5 = customerSlices.slice(0, 5);
+    const othersCount = customerSlices.slice(5).reduce((s, r) => s + r.count, 0);
+    const rows = othersCount > 0
+      ? [...top5, { customer: "Others", count: othersCount, percent: total ? (othersCount / total) * 100 : 0, color: "#94a3b8" }]
+      : top5;
+    let cursor = 0;
+    const slices = rows.map(row => {
+      const startAngle = total ? (cursor / total) * 360 : 0;
+      cursor += row.count;
+      const endAngle = total ? (cursor / total) * 360 : 0;
+      return { ...row, startAngle, endAngle };
+    });
+    return { slices, top5, total, totalCustomers: customerSlices.length };
+  }, [inventoryCustomerChart]);
 
   // Compute status pie slices from API data
   const inventoryStatusChart = useMemo(() => {
@@ -570,29 +625,95 @@ export default function Dashboard({
     return { created, closed, repaired };
   }, [trends]);
 
-  const selectedTrendSummary = useMemo(() => {
-    const hit = (trends || []).find((p) => p.date === selectedTrendDate) || null;
-    if (!hit) return null;
-    return {
-      date: hit.date,
-      created: Number(hit.created || 0) || 0,
-      closed: Number(hit.closed || 0) || 0,
-      repaired: Number(hit.repaired || 0) || 0,
-    };
-  }, [trends, selectedTrendDate]);
-
   const trendsChartPoints = useMemo(() => {
-    return (trends || []).map((p) => ({
-      id: p.date,
-      xLabel: formatTrendDate(p.date),
-      xTooltip: formatTrendTooltip(p.date),
+    const raw = trends || [];
+    const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    // Half-yearly (182) and yearly (365): group into monthly buckets
+    if (trendDays >= 182) {
+      const months = new Map<string, { created: number; repaired: number; closed: number; label: string; tooltip: string }>();
+      for (const p of raw) {
+        const d = new Date(`${p.date}T00:00:00`);
+        if (Number.isNaN(d.getTime())) continue;
+        const year = d.getFullYear();
+        const month = d.getMonth();
+        const monthKey = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+        const existing = months.get(monthKey);
+        if (!existing) {
+          months.set(monthKey, {
+            created: 0, repaired: 0, closed: 0,
+            label: `${MONTH_SHORT[month]} '${String(year).slice(2)}`,
+            tooltip: `${MONTH_SHORT[month]} ${year}`,
+          });
+        }
+        const m = months.get(monthKey)!;
+        m.created += Number(p.created) || 0;
+        m.repaired += Number(p.repaired) || 0;
+        m.closed += Number(p.closed) || 0;
+      }
+      return Array.from(months.entries()).map(([monthKey, m]) => ({
+        id: monthKey,
+        xLabel: m.label,
+        xTooltip: m.tooltip,
+        bars: [
+          { id: "created", label: "Created", value: m.created, color: "#0d9488" },
+          { id: "repaired", label: "Repaired", value: m.repaired, color: "#2563eb" },
+          { id: "closed", label: "Closed", value: m.closed, color: "#16a34a" },
+        ],
+      }));
+    }
+
+    if (raw.length <= 60) {
+      return raw.map((p) => ({
+        id: p.date,
+        xLabel: formatTrendDate(p.date),
+        xTooltip: formatTrendTooltip(p.date),
+        bars: [
+          { id: "created", label: "Created", value: Math.max(0, Number(p.created) || 0), color: "#0d9488" },
+          { id: "repaired", label: "Repaired", value: Math.max(0, Number(p.repaired) || 0), color: "#2563eb" },
+          { id: "closed", label: "Closed", value: Math.max(0, Number(p.closed) || 0), color: "#16a34a" },
+        ],
+      }));
+    }
+
+    // Group into weekly buckets for 60-182 day ranges
+    const weeks = new Map<string, { created: number; repaired: number; closed: number }>();
+    for (const p of raw) {
+      const d = new Date(p.date);
+      const dayOfWeek = d.getDay();
+      const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      const monday = new Date(d);
+      monday.setDate(d.getDate() + diffToMonday);
+      const weekKey = monday.toISOString().slice(0, 10);
+      const w = weeks.get(weekKey) ?? { created: 0, repaired: 0, closed: 0 };
+      w.created += Number(p.created) || 0;
+      w.repaired += Number(p.repaired) || 0;
+      w.closed += Number(p.closed) || 0;
+      weeks.set(weekKey, w);
+    }
+    return Array.from(weeks.entries()).map(([weekKey, w]) => ({
+      id: weekKey,
+      xLabel: formatTrendDate(weekKey),
+      xTooltip: `Week of ${formatTrendTooltip(weekKey)}`,
       bars: [
-        { id: "created", label: "Created", value: Math.max(0, Number(p.created) || 0), color: "#0d9488" },
-        { id: "repaired", label: "Repaired", value: Math.max(0, Number(p.repaired) || 0), color: "#2563eb" },
-        { id: "closed", label: "Closed", value: Math.max(0, Number(p.closed) || 0), color: "#16a34a" },
+        { id: "created", label: "Created", value: w.created, color: "#0d9488" },
+        { id: "repaired", label: "Repaired", value: w.repaired, color: "#2563eb" },
+        { id: "closed", label: "Closed", value: w.closed, color: "#16a34a" },
       ],
     }));
-  }, [trends]);
+  }, [trends, trendDays]);
+
+  const selectedTrendSummary = useMemo(() => {
+    const point = trendsChartPoints.find((p) => p.id === selectedTrendDate);
+    if (!point) return null;
+    const bars = point.bars || [];
+    return {
+      label: point.xTooltip || point.xLabel,
+      created: bars.find((b) => b.id === "created")?.value ?? 0,
+      repaired: bars.find((b) => b.id === "repaired")?.value ?? 0,
+      closed: bars.find((b) => b.id === "closed")?.value ?? 0,
+    };
+  }, [trendsChartPoints, selectedTrendDate]);
 
   const trendsCard = showTrends ? (
     <div className="table-card" style={{ marginBottom: 16 }}>
@@ -740,7 +861,7 @@ export default function Dashboard({
                 <div style={{ marginBottom: 10, fontSize: 12, color: "var(--text2)" }}>
                   Selected:{" "}
                   <span className="tag" style={{ fontFamily: "var(--mono)" }}>
-                    {formatTrendTooltip(selectedTrendSummary.date)}
+                    {selectedTrendSummary.label}
                   </span>{" "}
                   <span style={{ fontFamily: "var(--mono)" }}>
                     {selectedTrendSummary.created} created · {selectedTrendSummary.repaired} repaired ·{" "}
@@ -758,6 +879,7 @@ export default function Dashboard({
                   yLabel="Tickets"
                   showBarValues
                   showLine={false}
+                  xLabelStep={trendDays >= 182 ? 1 : undefined}
                   ariaLabel="Tickets created vs repaired vs closed bar chart"
                 />
               )}
@@ -771,6 +893,7 @@ export default function Dashboard({
                   yLabel="Tickets"
                   showBarValues={false}
                   showLine={true}
+                  xLabelStep={trendDays >= 182 ? 1 : undefined}
                   ariaLabel="Tickets created vs repaired vs closed line chart"
                 />
               )}
@@ -1094,88 +1217,44 @@ export default function Dashboard({
               ) : inventoryVendorChart.total ? (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
 
-                  {/* Chart 1 — By Vendor */}
+                  {/* Chart 2 — Top 5 Make & Model */}
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text3)", letterSpacing: "0.06em", textTransform: "uppercase" }}>By Vendor</div>
-                    <svg viewBox="0 0 220 220" width="100%" height="220" role="img" aria-label="Vendor pie chart" style={{ maxWidth: 260, display: "block" }}>
-                      {inventoryVendorChart.vendorRows.length === 1 ? (
-                        <circle cx="110" cy="110" r="92" fill={inventoryVendorChart.vendorRows[0]!.color} style={{ cursor: "pointer" }}
-                          onClick={() => setInventoryFilter({ type: "vendor", label: inventoryVendorChart.vendorRows[0]!.vendor, vendor: inventoryVendorChart.vendorRows[0]!.vendor })}>
-                          <title>{inventoryVendorChart.vendorRows[0]!.vendor}: {inventoryVendorChart.vendorRows[0]!.count}</title>
-                        </circle>
-                      ) : (
-                        inventoryVendorChart.vendorRows.map((slice) => (
-                          <path key={slice.vendor} d={describePieSlice(110, 110, 92, slice.startAngle, slice.endAngle)}
-                            fill={slice.color} stroke="var(--surface)" strokeWidth="2" style={{ cursor: "pointer" }}
-                            onClick={() => setInventoryFilter({ type: "vendor", label: slice.vendor, vendor: slice.vendor })}>
-                            <title>{slice.vendor}: {slice.count} ({slice.percent.toFixed(1)}%)</title>
-                          </path>
-                        ))
-                      )}
-                      <circle cx="110" cy="110" r="54" fill="var(--surface)" stroke="var(--border)" strokeWidth="1" />
-                      <text x="110" y="105" textAnchor="middle" fill="var(--text3)" fontSize="10" fontFamily="var(--mono)">Vendors</text>
-                      <text x="110" y="124" textAnchor="middle" fill="var(--text)" fontSize="22" fontWeight="700" fontFamily="var(--mono)">{inventoryVendorChart.total}</text>
-                    </svg>
-                    {/* Vendor legend — top 5 + expand */}
-                    <div style={{ display: "grid", gap: 5, width: "100%", maxWidth: 240 }}>
-                      {(showAllInventoryVendors ? inventoryVendorChart.vendorRows : inventoryVendorChart.vendorRows.slice(0, 5)).map((row) => (
-                        <button key={row.vendor} type="button" onClick={() => setInventoryFilter({ type: "vendor", label: row.vendor, vendor: row.vendor })}
-                          style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", fontSize: 12, textAlign: "left", padding: "2px 0" }}>
-                          <span style={{ width: 8, height: 8, borderRadius: 999, background: row.color, flex: "0 0 auto" }} />
-                          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.vendor}</span>
-                          <span style={{ fontFamily: "var(--mono)", color: "var(--text3)", fontSize: 11 }}>{row.count}</span>
-                        </button>
-                      ))}
-                      {inventoryVendorChart.vendorRows.length > 5 && (
-                        <button type="button" onClick={() => setShowAllInventoryVendors(v => !v)}
-                          style={{ fontSize: 11, color: "var(--primary, #0d9488)", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "2px 0 2px 14px", fontWeight: 500 }}>
-                          {showAllInventoryVendors ? "Show less ▲" : `+ ${inventoryVendorChart.vendorRows.length - 5} more vendors ▼`}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Chart 2 — By Model */}
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text3)", letterSpacing: "0.06em", textTransform: "uppercase" }}>By Model</div>
-                    <svg viewBox="0 0 220 220" width="100%" height="220" role="img" aria-label="Model pie chart" style={{ maxWidth: 260, display: "block" }}>
-                      {inventoryModelChart.modelSlices.length === 0 ? (
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text3)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Top 5 Make &amp; Model</div>
+                    <svg viewBox="0 0 220 220" width="100%" height="220" role="img" aria-label="Top 5 make & model pie chart" style={{ maxWidth: 260, display: "block" }}>
+                      {top5ModelChart.slices.length === 0 ? (
                         <circle cx="110" cy="110" r="92" fill="var(--border)" />
-                      ) : inventoryModelChart.modelSlices.length === 1 ? (
-                        <circle cx="110" cy="110" r="92" fill={inventoryModelChart.modelSlices[0]!.color} style={{ cursor: "pointer" }}
-                          onClick={() => setInventoryFilter({ type: "model", label: inventoryModelChart.modelSlices[0]!.model, vendor: inventoryModelChart.modelSlices[0]!.vendor, model: inventoryModelChart.modelSlices[0]!.model })}>
-                          <title>{inventoryModelChart.modelSlices[0]!.model}: {inventoryModelChart.modelSlices[0]!.count}</title>
+                      ) : top5ModelChart.slices.length === 1 ? (
+                        <circle cx="110" cy="110" r="92" fill={top5ModelChart.slices[0]!.color} style={{ cursor: "pointer" }}
+                          onClick={() => top5ModelChart.slices[0]!.model !== "Others" && setInventoryFilter({ type: "model", label: top5ModelChart.slices[0]!.model, vendor: top5ModelChart.slices[0]!.vendor, model: top5ModelChart.slices[0]!.model })}>
+                          <title>{top5ModelChart.slices[0]!.vendor ? `${top5ModelChart.slices[0]!.vendor} · ` : ""}{top5ModelChart.slices[0]!.model}: {top5ModelChart.slices[0]!.count}</title>
                         </circle>
                       ) : (
-                        inventoryModelChart.modelSlices.map((slice) => (
+                        top5ModelChart.slices.map((slice) => (
                           <path key={`${slice.vendor}|||${slice.model}`} d={describePieSlice(110, 110, 92, slice.startAngle, slice.endAngle)}
-                            fill={slice.color} stroke="var(--surface)" strokeWidth="2" style={{ cursor: "pointer" }}
-                            onClick={() => setInventoryFilter({ type: "model", label: slice.model, vendor: slice.vendor, model: slice.model })}>
-                            <title>{slice.model} ({slice.vendor}): {slice.count} ({slice.percent.toFixed(1)}%)</title>
+                            fill={slice.color} stroke="var(--surface)" strokeWidth="2"
+                            style={{ cursor: slice.model !== "Others" ? "pointer" : "default" }}
+                            onClick={() => slice.model !== "Others" && setInventoryFilter({ type: "model", label: slice.model, vendor: slice.vendor, model: slice.model })}>
+                            <title>{slice.vendor ? `${slice.vendor} · ` : ""}{slice.model}: {slice.count} ({slice.percent.toFixed(1)}%)</title>
                           </path>
                         ))
                       )}
                       <circle cx="110" cy="110" r="54" fill="var(--surface)" stroke="var(--border)" strokeWidth="1" />
                       <text x="110" y="105" textAnchor="middle" fill="var(--text3)" fontSize="10" fontFamily="var(--mono)">Models</text>
-                      <text x="110" y="124" textAnchor="middle" fill="var(--text)" fontSize="22" fontWeight="700" fontFamily="var(--mono)">{inventoryModelChart.modelSlices.length}</text>
+                      <text x="110" y="124" textAnchor="middle" fill="var(--text)" fontSize="22" fontWeight="700" fontFamily="var(--mono)">{top5ModelChart.totalModels}</text>
                     </svg>
-                    {/* Model legend — top 5 + expand */}
+                    {/* Top 5 make & model legend — fixed, no expand */}
                     <div style={{ display: "grid", gap: 5, width: "100%", maxWidth: 240 }}>
-                      {(showAllInventoryModels ? inventoryModelChart.modelSlices : inventoryModelChart.modelSlices.slice(0, 5)).map((entry) => (
+                      {top5ModelChart.top5.map((entry) => (
                         <button key={`${entry.vendor}|||${entry.model}`} type="button"
                           onClick={() => setInventoryFilter({ type: "model", label: entry.model, vendor: entry.vendor, model: entry.model })}
                           style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", fontSize: 12, textAlign: "left", padding: "2px 0" }}>
                           <span style={{ width: 8, height: 8, borderRadius: 999, background: entry.color, flex: "0 0 auto" }} />
-                          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.model}</span>
+                          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            <span style={{ color: "var(--text3)", fontSize: 11 }}>{entry.vendor} · </span>{entry.model}
+                          </span>
                           <span style={{ fontFamily: "var(--mono)", color: "var(--text3)", fontSize: 11 }}>{entry.count}</span>
                         </button>
                       ))}
-                      {inventoryModelChart.modelSlices.length > 5 && (
-                        <button type="button" onClick={() => setShowAllInventoryModels(v => !v)}
-                          style={{ fontSize: 11, color: "var(--primary, #0d9488)", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "2px 0 2px 14px", fontWeight: 500 }}>
-                          {showAllInventoryModels ? "Show less ▲" : `+ ${inventoryModelChart.modelSlices.length - 5} more models ▼`}
-                        </button>
-                      )}
                     </div>
                   </div>
 
@@ -1218,6 +1297,41 @@ export default function Dashboard({
                           {showAllInventoryStatuses ? "Show less ▲" : `+ ${inventoryStatusChart.slices.length - 5} more statuses ▼`}
                         </button>
                       )}
+                    </div>
+                  </div>
+
+                  {/* Chart 4 — Top 5 Clients */}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text3)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Top 5 Clients</div>
+                    <svg viewBox="0 0 220 220" width="100%" height="220" role="img" aria-label="Top 5 clients pie chart" style={{ maxWidth: 260, display: "block" }}>
+                      {top5CustomerChart.slices.length === 0 ? (
+                        <circle cx="110" cy="110" r="92" fill="var(--border)" />
+                      ) : top5CustomerChart.slices.length === 1 ? (
+                        <circle cx="110" cy="110" r="92" fill={top5CustomerChart.slices[0]!.color}>
+                          <title>{top5CustomerChart.slices[0]!.customer}: {top5CustomerChart.slices[0]!.count}</title>
+                        </circle>
+                      ) : (
+                        top5CustomerChart.slices.map((slice) => (
+                          <path key={slice.customer} d={describePieSlice(110, 110, 92, slice.startAngle, slice.endAngle)}
+                            fill={slice.color} stroke="var(--surface)" strokeWidth="2">
+                            <title>{slice.customer}: {slice.count} ({slice.percent.toFixed(1)}%)</title>
+                          </path>
+                        ))
+                      )}
+                      <circle cx="110" cy="110" r="54" fill="var(--surface)" stroke="var(--border)" strokeWidth="1" />
+                      <text x="110" y="105" textAnchor="middle" fill="var(--text3)" fontSize="10" fontFamily="var(--mono)">Clients</text>
+                      <text x="110" y="124" textAnchor="middle" fill="var(--text)" fontSize="22" fontWeight="700" fontFamily="var(--mono)">{top5CustomerChart.totalCustomers}</text>
+                    </svg>
+                    {/* Top 5 client legend — fixed, no expand */}
+                    <div style={{ display: "grid", gap: 5, width: "100%", maxWidth: 240 }}>
+                      {top5CustomerChart.top5.map((entry) => (
+                        <button key={entry.customer} type="button"
+                          style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "default", fontSize: 12, textAlign: "left", padding: "2px 0" }}>
+                          <span style={{ width: 8, height: 8, borderRadius: 999, background: entry.color, flex: "0 0 auto" }} />
+                          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.customer}</span>
+                          <span style={{ fontFamily: "var(--mono)", color: "var(--text3)", fontSize: 11 }}>{entry.count}</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
 

@@ -52,6 +52,12 @@ function isAbortError(err: unknown): boolean {
   );
 }
 
+function dispatchAuthExpired() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("sunce:auth:expired"));
+  }
+}
+
 async function fetchWithTimeout(
   input: RequestInfo | URL,
   init: RequestInit,
@@ -199,10 +205,18 @@ async function apiFetch<T>(
           : "Network request failed",
     };
   }
-  if (res.status !== 401 || !auth?.refreshToken) return parseJsonEnvelope<T>(res);
+  if (res.status !== 401) return parseJsonEnvelope<T>(res);
+
+  if (!auth?.refreshToken) {
+    dispatchAuthExpired();
+    return parseJsonEnvelope<T>(res);
+  }
 
   const newTokens = await refreshToken(auth.refreshToken);
-  if (!newTokens) return parseJsonEnvelope<T>(res);
+  if (!newTokens) {
+    dispatchAuthExpired();
+    return parseJsonEnvelope<T>(res);
+  }
 
   const stored = readAuthStorage();
   if (stored) writeAuthStorage(stored.user, newTokens);
@@ -1794,12 +1808,14 @@ export async function apiDashboardTicketTrends(days = 14): Promise<{
 export type InventoryVendorRow = { vendor: string; count: number };
 export type InventoryModelRow = { model: string; vendor: string; count: number };
 export type InventoryStatusRow = { status: string; count: number };
+export type InventoryCustomerRow = { customer: string; count: number };
 
 export type InventorySummaryResult = {
   total: number;
   vendors: InventoryVendorRow[];
   models: InventoryModelRow[];
   statuses: InventoryStatusRow[];
+  customers: InventoryCustomerRow[];
 };
 
 export async function apiDashboardInventorySummary(input: {
@@ -1814,7 +1830,7 @@ export async function apiDashboardInventorySummary(input: {
   if (typeof input.month === "number") qs.set("month", String(input.month));
   if (input.tz) qs.set("tz", input.tz);
 
-  const env = await apiFetch<{ total?: unknown; vendors?: unknown; models?: unknown; statuses?: unknown }>(
+  const env = await apiFetch<{ total?: unknown; vendors?: unknown; models?: unknown; statuses?: unknown; customers?: unknown }>(
     `/api/dashboard/inventory-summary?${qs.toString()}`,
     { method: "GET" },
   );
@@ -1829,8 +1845,11 @@ export async function apiDashboardInventorySummary(input: {
   const statuses: InventoryStatusRow[] = Array.isArray(env.data?.statuses)
     ? (env.data!.statuses as any[]).map((r) => ({ status: String(r?.status || ""), count: Number(r?.count || 0) || 0 }))
     : [];
+  const customers: InventoryCustomerRow[] = Array.isArray(env.data?.customers)
+    ? (env.data!.customers as any[]).map((r) => ({ customer: String(r?.customer || ""), count: Number(r?.count || 0) || 0 }))
+    : [];
 
-  return { total: Number(env.data?.total || 0) || 0, vendors, models, statuses };
+  return { total: Number(env.data?.total || 0) || 0, vendors, models, statuses, customers };
 }
 
 export async function apiPendingDispatchApprovalsList(): Promise<{
