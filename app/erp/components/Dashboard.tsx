@@ -20,6 +20,7 @@ import {
   apiJobCardsList,
   apiPendingDispatchApprovalsList,
   type ClientSummaryRow,
+  type ClientLocation,
   type DashboardPeriodInput,
   type InventorySummaryResult,
   type ServicingStatusDayRow,
@@ -28,6 +29,7 @@ import {
   type TicketTrendsPoint,
 } from "../api";
 import ComboBarLineChart from "./ComboBarLineChart";
+import { formatTicketStatusLabel } from "../utils";
 
 const VENDOR_PIE_COLORS = ["#0d9488", "#f97316", "#0ea5e9", "#7c3aed", "#16a34a", "#dc2626", "#2563eb", "#d97706"];
 
@@ -104,23 +106,6 @@ export default function Dashboard({
   const isCustomer = String(user.role || "").toUpperCase() === "CUSTOMER";
   const isAdmin = String(user.role || "").toUpperCase() === "ADMIN";
   const isSales = String(user.role || "").toUpperCase() === "SALES";
-  const inwardCreated = tickets.filter((t) => String(t.status || "").toUpperCase() === "CREATED").length;
-  const inwardUnderPickup = tickets.filter((t) =>
-    ["PICKUP_SCHEDULED", "IN_TRANSIT"].includes(String(t.status || "").toUpperCase()),
-  ).length;
-  const inward = inwardCreated + inwardUnderPickup;
-
-  const underDispatch = tickets.filter((t) => String(t.status || "").toUpperCase() === "UNDER_DISPATCH").length;
-  const dispatched = tickets.filter((t) =>
-    ["DISPATCHED", "INSTALLATION_DONE"].includes(String(t.status || "").toUpperCase()),
-  ).length;
-
-  const underRepairRaw = tickets.filter((t) => String(t.status || "").toUpperCase() === "UNDER_REPAIRED");
-  const closed = tickets.filter((t) => t.status === "CLOSED").length;
-  /*
-  const breached = tickets.filter((t) => t.slaStatus === "BREACHED").length;
-  const high = tickets.filter((t) => t.priority === "HIGH" && t.status !== "CLOSED").length;
-  */
 
   const myTickets = tickets;
 
@@ -139,41 +124,91 @@ export default function Dashboard({
   const [trends, setTrends] = useState<TicketTrendsPoint[]>([]);
   const [trendsErr, setTrendsErr] = useState("");
   const [selectedTrendDate, setSelectedTrendDate] = useState<string>("");
+  const [trendModal, setTrendModal] = useState<{ label: string; tickets: typeof tickets; summary?: { created: number; repaired: number; closed: number } } | null>(null);
   const [showAllDashboardTickets, setShowAllDashboardTickets] = useState(false);
   const [inventoryFilter, setInventoryFilter] = useState<{ type: "vendor" | "model" | "status"; label: string; vendor: string; model?: string; status?: string } | null>(null);
   const [showAllInventoryVendors, setShowAllInventoryVendors] = useState(false);
   const [showAllInventoryStatuses, setShowAllInventoryStatuses] = useState(false);
+
+  const [counterPeriod, setCounterPeriod] = useState<"last_day" | "last_month" | "all_time" | "custom">("all_time");
+  const [counterCustomFrom, setCounterCustomFrom] = useState("");
+  const [counterCustomTo, setCounterCustomTo] = useState("");
 
   const now = useMemo(() => new Date(), []);
   const defaultYear = now.getFullYear();
   const defaultMonth = now.getMonth() + 1;
   const defaultFortnight = now.getDate() >= 16 ? 2 : 1;
 
-  const [reportPeriod, setReportPeriod] = useState<DashboardPeriodInput["period"]>("fortnightly");
+  const counterTickets = useMemo(() => {
+    const n = new Date();
+    if (counterPeriod === "last_day") {
+      const from = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+      return tickets.filter((t) => { const d = new Date(t.createdAt); return !isNaN(d.getTime()) && d >= from; });
+    }
+    if (counterPeriod === "last_month") {
+      const from = new Date(n.getFullYear(), n.getMonth() - 1, n.getDate());
+      return tickets.filter((t) => { const d = new Date(t.createdAt); return !isNaN(d.getTime()) && d >= from; });
+    }
+    if (counterPeriod === "custom") {
+      const from = counterCustomFrom ? new Date(counterCustomFrom + "T00:00:00") : null;
+      const to = counterCustomTo ? new Date(counterCustomTo + "T23:59:59") : null;
+      return tickets.filter((t) => {
+        const d = new Date(t.createdAt);
+        if (isNaN(d.getTime())) return true;
+        if (from && d < from) return false;
+        if (to && d > to) return false;
+        return true;
+      });
+    }
+    return tickets;
+  }, [tickets, counterPeriod, counterCustomFrom, counterCustomTo]);
+
+  const inwardCreated = counterTickets.filter((t) => String(t.status || "").toUpperCase() === "CREATED").length;
+  const inwardUnderPickup = counterTickets.filter((t) =>
+    ["PICKUP_SCHEDULED", "IN_TRANSIT"].includes(String(t.status || "").toUpperCase()),
+  ).length;
+  const inward = inwardCreated + inwardUnderPickup;
+
+  const underDispatch = counterTickets.filter((t) => String(t.status || "").toUpperCase() === "UNDER_DISPATCH").length;
+  const dispatched = counterTickets.filter((t) =>
+    ["DISPATCHED", "INSTALLATION_DONE"].includes(String(t.status || "").toUpperCase()),
+  ).length;
+
+  const underRepairRaw = counterTickets.filter((t) => String(t.status || "").toUpperCase() === "UNDER_REPAIRED");
+  const closed = counterTickets.filter((t) => t.status === "CLOSED").length;
+
+  const [reportPeriod, setReportPeriod] = useState<DashboardPeriodInput["period"]>("monthly");
   const [reportYear, setReportYear] = useState(defaultYear);
   const [reportMonth, setReportMonth] = useState(defaultMonth);
   const [reportFortnight, setReportFortnight] = useState<1 | 2>(defaultFortnight as 1 | 2);
+  const [reportCustomFrom, setReportCustomFrom] = useState("");
+  const [reportCustomTo, setReportCustomTo] = useState("");
 
-  const [invPeriod, setInvPeriod] = useState<"all" | "weekly" | "monthly" | "quarterly" | "halfyearly" | "yearly">("all");
+  const [invPeriod, setInvPeriod] = useState<"all" | "weekly" | "monthly" | "quarterly" | "halfyearly" | "yearly" | "custom">("all");
   const [invYear, setInvYear] = useState(defaultYear);
   const [invMonth, setInvMonth] = useState(defaultMonth);
+  const [invCustomFrom, setInvCustomFrom] = useState("");
+  const [invCustomTo, setInvCustomTo] = useState("");
   const [invData, setInvData] = useState<InventorySummaryResult | null>(null);
   const [invLoading, setInvLoading] = useState(false);
   const [invError, setInvError] = useState("");
 
-  const [invModalPeriod, setInvModalPeriod] = useState<"all" | "weekly" | "monthly" | "quarterly" | "halfyearly" | "yearly">("all");
+  const [invModalPeriod, setInvModalPeriod] = useState<"all" | "weekly" | "monthly" | "quarterly" | "halfyearly" | "yearly" | "custom">("all");
   const [invModalYear, setInvModalYear] = useState(defaultYear);
   const [invModalMonth, setInvModalMonth] = useState(defaultMonth);
+  const [invModalCustomFrom, setInvModalCustomFrom] = useState("");
+  const [invModalCustomTo, setInvModalCustomTo] = useState("");
 
   const reportInput = useMemo<DashboardPeriodInput>(() => {
     return {
       period: reportPeriod,
       year: reportYear,
-      ...(reportPeriod === "yearly" ? {} : { month: reportMonth }),
+      ...(reportPeriod === "yearly" || reportPeriod === "weekly" || reportPeriod === "custom" ? {} : { month: reportMonth }),
       ...(reportPeriod === "fortnightly" ? { fortnight: reportFortnight } : {}),
+      ...(reportPeriod === "custom" ? { dateFrom: reportCustomFrom || undefined, dateTo: reportCustomTo || undefined } : {}),
       tz: "Asia/Kolkata",
     };
-  }, [reportPeriod, reportYear, reportMonth, reportFortnight]);
+  }, [reportPeriod, reportYear, reportMonth, reportFortnight, reportCustomFrom, reportCustomTo]);
 
   const [svcLoading, setSvcLoading] = useState(false);
   const [svcErr, setSvcErr] = useState("");
@@ -191,6 +226,7 @@ export default function Dashboard({
   const [clientDetailsDaily, setClientDetailsDaily] = useState<ServicingStatusDayRow[]>([]);
   const [clientDetailsTotals, setClientDetailsTotals] = useState<{ received: number; repaired: number; scrap: number; dispatched: number } | null>(null);
   const [clientPicked, setClientPicked] = useState<{ name: string; address: string } | null>(null);
+  const [clientLocationsModal, setClientLocationsModal] = useState<ClientSummaryRow | null>(null);
 
   useEffect(() => {
     if (!isAdmin && !isSales) return;
@@ -286,11 +322,12 @@ export default function Dashboard({
       year: invYear,
       month: invMonth,
       tz: "Asia/Kolkata",
+      ...(invPeriod === "custom" ? { dateFrom: invCustomFrom || undefined, dateTo: invCustomTo || undefined } : {}),
     })
       .then((data) => { if (!cancelled) { setInvData(data); setInvLoading(false); } })
       .catch((e) => { if (!cancelled) { setInvError(e instanceof Error ? e.message : "Failed to load inventory"); setInvLoading(false); } });
     return () => { cancelled = true; };
-  }, [invPeriod, invYear, invMonth]);
+  }, [invPeriod, invYear, invMonth, invCustomFrom, invCustomTo]);
 
   // Compute vendor pie slices from API data
   const inventoryVendorChart = useMemo(() => {
@@ -411,11 +448,13 @@ export default function Dashboard({
 
   useEffect(() => {
     if (inventoryFilter) {
-      setInvModalPeriod("all");
-      setInvModalYear(defaultYear);
-      setInvModalMonth(defaultMonth);
+      setInvModalPeriod(invPeriod);
+      setInvModalYear(invYear);
+      setInvModalMonth(invMonth);
+      setInvModalCustomFrom(invCustomFrom);
+      setInvModalCustomTo(invCustomTo);
     }
-  }, [inventoryFilter, defaultYear, defaultMonth]);
+  }, [inventoryFilter, invPeriod, invYear, invMonth, invCustomFrom, invCustomTo]);
 
   const modalFilteredTickets = useMemo(() => {
     if (!inventoryFilter) return [];
@@ -431,18 +470,39 @@ export default function Dashboard({
       const d = new Date(t.createdAt);
       if (Number.isNaN(d.getTime())) return false;
       if (invModalPeriod === "weekly") {
-        const diffDays = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
-        return diffDays >= 0 && diffDays < 7;
+        const n = new Date();
+        const day = n.getDay();
+        const monday = new Date(n);
+        monday.setDate(n.getDate() + (day === 0 ? -6 : 1 - day));
+        monday.setHours(0, 0, 0, 0);
+        return d >= monday && d <= n;
       }
       if (invModalPeriod === "monthly") {
         return d.getFullYear() === invModalYear && d.getMonth() + 1 === invModalMonth;
       }
+      if (invModalPeriod === "quarterly") {
+        const q = Math.floor((invModalMonth - 1) / 3);
+        const dq = Math.floor(d.getMonth() / 3);
+        return d.getFullYear() === invModalYear && dq === q;
+      }
+      if (invModalPeriod === "halfyearly") {
+        const h = invModalMonth <= 6 ? 0 : 1;
+        const dh = d.getMonth() < 6 ? 0 : 1;
+        return d.getFullYear() === invModalYear && dh === h;
+      }
       if (invModalPeriod === "yearly") {
         return d.getFullYear() === invModalYear;
       }
+      if (invModalPeriod === "custom") {
+        const from = invModalCustomFrom ? new Date(invModalCustomFrom + "T00:00:00") : null;
+        const to = invModalCustomTo ? new Date(invModalCustomTo + "T23:59:59") : null;
+        if (from && d < from) return false;
+        if (to && d > to) return false;
+        return true;
+      }
       return true;
     });
-  }, [inventoryFilter, tickets, invModalPeriod, invModalYear, invModalMonth, now]);
+  }, [inventoryFilter, tickets, invModalPeriod, invModalYear, invModalMonth, invModalCustomFrom, invModalCustomTo, now]);
 
   useEffect(() => {
     if (!showTrends) return;
@@ -552,52 +612,51 @@ export default function Dashboard({
         style={{ width: 150, fontFamily: "var(--mono)", fontSize: 12 }}
         aria-label="Select report period"
       >
-        <option value="fortnightly">Fortnightly</option>
+        <option value="weekly">Weekly</option>
         <option value="monthly">Monthly</option>
+        <option value="halfyearly">Half Yearly</option>
         <option value="yearly">Yearly</option>
+        <option value="custom">Custom Dates</option>
       </select>
 
-      {reportPeriod !== "yearly" ? (
+      {reportPeriod === "monthly" || reportPeriod === "halfyearly" || reportPeriod === "yearly" ? (
+        <select
+          className="form-select"
+          value={String(reportYear)}
+          onChange={(e) => setReportYear(Number(e.target.value) || defaultYear)}
+          style={{ width: 110, fontFamily: "var(--mono)", fontSize: 12 }}
+          aria-label="Select year"
+        >
+          {reportYears.map((y) => (
+            <option key={y} value={String(y)}>{y}</option>
+          ))}
+        </select>
+      ) : null}
+
+      {reportPeriod === "monthly" ? (
         <select
           className="form-select"
           value={String(reportMonth)}
           onChange={(e) => setReportMonth(Number(e.target.value) || defaultMonth)}
-          style={{ width: 140, fontFamily: "var(--mono)", fontSize: 12 }}
+          style={{ width: 130, fontFamily: "var(--mono)", fontSize: 12 }}
           aria-label="Select month"
         >
           {reportMonths.map((m) => (
             <option key={m} value={String(m)}>
-              {new Intl.DateTimeFormat("en-IN", { month: "short" }).format(new Date(2020, m - 1, 1))}
+              {new Intl.DateTimeFormat("en-IN", { month: "long" }).format(new Date(2020, m - 1, 1))}
             </option>
           ))}
         </select>
       ) : null}
 
-      <select
-        className="form-select"
-        value={String(reportYear)}
-        onChange={(e) => setReportYear(Number(e.target.value) || defaultYear)}
-        style={{ width: 110, fontFamily: "var(--mono)", fontSize: 12 }}
-        aria-label="Select year"
-      >
-        {reportYears.map((y) => (
-          <option key={y} value={String(y)}>
-            {y}
-          </option>
-        ))}
-      </select>
-
-      {reportPeriod === "fortnightly" ? (
-        <select
-          className="form-select"
-          value={String(reportFortnight)}
-          onChange={(e) => setReportFortnight((Number(e.target.value) === 2 ? 2 : 1) as 1 | 2)}
-          style={{ width: 110, fontFamily: "var(--mono)", fontSize: 12 }}
-          aria-label="Select fortnight"
-        >
-          <option value="1">1–15</option>
-          <option value="2">16–End</option>
-        </select>
+      {reportPeriod === "custom" ? (
+        <>
+          <input type="date" value={reportCustomFrom} onChange={(e) => setReportCustomFrom(e.target.value)}
+            style={{ fontSize: 12, padding: "4px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }} />
+          <span style={{ fontSize: 12, color: "var(--text3)" }}>to</span>
+          <input type="date" value={reportCustomTo} onChange={(e) => setReportCustomTo(e.target.value)}
+            style={{ fontSize: 12, padding: "4px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }} />
+        </>
       ) : null}
     </div>
   );
@@ -715,10 +774,66 @@ export default function Dashboard({
     };
   }, [trendsChartPoints, selectedTrendDate]);
 
+  const openTrendBarModal = (pointId: string) => {
+    setSelectedTrendDate(pointId);
+    const point = trendsChartPoints.find((p) => p.id === pointId);
+    if (!point) return;
+    const bars = point.bars || [];
+    const summary = {
+      created: bars.find((b) => b.id === "created")?.value ?? 0,
+      repaired: bars.find((b) => b.id === "repaired")?.value ?? 0,
+      closed: bars.find((b) => b.id === "closed")?.value ?? 0,
+    };
+    // Compute date range for the period
+    let from: Date | null = null;
+    let to: Date | null = null;
+    if (trendDays >= 182) {
+      // Monthly — pointId = "YYYY-MM-01"
+      const d = new Date(pointId + "T00:00:00");
+      from = new Date(d.getFullYear(), d.getMonth(), 1);
+      to = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+    } else if (trendDays > 60) {
+      // Weekly — pointId = Monday "YYYY-MM-DD"
+      const monday = new Date(pointId + "T00:00:00");
+      from = monday;
+      to = new Date(monday);
+      to.setDate(monday.getDate() + 6);
+      to.setHours(23, 59, 59);
+    } else {
+      // Daily — pointId = "YYYY-MM-DD"
+      const d = new Date(pointId + "T00:00:00");
+      from = d;
+      to = new Date(d);
+      to.setHours(23, 59, 59);
+    }
+    const filtered = (tickets || []).filter((t) => {
+      const d = new Date(t.createdAt);
+      if (isNaN(d.getTime())) return false;
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      return true;
+    });
+    setTrendModal({ label: point.xTooltip || point.xLabel, tickets: filtered, summary });
+  };
+
+  const openTrendPieModal = (category: "created" | "repaired" | "closed", label: string, value: number) => {
+    const filtered = (tickets || []).filter((t) => {
+      const s = String(t.status || "").toUpperCase();
+      if (category === "closed") return s === "CLOSED";
+      if (category === "repaired") return s === "UNDER_REPAIRED" || s === "REPAIRED";
+      return true; // "created" → show all in period
+    });
+    setTrendModal({
+      label: `${label} (${value})`,
+      tickets: filtered,
+      summary: undefined,
+    });
+  };
+
   const trendsCard = showTrends ? (
     <div className="table-card" style={{ marginBottom: 16 }}>
       <div className="table-header">
-        <div className="table-title">Tickets Created vs Repaired vs Closed</div>
+        <div className="table-title">Status of Tickets</div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
             {(["bar", "line", "pie"] as const).map((type) => (
@@ -799,7 +914,7 @@ export default function Dashboard({
                         width: 10,
                         height: 10,
                         borderRadius: 999,
-                        background: "#0d9488",
+                        background: "#f59e0b",
                         display: "inline-block",
                       }}
                     />
@@ -819,7 +934,7 @@ export default function Dashboard({
                         width: 10,
                         height: 10,
                         borderRadius: 999,
-                        background: "#2563eb",
+                        background: "#3b82f6",
                         display: "inline-block",
                       }}
                     />
@@ -839,7 +954,7 @@ export default function Dashboard({
                         width: 10,
                         height: 10,
                         borderRadius: 999,
-                        background: "#16a34a",
+                        background: "#22c55e",
                         display: "inline-block",
                       }}
                     />
@@ -874,7 +989,7 @@ export default function Dashboard({
                 <ComboBarLineChart
                   points={trendsChartPoints}
                   selectedId={selectedTrendDate}
-                  onSelect={setSelectedTrendDate}
+                  onSelect={openTrendBarModal}
                   height={220}
                   yLabel="Tickets"
                   showBarValues
@@ -888,9 +1003,10 @@ export default function Dashboard({
                 <ComboBarLineChart
                   points={trendsChartPoints}
                   selectedId={selectedTrendDate}
-                  onSelect={setSelectedTrendDate}
+                  onSelect={openTrendBarModal}
                   height={220}
                   yLabel="Tickets"
+                  showBars={false}
                   showBarValues={false}
                   showLine={true}
                   xLabelStep={trendDays >= 182 ? 1 : undefined}
@@ -935,21 +1051,25 @@ export default function Dashboard({
                           `A ${ir} ${ir} 0 ${largeArc} 0 ${ix1} ${iy1}`,
                           "Z",
                         ].join(" ");
-                        return <path key={d.id} d={pathD} fill={d.color} stroke="var(--bg)" strokeWidth={2} />;
+                        return <path key={d.id} d={pathD} fill={d.color} stroke="var(--bg)" strokeWidth={2}
+                          style={{ cursor: "pointer" }} onClick={() => openTrendPieModal(d.id as "created"|"repaired"|"closed", d.label, d.value)}>
+                          <title>{d.label}: {d.value}</title>
+                        </path>;
                       })}
                       <text x={cx} y={cy - 8} textAnchor="middle" fontSize={13} fontWeight={700} fill="var(--text1)">{total}</text>
                       <text x={cx} y={cy + 10} textAnchor="middle" fontSize={10} fill="var(--text3)">Total</text>
                     </svg>
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                       {pieData.map((d) => (
-                        <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                        <button key={d.id} type="button" onClick={() => openTrendPieModal(d.id as "created"|"repaired"|"closed", d.label, d.value)}
+                          style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, background: "none", border: "none", cursor: "pointer", padding: "2px 0", textAlign: "left" }}>
                           <span style={{ width: 12, height: 12, borderRadius: 3, background: d.color, display: "inline-block", flexShrink: 0 }} />
                           <span style={{ color: "var(--text2)", minWidth: 64 }}>{d.label}</span>
                           <span style={{ fontFamily: "var(--mono)", fontWeight: 600, color: "var(--text1)" }}>{d.value}</span>
                           <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--text3)" }}>
                             ({total > 0 ? ((d.value / total) * 100).toFixed(1) : "0.0"}%)
                           </span>
-                        </div>
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -985,7 +1105,7 @@ export default function Dashboard({
     <div className="content">
       <div className="page-header">
         <div className="page-title">
-          Good morning, {user.name.split(" ")[0]} 
+          Good Morning, {user.name.split(" ")[0]}
         </div>
         <div className="page-sub">
           Here&apos;s what&apos;s happening with your service operations today
@@ -1065,7 +1185,45 @@ export default function Dashboard({
         </>
       ) : (
         <>
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+            {/* Counter period filter */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+              {(["last_day", "last_month", "all_time", "custom"] as const).map((p) => {
+                const label = p === "last_day" ? "Last Day" : p === "last_month" ? "Last Month" : p === "all_time" ? "All Time" : "Custom";
+                const active = counterPeriod === p;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setCounterPeriod(p)}
+                    style={{
+                      padding: "4px 12px", borderRadius: 20, border: active ? "1.5px solid #3b1a08" : "1.5px solid var(--border)",
+                      background: active ? "#3b1a08" : "var(--surface)", color: active ? "#fff" : "var(--text2)",
+                      fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all 0.15s",
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+              {counterPeriod === "custom" && (
+                <>
+                  <input
+                    type="date"
+                    value={counterCustomFrom}
+                    onChange={(e) => setCounterCustomFrom(e.target.value)}
+                    style={{ fontSize: 12, padding: "3px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }}
+                  />
+                  <span style={{ fontSize: 12, color: "var(--text3)" }}>to</span>
+                  <input
+                    type="date"
+                    value={counterCustomTo}
+                    onChange={(e) => setCounterCustomTo(e.target.value)}
+                    style={{ fontSize: 12, padding: "3px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }}
+                  />
+                </>
+              )}
+            </div>
             <button className="btn btn-ghost btn-sm" onClick={() => onNav("tickets")}>
               View All →
             </button>
@@ -1156,7 +1314,7 @@ export default function Dashboard({
           <div className="table-card" style={{ marginBottom: 16 }}>
             <div className="table-header" style={{ flexWrap: "wrap", gap: 12 }}>
               <div>
-                <div className="table-title">Inverter Inventory by Vendor</div>
+                <div className="table-title">Inverter Details</div>
                 <div style={{ marginTop: 4, fontSize: 12, color: "var(--text3)" }}>
                   Click any slice to view vendor tickets
                 </div>
@@ -1165,8 +1323,8 @@ export default function Dashboard({
                 <select
                   className="form-select"
                   value={invPeriod}
-                  onChange={(e) => setInvPeriod(e.target.value as "all" | "weekly" | "monthly" | "quarterly" | "halfyearly" | "yearly")}
-                  style={{ width: 130, fontFamily: "var(--mono)", fontSize: 12 }}
+                  onChange={(e) => setInvPeriod(e.target.value as "all" | "weekly" | "monthly" | "quarterly" | "halfyearly" | "yearly" | "custom")}
+                  style={{ width: 140, fontFamily: "var(--mono)", fontSize: 12 }}
                   aria-label="Inventory period"
                 >
                   <option value="all">All Time</option>
@@ -1175,6 +1333,7 @@ export default function Dashboard({
                   <option value="quarterly">Quarterly</option>
                   <option value="halfyearly">Half Yearly</option>
                   <option value="yearly">Yearly</option>
+                  <option value="custom">Custom Dates</option>
                 </select>
                 {invPeriod === "monthly" || invPeriod === "quarterly" || invPeriod === "halfyearly" || invPeriod === "yearly" ? (
                   <select
@@ -1203,6 +1362,15 @@ export default function Dashboard({
                       </option>
                     ))}
                   </select>
+                ) : null}
+                {invPeriod === "custom" ? (
+                  <>
+                    <input type="date" value={invCustomFrom} onChange={(e) => setInvCustomFrom(e.target.value)}
+                      style={{ fontSize: 12, padding: "4px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }} />
+                    <span style={{ fontSize: 12, color: "var(--text3)" }}>to</span>
+                    <input type="date" value={invCustomTo} onChange={(e) => setInvCustomTo(e.target.value)}
+                      style={{ fontSize: 12, padding: "4px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }} />
+                  </>
                 ) : null}
                 <div className="tag" style={{ fontFamily: "var(--mono)" }}>
                   Total: {inventoryVendorChart.total}
@@ -1265,14 +1433,14 @@ export default function Dashboard({
                       {inventoryStatusChart.slices.length === 1 ? (
                         <circle cx="110" cy="110" r="92" fill={inventoryStatusChart.slices[0]!.color} style={{ cursor: "pointer" }}
                           onClick={() => setInventoryFilter({ type: "status", label: inventoryStatusChart.slices[0]!.status, vendor: "", status: inventoryStatusChart.slices[0]!.status })}>
-                          <title>{inventoryStatusChart.slices[0]!.status}: {inventoryStatusChart.slices[0]!.count}</title>
+                          <title>{formatTicketStatusLabel(inventoryStatusChart.slices[0]!.status)}: {inventoryStatusChart.slices[0]!.count}</title>
                         </circle>
                       ) : (
                         inventoryStatusChart.slices.map((slice) => (
                           <path key={slice.status} d={describePieSlice(110, 110, 92, slice.startAngle, slice.endAngle)}
                             fill={slice.color} stroke="var(--surface)" strokeWidth="2" style={{ cursor: "pointer" }}
                             onClick={() => setInventoryFilter({ type: "status", label: slice.status, vendor: "", status: slice.status })}>
-                            <title>{slice.status}: {slice.count} ({slice.percent.toFixed(1)}%)</title>
+                            <title>{formatTicketStatusLabel(slice.status)}: {slice.count} ({slice.percent.toFixed(1)}%)</title>
                           </path>
                         ))
                       )}
@@ -1287,7 +1455,7 @@ export default function Dashboard({
                           onClick={() => setInventoryFilter({ type: "status", label: slice.status, vendor: "", status: slice.status })}
                           style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", fontSize: 12, textAlign: "left", padding: "2px 0" }}>
                           <span style={{ width: 8, height: 8, borderRadius: 999, background: slice.color, flex: "0 0 auto" }} />
-                          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{slice.status.replace(/_/g, " ")}</span>
+                          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{formatTicketStatusLabel(slice.status)}</span>
                           <span style={{ fontFamily: "var(--mono)", color: "var(--text3)", fontSize: 11 }}>{slice.count}</span>
                         </button>
                       ))}
@@ -1360,8 +1528,8 @@ export default function Dashboard({
                     <select
                       className="form-select"
                       value={invModalPeriod}
-                      onChange={(e) => setInvModalPeriod(e.target.value as "all" | "weekly" | "monthly" | "quarterly" | "halfyearly" | "yearly")}
-                      style={{ width: 130, fontFamily: "var(--mono)", fontSize: 12 }}
+                      onChange={(e) => setInvModalPeriod(e.target.value as "all" | "weekly" | "monthly" | "quarterly" | "halfyearly" | "yearly" | "custom")}
+                      style={{ width: 140, fontFamily: "var(--mono)", fontSize: 12 }}
                       aria-label="Modal period filter"
                     >
                       <option value="all">All Time</option>
@@ -1370,6 +1538,7 @@ export default function Dashboard({
                       <option value="quarterly">Quarterly</option>
                       <option value="halfyearly">Half Yearly</option>
                       <option value="yearly">Yearly</option>
+                      <option value="custom">Custom Dates</option>
                     </select>
                     {invModalPeriod === "monthly" || invModalPeriod === "quarterly" || invModalPeriod === "halfyearly" || invModalPeriod === "yearly" ? (
                       <select
@@ -1398,6 +1567,15 @@ export default function Dashboard({
                           </option>
                         ))}
                       </select>
+                    ) : null}
+                    {invModalPeriod === "custom" ? (
+                      <>
+                        <input type="date" value={invModalCustomFrom} onChange={(e) => setInvModalCustomFrom(e.target.value)}
+                          style={{ fontSize: 12, padding: "4px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }} />
+                        <span style={{ fontSize: 12, color: "var(--text3)" }}>to</span>
+                        <input type="date" value={invModalCustomTo} onChange={(e) => setInvModalCustomTo(e.target.value)}
+                          style={{ fontSize: 12, padding: "4px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }} />
+                      </>
                     ) : null}
                     <button className="btn btn-ghost btn-sm" onClick={() => setInventoryFilter(null)}>
                       Close
@@ -1462,6 +1640,64 @@ export default function Dashboard({
           ) : null}
 
           {trendsCard}
+
+          {/* Trend detail modal */}
+          {trendModal ? (
+            <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setTrendModal(null)}>
+              <div className="modal" style={{ width: 860, maxWidth: "95vw" }} role="dialog" aria-modal="true">
+                <div className="modal-header">
+                  <div>
+                    <div className="modal-title">{trendModal.label}</div>
+                    <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
+                      {trendModal.tickets.length} ticket{trendModal.tickets.length !== 1 ? "s" : ""}
+                      {trendModal.summary ? ` · Created: ${trendModal.summary.created} · Repaired: ${trendModal.summary.repaired} · Closed: ${trendModal.summary.closed}` : ""}
+                    </div>
+                  </div>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setTrendModal(null)}>Close</button>
+                </div>
+                <div className="scroll-x" style={{ maxHeight: 480, overflowY: "auto" }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Ticket ID</th>
+                        <th>Customer</th>
+                        <th>Make · Model</th>
+                        <th>Serial No.</th>
+                        <th>Status</th>
+                        <th>Priority</th>
+                        <th>Created</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {!trendModal.tickets.length ? (
+                        <tr><td colSpan={7} style={{ padding: 18, color: "var(--text3)" }}>No tickets found.</td></tr>
+                      ) : trendModal.tickets.map((t) => (
+                        <tr key={t.id}>
+                          <td>
+                            <button type="button" className="td-mono table-link"
+                              onClick={() => { setTrendModal(null); onViewTicket(t); }} title="View ticket">
+                              {t.ticketId}
+                            </button>
+                          </td>
+                          <td>{t.customerName || t.customer || "—"}</td>
+                          <td><span className="tag">{t.inverterMake} {t.inverterModel}</span></td>
+                          <td style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{t.serialNumber || "—"}</td>
+                          <td><StatusBadge status={t.status} /></td>
+                          <td>
+                            <span className="tag" style={{ color: t.priority === "HIGH" ? "#dc2626" : t.priority === "MEDIUM" ? "#d97706" : undefined }}>
+                              {t.priority}
+                            </span>
+                          </td>
+                          <td style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{t.createdAt}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
 
           {isAdmin ? (
             <>
@@ -1567,37 +1803,16 @@ export default function Dashboard({
                         </tr>
                       ) : (
                         clients.map((c) => (
-                          <tr key={`${c.name}|||${c.address}`}>
+                          <tr key={c.name}>
                             <td>
                               <button
                                 type="button"
                                 className="table-link"
-                                onClick={() => {
-                                  setClientPicked({ name: c.name, address: c.address });
-                                  setClientDetailsOpen(true);
-                                  setClientDetailsLoading(true);
-                                  setClientDetailsErr("");
-                                  setClientDetailsDaily([]);
-                                  setClientDetailsTotals(null);
-                                  apiDashboardClientDetailsDaily({
-                                    ...reportInput,
-                                    clientName: c.name,
-                                    clientAddress: c.address,
-                                  })
-                                    .then((r) => {
-                                      setClientDetailsDaily(r.daily || []);
-                                      setClientDetailsTotals(r.totals);
-                                    })
-                                    .catch((e) => setClientDetailsErr(e instanceof Error ? e.message : "Failed to load details"))
-                                    .finally(() => setClientDetailsLoading(false));
-                                }}
-                                title="View client details"
+                                onClick={() => setClientLocationsModal(c)}
+                                title="View locations"
                               >
                                 {c.name || "—"}
                               </button>
-                              {c.address ? (
-                                <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>{c.address}</div>
-                              ) : null}
                             </td>
                             <td style={{ fontFamily: "var(--mono)" }}>{c.received}</td>
                             <td style={{ fontFamily: "var(--mono)" }}>{c.repaired}</td>
@@ -1607,28 +1822,9 @@ export default function Dashboard({
                               <button
                                 type="button"
                                 className="btn btn-ghost btn-sm"
-                                onClick={() => {
-                                  setClientPicked({ name: c.name, address: c.address });
-                                  setClientDetailsOpen(true);
-                                  setClientDetailsLoading(true);
-                                  setClientDetailsErr("");
-                                  setClientDetailsDaily([]);
-                                  setClientDetailsTotals(null);
-                                  apiDashboardClientDetailsDaily({
-                                    ...reportInput,
-                                    clientName: c.name,
-                                    clientAddress: c.address,
-                                  })
-                                    .then((r) => {
-                                      setClientDetailsDaily(r.daily || []);
-                                      setClientDetailsTotals(r.totals);
-                                    })
-                                    .catch((e) => setClientDetailsErr(e instanceof Error ? e.message : "Failed to load details"))
-                                    .finally(() => setClientDetailsLoading(false));
-                                }}
-                                disabled={clientDetailsLoading}
+                                onClick={() => setClientLocationsModal(c)}
                               >
-                                Details
+                                Locations
                               </button>
                             </td>
                           </tr>
@@ -1694,6 +1890,59 @@ export default function Dashboard({
                       </tbody>
                     </table>
                   </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {clientLocationsModal ? (
+            <div
+              className="modal-overlay"
+              onClick={(e) => e.target === e.currentTarget && setClientLocationsModal(null)}
+            >
+              <div className="modal" style={{ width: 700, maxWidth: "95vw" }} role="dialog" aria-modal="true">
+                <div className="modal-header">
+                  <div className="modal-title">
+                    {clientLocationsModal.name} — Locations
+                  </div>
+                  <button type="button" className="modal-close" onClick={() => setClientLocationsModal(null)}>✕</button>
+                </div>
+                <div style={{ padding: "16px 20px", overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+                    <thead>
+                      <tr style={{ background: "var(--bg2)" }}>
+                        <th style={{ padding: "8px 12px", textAlign: "left" }}>Address</th>
+                        <th style={{ padding: "8px 12px", textAlign: "right" }}>Received</th>
+                        <th style={{ padding: "8px 12px", textAlign: "right" }}>Repaired</th>
+                        <th style={{ padding: "8px 12px", textAlign: "right" }}>Scrap</th>
+                        <th style={{ padding: "8px 12px", textAlign: "right" }}>Dispatched</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(clientLocationsModal.locations || []).length === 0 ? (
+                        <tr>
+                          <td colSpan={5} style={{ padding: 16, color: "var(--text3)" }}>No location data.</td>
+                        </tr>
+                      ) : (
+                        (clientLocationsModal.locations || []).map((loc: ClientLocation, i: number) => (
+                          <tr key={i} style={{ borderTop: "1px solid var(--border)" }}>
+                            <td style={{ padding: "8px 12px" }}>{loc.address}</td>
+                            <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "var(--mono)" }}>{loc.received}</td>
+                            <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "var(--mono)" }}>{loc.repaired}</td>
+                            <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "var(--mono)" }}>{loc.scrap}</td>
+                            <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "var(--mono)" }}>{loc.dispatched}</td>
+                          </tr>
+                        ))
+                      )}
+                      <tr style={{ borderTop: "2px solid var(--border2)", fontWeight: 700 }}>
+                        <td style={{ padding: "8px 12px" }}>Total</td>
+                        <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "var(--mono)" }}>{clientLocationsModal.received}</td>
+                        <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "var(--mono)" }}>{clientLocationsModal.repaired}</td>
+                        <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "var(--mono)" }}>{clientLocationsModal.scrap}</td>
+                        <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "var(--mono)" }}>{clientLocationsModal.dispatched}</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>

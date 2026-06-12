@@ -36,6 +36,7 @@ export default function ComboBarLineChart({
   yTicks = 5,
   yLabel = "",
   showBarValues = false,
+  showBars = true,
   showLine = true,
   ariaLabel = "Chart",
   xLabelStep,
@@ -47,6 +48,7 @@ export default function ComboBarLineChart({
   yTicks?: number;
   yLabel?: string;
   showBarValues?: boolean;
+  showBars?: boolean;
   showLine?: boolean;
   ariaLabel?: string;
   xLabelStep?: number;
@@ -208,7 +210,7 @@ export default function ComboBarLineChart({
         />
 
         {/* bars */}
-        {points.map((p, idx) => {
+        {showBars ? points.map((p, idx) => {
           const bars = Array.isArray(p.bars) ? p.bars : [];
           const groupX = dims.padL + idx * groupW + (groupW - barGroupW) / 2;
           const baseY = dims.padT + dims.innerH;
@@ -300,7 +302,7 @@ export default function ComboBarLineChart({
               </text>
             </g>
           );
-        })}
+        }) : null}
 
         {/* lines (one per bar category) */}
         {showLine ? Array.from(lineSeriesMap.entries()).map(([seriesId, series]) => {
@@ -345,6 +347,20 @@ export default function ComboBarLineChart({
                       strokeWidth={2}
                       vectorEffect="non-scaling-stroke"
                     />
+                    {pt.value > 0 ? (
+                      <text
+                        x={pt.x}
+                        y={pt.y - 9}
+                        textAnchor="middle"
+                        fill={series.color}
+                        fontSize={10}
+                        fontWeight={600}
+                        fontFamily="var(--mono)"
+                        pointerEvents="none"
+                      >
+                        {pt.value}
+                      </text>
+                    ) : null}
                   </g>
                 );
               })}

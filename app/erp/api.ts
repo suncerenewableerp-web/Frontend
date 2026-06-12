@@ -1611,14 +1611,16 @@ export type PendingDispatchApprovalTicket = {
 
 export type TicketTrendsPoint = { date: string; created: number; closed: number; repaired: number };
 
-export type DashboardPeriodKind = "FORTNIGHTLY" | "MONTHLY" | "YEARLY";
+export type DashboardPeriodKind = "WEEKLY" | "FORTNIGHTLY" | "MONTHLY" | "HALFYEARLY" | "YEARLY" | "CUSTOM";
 
 export type DashboardPeriodInput = {
-  period: "fortnightly" | "monthly" | "yearly";
+  period: "weekly" | "fortnightly" | "monthly" | "halfyearly" | "yearly" | "custom";
   year?: number;
   month?: number; // 1-12
   fortnight?: 1 | 2; // for fortnightly
   tz?: string; // defaults on server
+  dateFrom?: string; // for custom: YYYY-MM-DD
+  dateTo?: string;   // for custom: YYYY-MM-DD
 };
 
 export type ServicingStatusTotals = { received: number; repaired: number; scrap: number; dispatched: number };
@@ -1631,11 +1633,13 @@ export async function apiDashboardServicingStatus(input: DashboardPeriodInput): 
   daily: ServicingStatusDayRow[];
 }> {
   const qs = new URLSearchParams();
-  qs.set("period", String(input.period || "fortnightly"));
+  qs.set("period", String(input.period || "monthly"));
   if (typeof input.year === "number") qs.set("year", String(input.year));
   if (typeof input.month === "number") qs.set("month", String(input.month));
   if (typeof input.fortnight === "number") qs.set("fortnight", String(input.fortnight));
   if (input.tz) qs.set("tz", String(input.tz));
+  if (input.dateFrom) qs.set("dateFrom", input.dateFrom);
+  if (input.dateTo) qs.set("dateTo", input.dateTo);
 
   const env = await apiFetch<{ period?: unknown; totals?: unknown; daily?: unknown }>(
     `/api/dashboard/servicing-status?${qs.toString()}`,
@@ -1671,8 +1675,7 @@ export async function apiDashboardServicingStatus(input: DashboardPeriodInput): 
   };
 }
 
-export type ClientSummaryRow = {
-  name: string;
+export type ClientLocation = {
   address: string;
   received: number;
   repaired: number;
@@ -1680,16 +1683,28 @@ export type ClientSummaryRow = {
   dispatched: number;
 };
 
+export type ClientSummaryRow = {
+  name: string;
+  address: string;
+  received: number;
+  repaired: number;
+  scrap: number;
+  dispatched: number;
+  locations?: ClientLocation[];
+};
+
 export async function apiDashboardClientDetailsList(input: DashboardPeriodInput): Promise<{
   period: { kind: DashboardPeriodKind; from: string; to: string; tz: string };
   clients: ClientSummaryRow[];
 }> {
   const qs = new URLSearchParams();
-  qs.set("period", String(input.period || "fortnightly"));
+  qs.set("period", String(input.period || "monthly"));
   if (typeof input.year === "number") qs.set("year", String(input.year));
   if (typeof input.month === "number") qs.set("month", String(input.month));
   if (typeof input.fortnight === "number") qs.set("fortnight", String(input.fortnight));
   if (input.tz) qs.set("tz", String(input.tz));
+  if (input.dateFrom) qs.set("dateFrom", input.dateFrom);
+  if (input.dateTo) qs.set("dateTo", input.dateTo);
   const env = await apiFetch<{ period?: unknown; clients?: unknown }>(
     `/api/dashboard/client-details?${qs.toString()}`,
     { method: "GET" },
@@ -1705,6 +1720,15 @@ export async function apiDashboardClientDetailsList(input: DashboardPeriodInput)
         repaired: Number(r?.repaired || 0) || 0,
         scrap: Number(r?.scrap || 0) || 0,
         dispatched: Number(r?.dispatched || 0) || 0,
+        locations: Array.isArray(r?.locations)
+          ? r.locations.map((loc: any) => ({
+              address: String(loc?.address || "—"),
+              received: Number(loc?.received || 0) || 0,
+              repaired: Number(loc?.repaired || 0) || 0,
+              scrap: Number(loc?.scrap || 0) || 0,
+              dispatched: Number(loc?.dispatched || 0) || 0,
+            }))
+          : [],
       }))
     : [];
   return {
@@ -1819,16 +1843,20 @@ export type InventorySummaryResult = {
 };
 
 export async function apiDashboardInventorySummary(input: {
-  period: "all" | "weekly" | "monthly" | "quarterly" | "halfyearly" | "yearly";
+  period: "all" | "weekly" | "monthly" | "quarterly" | "halfyearly" | "yearly" | "custom";
   year?: number;
   month?: number;
   tz?: string;
+  dateFrom?: string;
+  dateTo?: string;
 }): Promise<InventorySummaryResult> {
   const qs = new URLSearchParams();
   qs.set("period", input.period);
   if (typeof input.year === "number") qs.set("year", String(input.year));
   if (typeof input.month === "number") qs.set("month", String(input.month));
   if (input.tz) qs.set("tz", input.tz);
+  if (input.dateFrom) qs.set("dateFrom", input.dateFrom);
+  if (input.dateTo) qs.set("dateTo", input.dateTo);
 
   const env = await apiFetch<{ total?: unknown; vendors?: unknown; models?: unknown; statuses?: unknown; customers?: unknown }>(
     `/api/dashboard/inventory-summary?${qs.toString()}`,
