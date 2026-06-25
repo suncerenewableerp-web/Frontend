@@ -7,6 +7,7 @@ import { STATUS_COLORS } from "../constants";
 import {
   LuCircleCheck,
   LuShieldAlert,
+  LuShieldCheck,
   LuTicket,
   LuTruck,
   LuWrench,
@@ -119,8 +120,20 @@ export default function Dashboard({
   const [approvalPending, setApprovalPending] = useState<PendingDispatchApprovalTicket[]>([]);
   const [jobCards, setJobCards] = useState<JobCardListRow[]>([]);
 
+  const ymdOf = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
   const showTrends = isAdmin || isSales;
-  const [trendDays, setTrendDays] = useState(7);
+  // Default range = Half Yearly (≈6 months).
+  const [trendDays, setTrendDays] = useState(184);
+  // Custom date range for the trends chart.
+  const [trendCustom, setTrendCustom] = useState(false);
+  const [trendCustomFrom, setTrendCustomFrom] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 6);
+    return ymdOf(d);
+  });
+  const [trendCustomTo, setTrendCustomTo] = useState(() => ymdOf(new Date()));
   const [trendChartType, setTrendChartType] = useState<"bar" | "line" | "pie">("bar");
   const [trends, setTrends] = useState<TicketTrendsPoint[]>([]);
   const [trendsErr, setTrendsErr] = useState("");
@@ -131,7 +144,7 @@ export default function Dashboard({
   const [showAllInventoryVendors, setShowAllInventoryVendors] = useState(false);
   const [showAllInventoryStatuses, setShowAllInventoryStatuses] = useState(false);
 
-  const [counterPeriod, setCounterPeriod] = useState<"last_day" | "last_month" | "all_time" | "custom">("all_time");
+  const [counterPeriod, setCounterPeriod] = useState<"last_day" | "this_month" | "last_month" | "all_time" | "custom">("all_time");
   const [counterCustomFrom, setCounterCustomFrom] = useState("");
   const [counterCustomTo, setCounterCustomTo] = useState("");
 
@@ -143,12 +156,27 @@ export default function Dashboard({
   const counterTickets = useMemo(() => {
     const n = new Date();
     if (counterPeriod === "last_day") {
-      const from = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+      // Rolling last 24 hours (createdAt is date-granular, so this covers today and, near a day boundary, yesterday).
+      const from = new Date(n.getTime() - 24 * 60 * 60 * 1000);
       return tickets.filter((t) => { const d = new Date(t.createdAt); return !isNaN(d.getTime()) && d >= from; });
     }
+    if (counterPeriod === "this_month") {
+      // Current calendar month, 1st → today (e.g. in June this is Jun 1 – now).
+      const from = new Date(n.getFullYear(), n.getMonth(), 1, 0, 0, 0, 0);
+      const to = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 23, 59, 59, 999);
+      return tickets.filter((t) => {
+        const d = new Date(t.createdAt);
+        return !isNaN(d.getTime()) && d >= from && d <= to;
+      });
+    }
     if (counterPeriod === "last_month") {
-      const from = new Date(n.getFullYear(), n.getMonth() - 1, n.getDate());
-      return tickets.filter((t) => { const d = new Date(t.createdAt); return !isNaN(d.getTime()) && d >= from; });
+      // Previous calendar month, 1st → last day (e.g. in June this is May 1 – May 31).
+      const from = new Date(n.getFullYear(), n.getMonth() - 1, 1, 0, 0, 0, 0);
+      const to = new Date(n.getFullYear(), n.getMonth(), 0, 23, 59, 59, 999);
+      return tickets.filter((t) => {
+        const d = new Date(t.createdAt);
+        return !isNaN(d.getTime()) && d >= from && d <= to;
+      });
     }
     if (counterPeriod === "custom") {
       const from = counterCustomFrom ? new Date(counterCustomFrom + "T00:00:00") : null;
@@ -169,6 +197,10 @@ export default function Dashboard({
     ["PICKUP_SCHEDULED", "IN_TRANSIT"].includes(String(t.status || "").toUpperCase()),
   ).length;
   const inward = inwardCreated + inwardUnderPickup;
+
+  const warrantyTickets = counterTickets.filter((t) => Boolean(t.warrantyStatus));
+  const underWarranty = warrantyTickets.length;
+  const outOfWarranty = counterTickets.length - underWarranty;
 
   const underDispatch = counterTickets.filter((t) => String(t.status || "").toUpperCase() === "UNDER_DISPATCH").length;
   const dispatched = counterTickets.filter((t) =>
@@ -508,7 +540,16 @@ export default function Dashboard({
   useEffect(() => {
     if (!showTrends) return;
     let cancelled = false;
-    apiDashboardTicketTrends(trendDays)
+    // For a custom range, fetch enough days to reach back to the "from" date
+    // (backend returns the last N days ending today; capped at 365).
+    let fetchDays = trendDays;
+    if (trendCustom) {
+      if (!trendCustomFrom) return;
+      const fromMs = new Date(trendCustomFrom + "T00:00:00").getTime();
+      const spanDays = Math.ceil((Date.now() - fromMs) / 86400000) + 1;
+      fetchDays = Math.min(365, Math.max(7, spanDays));
+    }
+    apiDashboardTicketTrends(fetchDays)
       .then((r) => {
         if (cancelled) return;
         const series = Array.isArray(r.series) ? r.series : [];
@@ -527,7 +568,7 @@ export default function Dashboard({
     return () => {
       cancelled = true;
     };
-  }, [showTrends, trendDays]);
+  }, [showTrends, trendDays, trendCustom, trendCustomFrom]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -678,19 +719,75 @@ export default function Dashboard({
     return new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "2-digit", month: "short" }).format(d);
   };
 
+  // Calendar-scoped ranges (not rolling windows): "Weekly" (7) = current week
+  // (Mon→today), "Monthly" (31) = current calendar month, "Half Yearly" (184) =
+  // current half (Jan–Jun or Jul–Dec), "Yearly" (365) = current calendar year.
+  // "Quarterly" (90) stays a rolling window.
+  const trendsScoped = useMemo(() => {
+    const raw = trends || [];
+    const n = new Date();
+    if (trendCustom) {
+      const from = trendCustomFrom || "";
+      const to = trendCustomTo || "";
+      return raw.filter((p) => {
+        const d = String(p.date || "");
+        if (from && d < from) return false;
+        if (to && d > to) return false;
+        return true;
+      });
+    }
+    if (trendDays === 7) {
+      const dow = n.getDay(); // 0=Sun..6=Sat
+      const diffToMonday = dow === 0 ? -6 : 1 - dow;
+      const monday = new Date(n.getFullYear(), n.getMonth(), n.getDate() + diffToMonday);
+      const mondayYmd = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, "0")}-${String(monday.getDate()).padStart(2, "0")}`;
+      return raw.filter((p) => String(p.date || "") >= mondayYmd);
+    }
+    if (trendDays === 31) {
+      const ym = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}`;
+      return raw.filter((p) => String(p.date || "").startsWith(ym));
+    }
+    if (trendDays === 184) {
+      // Current calendar half-year: H1 = Jan–Jun, H2 = Jul–Dec.
+      const firstHalf = n.getMonth() <= 5;
+      const start = firstHalf ? `${n.getFullYear()}-01-01` : `${n.getFullYear()}-07-01`;
+      const end = firstHalf ? `${n.getFullYear()}-06-30` : `${n.getFullYear()}-12-31`;
+      return raw.filter((p) => { const d = String(p.date || ""); return d >= start && d <= end; });
+    }
+    if (trendDays === 365) {
+      const y = `${n.getFullYear()}-`;
+      return raw.filter((p) => String(p.date || "").startsWith(y));
+    }
+    return raw;
+  }, [trends, trendDays, trendCustom, trendCustomFrom, trendCustomTo]);
+
+  // Effective span (in days) used to choose daily/weekly/monthly bucketing.
+  const effectiveTrendDays = useMemo(() => {
+    if (!trendCustom) return trendDays;
+    if (trendCustomFrom && trendCustomTo) {
+      const diff =
+        Math.ceil(
+          (new Date(trendCustomTo + "T00:00:00").getTime() - new Date(trendCustomFrom + "T00:00:00").getTime()) /
+            86400000,
+        ) + 1;
+      return Math.max(1, diff);
+    }
+    return 90;
+  }, [trendCustom, trendCustomFrom, trendCustomTo, trendDays]);
+
   const trendTotals = useMemo(() => {
-    const created = (trends || []).reduce((s, p) => s + (Number(p.created) || 0), 0);
-    const closed = (trends || []).reduce((s, p) => s + (Number(p.closed) || 0), 0);
-    const repaired = (trends || []).reduce((s, p) => s + (Number(p.repaired) || 0), 0);
+    const created = trendsScoped.reduce((s, p) => s + (Number(p.created) || 0), 0);
+    const closed = trendsScoped.reduce((s, p) => s + (Number(p.closed) || 0), 0);
+    const repaired = trendsScoped.reduce((s, p) => s + (Number(p.repaired) || 0), 0);
     return { created, closed, repaired };
-  }, [trends]);
+  }, [trendsScoped]);
 
   const trendsChartPoints = useMemo(() => {
-    const raw = trends || [];
+    const raw = trendsScoped;
     const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
     // Half-yearly (182) and yearly (365): group into monthly buckets
-    if (trendDays >= 182) {
+    if (effectiveTrendDays >= 182) {
       const months = new Map<string, { created: number; repaired: number; closed: number; label: string; tooltip: string }>();
       for (const p of raw) {
         const d = new Date(`${p.date}T00:00:00`);
@@ -761,7 +858,7 @@ export default function Dashboard({
         { id: "closed", label: "Closed", value: w.closed, color: "#22c55e" },
       ],
     }));
-  }, [trends, trendDays]);
+  }, [trendsScoped, effectiveTrendDays]);
 
   const selectedTrendSummary = useMemo(() => {
     const point = trendsChartPoints.find((p) => p.id === selectedTrendDate);
@@ -788,12 +885,12 @@ export default function Dashboard({
     // Compute date range for the period
     let from: Date | null = null;
     let to: Date | null = null;
-    if (trendDays >= 182) {
+    if (effectiveTrendDays >= 182) {
       // Monthly — pointId = "YYYY-MM-01"
       const d = new Date(pointId + "T00:00:00");
       from = new Date(d.getFullYear(), d.getMonth(), 1);
       to = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
-    } else if (trendDays > 60) {
+    } else if (effectiveTrendDays > 60) {
       // Weekly — pointId = Monday "YYYY-MM-DD"
       const monday = new Date(pointId + "T00:00:00");
       from = monday;
@@ -861,20 +958,51 @@ export default function Dashboard({
           </div>
           <select
             className="form-select"
-            value={String(trendDays)}
+            value={trendCustom ? "custom" : String(trendDays)}
             onChange={(e) => {
-              const n = Number.parseInt(e.target.value, 10);
-              setTrendDays(Number.isFinite(n) ? n : 14);
+              const v = e.target.value;
+              if (v === "custom") {
+                setTrendCustom(true);
+                return;
+              }
+              setTrendCustom(false);
+              const n = Number.parseInt(v, 10);
+              setTrendDays(Number.isFinite(n) ? n : 184);
             }}
             aria-label="Select trend range"
             style={{ width: 150, fontFamily: "var(--mono)", fontSize: 12 }}
           >
             <option value="7">Weekly</option>
-            <option value="30">Monthly</option>
+            <option value="31">Monthly</option>
             <option value="90">Quarterly</option>
-            <option value="182">Half Yearly</option>
+            <option value="184">Half Yearly</option>
             <option value="365">Yearly</option>
+            <option value="custom">Custom</option>
           </select>
+          {trendCustom && (
+            <>
+              <input
+                type="date"
+                className="form-input"
+                value={trendCustomFrom}
+                max={trendCustomTo || undefined}
+                onChange={(e) => setTrendCustomFrom(e.target.value)}
+                aria-label="Trend range from"
+                style={{ width: 150, fontFamily: "var(--mono)", fontSize: 12 }}
+              />
+              <span style={{ color: "var(--text3)", fontSize: 12 }}>→</span>
+              <input
+                type="date"
+                className="form-input"
+                value={trendCustomTo}
+                min={trendCustomFrom || undefined}
+                max={ymdOf(new Date())}
+                onChange={(e) => setTrendCustomTo(e.target.value)}
+                aria-label="Trend range to"
+                style={{ width: 150, fontFamily: "var(--mono)", fontSize: 12 }}
+              />
+            </>
+          )}
         </div>
       </div>
       <div style={{ padding: "20px" }}>
@@ -995,7 +1123,7 @@ export default function Dashboard({
                   yLabel="Tickets"
                   showBarValues
                   showLine={false}
-                  xLabelStep={trendDays >= 182 ? 1 : undefined}
+                  xLabelStep={effectiveTrendDays >= 182 ? 1 : undefined}
                   ariaLabel="Tickets created vs repaired vs closed bar chart"
                 />
               )}
@@ -1010,7 +1138,7 @@ export default function Dashboard({
                   showBars={false}
                   showBarValues={false}
                   showLine={true}
-                  xLabelStep={trendDays >= 182 ? 1 : undefined}
+                  xLabelStep={effectiveTrendDays >= 182 ? 1 : undefined}
                   ariaLabel="Tickets created vs repaired vs closed line chart"
                 />
               )}
@@ -1189,8 +1317,8 @@ export default function Dashboard({
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
             {/* Counter period filter */}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-              {(["last_day", "last_month", "all_time", "custom"] as const).map((p) => {
-                const label = p === "last_day" ? "Last Day" : p === "last_month" ? "Last Month" : p === "all_time" ? "All Time" : "Custom";
+              {(["last_day", "this_month", "last_month", "all_time", "custom"] as const).map((p) => {
+                const label = p === "last_day" ? "Last Day" : p === "this_month" ? "This Month" : p === "last_month" ? "Last Month" : p === "all_time" ? "All Time" : "Custom";
                 const active = counterPeriod === p;
                 return (
                   <button
@@ -1288,6 +1416,15 @@ export default function Dashboard({
                 color: "#16a34a",
                 Icon: LuCircleCheck,
                 onClick: () => onOpenTickets({ status: "CLOSED" }),
+              },
+              {
+                label: "Under Warranty",
+                value: underWarranty,
+                sub: `Out of warranty: ${outOfWarranty}`,
+                color: "#0891b2",
+                Icon: LuShieldCheck,
+                onClick: () =>
+                  setTrendModal({ label: "Under Warranty", tickets: warrantyTickets, summary: undefined }),
               },
             ].map((k) => (
               <button
@@ -1772,10 +1909,10 @@ export default function Dashboard({
                   {PeriodControls}
                 </div>
                 <div className="scroll-x" style={{ maxHeight: 360, overflowY: "auto" }}>
-                  <table>
+                  <table className="table-wrap-head">
                     <thead>
                       <tr>
-                        <th style={{ minWidth: 260 }}>Client Name and Address</th>
+                        <th>Client Name and Address</th>
                         <th>No of Inverters Received</th>
                         <th>No of Inverters Repaired</th>
                         <th>No of Inverters declared as SCRAP</th>
@@ -2069,6 +2206,7 @@ export default function Dashboard({
                     <th>Ticket ID</th>
                     <th>Customer</th>
                     <th>Inverter</th>
+                    <th>Inverter Capacity</th>
                     <th>Status</th>
                   </tr>
                 </thead>
@@ -2088,8 +2226,11 @@ export default function Dashboard({
                       <td>{t.customer}</td>
                       <td>
                         <span className="tag">
-                          {t.inverterMake} {t.capacity}
+                          {[t.inverterMake, t.inverterModel].filter((x) => x && x !== "—").join(" ") || "—"}
                         </span>
+                      </td>
+                      <td>
+                        <span className="tag">{t.capacity || "—"}</span>
                       </td>
                       <td>
                         <div className="status-sla">
