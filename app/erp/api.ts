@@ -52,6 +52,12 @@ function isAbortError(err: unknown): boolean {
   );
 }
 
+function dispatchAuthExpired() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("sunce:auth:expired"));
+  }
+}
+
 async function fetchWithTimeout(
   input: RequestInfo | URL,
   init: RequestInit,
@@ -199,10 +205,18 @@ async function apiFetch<T>(
           : "Network request failed",
     };
   }
-  if (res.status !== 401 || !auth?.refreshToken) return parseJsonEnvelope<T>(res);
+  if (res.status !== 401) return parseJsonEnvelope<T>(res);
+
+  if (!auth?.refreshToken) {
+    dispatchAuthExpired();
+    return parseJsonEnvelope<T>(res);
+  }
 
   const newTokens = await refreshToken(auth.refreshToken);
-  if (!newTokens) return parseJsonEnvelope<T>(res);
+  if (!newTokens) {
+    dispatchAuthExpired();
+    return parseJsonEnvelope<T>(res);
+  }
 
   const stored = readAuthStorage();
   if (stored) writeAuthStorage(stored.user, newTokens);
@@ -1597,14 +1611,16 @@ export type PendingDispatchApprovalTicket = {
 
 export type TicketTrendsPoint = { date: string; created: number; closed: number; repaired: number };
 
-export type DashboardPeriodKind = "FORTNIGHTLY" | "MONTHLY" | "YEARLY";
+export type DashboardPeriodKind = "WEEKLY" | "FORTNIGHTLY" | "MONTHLY" | "HALFYEARLY" | "YEARLY" | "CUSTOM";
 
 export type DashboardPeriodInput = {
-  period: "fortnightly" | "monthly" | "yearly";
+  period: "weekly" | "fortnightly" | "monthly" | "halfyearly" | "yearly" | "custom";
   year?: number;
   month?: number; // 1-12
   fortnight?: 1 | 2; // for fortnightly
   tz?: string; // defaults on server
+  dateFrom?: string; // for custom: YYYY-MM-DD
+  dateTo?: string;   // for custom: YYYY-MM-DD
 };
 
 export type ServicingStatusTotals = { received: number; repaired: number; scrap: number; dispatched: number };
@@ -1617,11 +1633,13 @@ export async function apiDashboardServicingStatus(input: DashboardPeriodInput): 
   daily: ServicingStatusDayRow[];
 }> {
   const qs = new URLSearchParams();
-  qs.set("period", String(input.period || "fortnightly"));
+  qs.set("period", String(input.period || "monthly"));
   if (typeof input.year === "number") qs.set("year", String(input.year));
   if (typeof input.month === "number") qs.set("month", String(input.month));
   if (typeof input.fortnight === "number") qs.set("fortnight", String(input.fortnight));
   if (input.tz) qs.set("tz", String(input.tz));
+  if (input.dateFrom) qs.set("dateFrom", input.dateFrom);
+  if (input.dateTo) qs.set("dateTo", input.dateTo);
 
   const env = await apiFetch<{ period?: unknown; totals?: unknown; daily?: unknown }>(
     `/api/dashboard/servicing-status?${qs.toString()}`,
@@ -1657,8 +1675,7 @@ export async function apiDashboardServicingStatus(input: DashboardPeriodInput): 
   };
 }
 
-export type ClientSummaryRow = {
-  name: string;
+export type ClientLocation = {
   address: string;
   received: number;
   repaired: number;
@@ -1666,16 +1683,28 @@ export type ClientSummaryRow = {
   dispatched: number;
 };
 
+export type ClientSummaryRow = {
+  name: string;
+  address: string;
+  received: number;
+  repaired: number;
+  scrap: number;
+  dispatched: number;
+  locations?: ClientLocation[];
+};
+
 export async function apiDashboardClientDetailsList(input: DashboardPeriodInput): Promise<{
   period: { kind: DashboardPeriodKind; from: string; to: string; tz: string };
   clients: ClientSummaryRow[];
 }> {
   const qs = new URLSearchParams();
-  qs.set("period", String(input.period || "fortnightly"));
+  qs.set("period", String(input.period || "monthly"));
   if (typeof input.year === "number") qs.set("year", String(input.year));
   if (typeof input.month === "number") qs.set("month", String(input.month));
   if (typeof input.fortnight === "number") qs.set("fortnight", String(input.fortnight));
   if (input.tz) qs.set("tz", String(input.tz));
+  if (input.dateFrom) qs.set("dateFrom", input.dateFrom);
+  if (input.dateTo) qs.set("dateTo", input.dateTo);
   const env = await apiFetch<{ period?: unknown; clients?: unknown }>(
     `/api/dashboard/client-details?${qs.toString()}`,
     { method: "GET" },
@@ -1691,6 +1720,15 @@ export async function apiDashboardClientDetailsList(input: DashboardPeriodInput)
         repaired: Number(r?.repaired || 0) || 0,
         scrap: Number(r?.scrap || 0) || 0,
         dispatched: Number(r?.dispatched || 0) || 0,
+        locations: Array.isArray(r?.locations)
+          ? r.locations.map((loc: any) => ({
+              address: String(loc?.address || "—"),
+              received: Number(loc?.received || 0) || 0,
+              repaired: Number(loc?.repaired || 0) || 0,
+              scrap: Number(loc?.scrap || 0) || 0,
+              dispatched: Number(loc?.dispatched || 0) || 0,
+            }))
+          : [],
       }))
     : [];
   return {
@@ -1787,6 +1825,59 @@ export async function apiDashboardTicketTrends(days = 14): Promise<{
     tz: String(env.data?.tz || "UTC"),
     series: series.filter((p) => p.date),
   };
+}
+
+// ── Inventory Summary ────────────────────────────────────────────────────────
+
+export type InventoryVendorRow = { vendor: string; count: number };
+export type InventoryModelRow = { model: string; vendor: string; count: number };
+export type InventoryStatusRow = { status: string; count: number };
+export type InventoryCustomerRow = { customer: string; count: number };
+
+export type InventorySummaryResult = {
+  total: number;
+  vendors: InventoryVendorRow[];
+  models: InventoryModelRow[];
+  statuses: InventoryStatusRow[];
+  customers: InventoryCustomerRow[];
+};
+
+export async function apiDashboardInventorySummary(input: {
+  period: "all" | "weekly" | "monthly" | "quarterly" | "halfyearly" | "yearly" | "custom";
+  year?: number;
+  month?: number;
+  tz?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}): Promise<InventorySummaryResult> {
+  const qs = new URLSearchParams();
+  qs.set("period", input.period);
+  if (typeof input.year === "number") qs.set("year", String(input.year));
+  if (typeof input.month === "number") qs.set("month", String(input.month));
+  if (input.tz) qs.set("tz", input.tz);
+  if (input.dateFrom) qs.set("dateFrom", input.dateFrom);
+  if (input.dateTo) qs.set("dateTo", input.dateTo);
+
+  const env = await apiFetch<{ total?: unknown; vendors?: unknown; models?: unknown; statuses?: unknown; customers?: unknown }>(
+    `/api/dashboard/inventory-summary?${qs.toString()}`,
+    { method: "GET" },
+  );
+  if (!env.success) throw new Error(env.message || "Failed to fetch inventory summary");
+
+  const vendors: InventoryVendorRow[] = Array.isArray(env.data?.vendors)
+    ? (env.data!.vendors as any[]).map((r) => ({ vendor: String(r?.vendor || ""), count: Number(r?.count || 0) || 0 }))
+    : [];
+  const models: InventoryModelRow[] = Array.isArray(env.data?.models)
+    ? (env.data!.models as any[]).map((r) => ({ model: String(r?.model || ""), vendor: String(r?.vendor || ""), count: Number(r?.count || 0) || 0 }))
+    : [];
+  const statuses: InventoryStatusRow[] = Array.isArray(env.data?.statuses)
+    ? (env.data!.statuses as any[]).map((r) => ({ status: String(r?.status || ""), count: Number(r?.count || 0) || 0 }))
+    : [];
+  const customers: InventoryCustomerRow[] = Array.isArray(env.data?.customers)
+    ? (env.data!.customers as any[]).map((r) => ({ customer: String(r?.customer || ""), count: Number(r?.count || 0) || 0 }))
+    : [];
+
+  return { total: Number(env.data?.total || 0) || 0, vendors, models, statuses, customers };
 }
 
 export async function apiPendingDispatchApprovalsList(): Promise<{

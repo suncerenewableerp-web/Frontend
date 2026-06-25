@@ -36,8 +36,10 @@ export default function ComboBarLineChart({
   yTicks = 5,
   yLabel = "",
   showBarValues = false,
+  showBars = true,
   showLine = true,
   ariaLabel = "Chart",
+  xLabelStep,
 }: {
   points: ComboPoint[];
   selectedId?: string;
@@ -46,8 +48,10 @@ export default function ComboBarLineChart({
   yTicks?: number;
   yLabel?: string;
   showBarValues?: boolean;
+  showBars?: boolean;
   showLine?: boolean;
   ariaLabel?: string;
+  xLabelStep?: number;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const { width } = useElementSize(containerRef);
@@ -104,20 +108,25 @@ export default function ComboBarLineChart({
   const barGap = 4;
   const barW = Math.max(3, (barGroupW - barGap * (barsPerPoint - 1)) / barsPerPoint);
 
-  const linePts = showLine
-    ? points.map((p, idx) => {
-        const lineV = Number(p.lineValue ?? (p.bars?.[0]?.value ?? 0)) || 0;
-        const tip = p.xTooltip || p.xLabel;
-        const bars = Array.isArray(p.bars) ? p.bars : [];
-        const barStr = bars.map((b) => `${b.label} ${Number(b.value) || 0}`).join(" · ");
-        return { id: p.id, x: xCenter(idx), y: scaleY(lineV), value: lineV, title: `${tip} • ${barStr}` };
-      })
-    : [];
-  const lineD = showLine
-    ? linePts
-        .map((pt, i) => `${i === 0 ? "M" : "L"} ${pt.x.toFixed(2)} ${pt.y.toFixed(2)}`)
-        .join(" ")
-    : "";
+  // One line series per bar category (Created, Repaired, Closed, …)
+  type LineSeries = { color: string; pts: { id: string; x: number; y: number; value: number; label: string }[] };
+  const lineSeriesMap = new Map<string, LineSeries>();
+  if (showLine) {
+    points.forEach((p, idx) => {
+      const tip = p.xTooltip || p.xLabel;
+      (p.bars ?? []).forEach((b) => {
+        const v = Math.max(0, Number(b.value) || 0);
+        if (!lineSeriesMap.has(b.id)) lineSeriesMap.set(b.id, { color: b.color, pts: [] });
+        lineSeriesMap.get(b.id)!.pts.push({
+          id: p.id,
+          x: xCenter(idx),
+          y: scaleY(v),
+          value: v,
+          label: `${tip} · ${b.label} ${v}`,
+        });
+      });
+    });
+  }
 
   return (
     <div
@@ -201,7 +210,7 @@ export default function ComboBarLineChart({
         />
 
         {/* bars */}
-        {points.map((p, idx) => {
+        {showBars ? points.map((p, idx) => {
           const bars = Array.isArray(p.bars) ? p.bars : [];
           const groupX = dims.padL + idx * groupW + (groupW - barGroupW) / 2;
           const baseY = dims.padT + dims.innerH;
@@ -287,58 +296,77 @@ export default function ComboBarLineChart({
                 fontSize={11}
                 fontFamily="var(--mono)"
               >
-                {idx === 0 || idx === points.length - 1 || idx % metrics.labelStep === 0 || p.id === selectedId
+                {idx === 0 || idx === points.length - 1 || idx % (xLabelStep ?? metrics.labelStep) === 0 || p.id === selectedId
                   ? p.xLabel
                   : ""}
               </text>
             </g>
           );
-        })}
+        }) : null}
 
-        {/* line (optional) */}
-        {showLine ? (
-          <>
-            <path
-              d={lineD}
-              fill="none"
-              stroke="#111827"
-              strokeWidth={2}
-              opacity={0.9}
-              vectorEffect="non-scaling-stroke"
-            />
-            {linePts.map((pt) => {
-              const isSelected = pt.id === selectedId;
-              return (
-                <g
-                  key={pt.id}
-                  onClick={() => onSelect?.(pt.id)}
-                  onKeyDown={(e) => {
-                    if (!onSelect) return;
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onSelect(pt.id);
-                    }
-                  }}
-                  tabIndex={onSelect ? 0 : undefined}
-                  role={onSelect ? "button" : undefined}
-                  aria-label={onSelect ? pt.title : undefined}
-                  style={{ cursor: onSelect ? "pointer" : "default" }}
-                >
-                  <title>{pt.title}</title>
-                  <circle
-                    cx={pt.x}
-                    cy={pt.y}
-                    r={isSelected ? 5.5 : 4.5}
-                    fill="white"
-                    stroke="#111827"
-                    strokeWidth={2}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                </g>
-              );
-            })}
-          </>
-        ) : null}
+        {/* lines (one per bar category) */}
+        {showLine ? Array.from(lineSeriesMap.entries()).map(([seriesId, series]) => {
+          const d = series.pts
+            .map((pt, i) => `${i === 0 ? "M" : "L"} ${pt.x.toFixed(2)} ${pt.y.toFixed(2)}`)
+            .join(" ");
+          return (
+            <g key={seriesId}>
+              <path
+                d={d}
+                fill="none"
+                stroke={series.color}
+                strokeWidth={2}
+                opacity={0.9}
+                vectorEffect="non-scaling-stroke"
+              />
+              {series.pts.map((pt) => {
+                const isSelected = pt.id === selectedId;
+                return (
+                  <g
+                    key={`${seriesId}-${pt.id}`}
+                    onClick={() => onSelect?.(pt.id)}
+                    onKeyDown={(e) => {
+                      if (!onSelect) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onSelect(pt.id);
+                      }
+                    }}
+                    tabIndex={onSelect ? 0 : undefined}
+                    role={onSelect ? "button" : undefined}
+                    aria-label={onSelect ? pt.label : undefined}
+                    style={{ cursor: onSelect ? "pointer" : "default" }}
+                  >
+                    <title>{pt.label}</title>
+                    <circle
+                      cx={pt.x}
+                      cy={pt.y}
+                      r={isSelected ? 5.5 : 4}
+                      fill="white"
+                      stroke={series.color}
+                      strokeWidth={2}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                    {pt.value > 0 ? (
+                      <text
+                        x={pt.x}
+                        y={pt.y - 9}
+                        textAnchor="middle"
+                        fill={series.color}
+                        fontSize={10}
+                        fontWeight={600}
+                        fontFamily="var(--mono)"
+                        pointerEvents="none"
+                      >
+                        {pt.value}
+                      </text>
+                    ) : null}
+                  </g>
+                );
+              })}
+            </g>
+          );
+        }) : null}
       </svg>
 
       {selected ? (
