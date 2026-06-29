@@ -76,6 +76,19 @@ function describePieSlice(cx: number, cy: number, radius: number, startAngle: nu
   return [`M ${cx} ${cy}`, `L ${start.x} ${start.y}`, `A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`, "Z"].join(" ");
 }
 
+// Counts distinct inverters in a list of tickets: same serial number = one inverter.
+// Tickets without a serial number are each counted individually.
+function countDistinctInverters(list: { serialNumber?: string }[]): number {
+  const seen = new Set<string>();
+  let blanks = 0;
+  for (const t of list) {
+    const sn = String(t.serialNumber || "").trim().toUpperCase();
+    if (sn && sn !== "—") seen.add(sn);
+    else blanks += 1;
+  }
+  return seen.size + blanks;
+}
+
 export default function Dashboard({
   user,
   tickets,
@@ -155,17 +168,29 @@ export default function Dashboard({
 
   const counterTickets = useMemo(() => {
     const n = new Date();
+    // These cards show the current pipeline, so scope by last activity (updatedAt),
+    // falling back to createdAt. This way "Last Day" shows inverters worked on recently,
+    // not only tickets created today.
+    const actDate = (t: Ticket) => new Date(t.updatedAt || t.createdAt);
     if (counterPeriod === "last_day") {
-      // Rolling last 24 hours (createdAt is date-granular, so this covers today and, near a day boundary, yesterday).
-      const from = new Date(n.getTime() - 24 * 60 * 60 * 1000);
-      return tickets.filter((t) => { const d = new Date(t.createdAt); return !isNaN(d.getTime()) && d >= from; });
+      // "Last Day" = the most recent active day. We measure 24h back from the latest
+      // activity in the data (not the wall clock), so the card still shows the last
+      // day of work even if the system has been idle for a few days.
+      let maxMs = 0;
+      for (const t of tickets) {
+        const ms = actDate(t).getTime();
+        if (!isNaN(ms) && ms > maxMs) maxMs = ms;
+      }
+      const ref = maxMs || n.getTime();
+      const from = new Date(ref - 24 * 60 * 60 * 1000);
+      return tickets.filter((t) => { const d = actDate(t); return !isNaN(d.getTime()) && d.getTime() >= from.getTime(); });
     }
     if (counterPeriod === "this_month") {
       // Current calendar month, 1st → today (e.g. in June this is Jun 1 – now).
       const from = new Date(n.getFullYear(), n.getMonth(), 1, 0, 0, 0, 0);
       const to = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 23, 59, 59, 999);
       return tickets.filter((t) => {
-        const d = new Date(t.createdAt);
+        const d = actDate(t);
         return !isNaN(d.getTime()) && d >= from && d <= to;
       });
     }
@@ -174,7 +199,7 @@ export default function Dashboard({
       const from = new Date(n.getFullYear(), n.getMonth() - 1, 1, 0, 0, 0, 0);
       const to = new Date(n.getFullYear(), n.getMonth(), 0, 23, 59, 59, 999);
       return tickets.filter((t) => {
-        const d = new Date(t.createdAt);
+        const d = actDate(t);
         return !isNaN(d.getTime()) && d >= from && d <= to;
       });
     }
@@ -182,7 +207,7 @@ export default function Dashboard({
       const from = counterCustomFrom ? new Date(counterCustomFrom + "T00:00:00") : null;
       const to = counterCustomTo ? new Date(counterCustomTo + "T23:59:59") : null;
       return tickets.filter((t) => {
-        const d = new Date(t.createdAt);
+        const d = actDate(t);
         if (isNaN(d.getTime())) return true;
         if (from && d < from) return false;
         if (to && d > to) return false;
@@ -192,23 +217,28 @@ export default function Dashboard({
     return tickets;
   }, [tickets, counterPeriod, counterCustomFrom, counterCustomTo]);
 
-  const inwardCreated = counterTickets.filter((t) => String(t.status || "").toUpperCase() === "CREATED").length;
-  const inwardUnderPickup = counterTickets.filter((t) =>
-    ["PICKUP_SCHEDULED", "IN_TRANSIT"].includes(String(t.status || "").toUpperCase()),
-  ).length;
+  // All counter cards report distinct inverters (by serial number), not raw ticket rows.
+  const inwardCreated = countDistinctInverters(
+    counterTickets.filter((t) => String(t.status || "").toUpperCase() === "CREATED"),
+  );
+  const inwardUnderPickup = countDistinctInverters(
+    counterTickets.filter((t) => ["PICKUP_SCHEDULED", "IN_TRANSIT"].includes(String(t.status || "").toUpperCase())),
+  );
   const inward = inwardCreated + inwardUnderPickup;
 
   const warrantyTickets = counterTickets.filter((t) => Boolean(t.warrantyStatus));
-  const underWarranty = warrantyTickets.length;
-  const outOfWarranty = counterTickets.length - underWarranty;
+  const underWarranty = countDistinctInverters(warrantyTickets);
+  const outOfWarranty = countDistinctInverters(counterTickets.filter((t) => !t.warrantyStatus));
 
-  const underDispatch = counterTickets.filter((t) => String(t.status || "").toUpperCase() === "UNDER_DISPATCH").length;
-  const dispatched = counterTickets.filter((t) =>
-    ["DISPATCHED", "INSTALLATION_DONE"].includes(String(t.status || "").toUpperCase()),
-  ).length;
+  const underDispatch = countDistinctInverters(
+    counterTickets.filter((t) => String(t.status || "").toUpperCase() === "UNDER_DISPATCH"),
+  );
+  const dispatched = countDistinctInverters(
+    counterTickets.filter((t) => ["DISPATCHED", "INSTALLATION_DONE"].includes(String(t.status || "").toUpperCase())),
+  );
 
   const underRepairRaw = counterTickets.filter((t) => String(t.status || "").toUpperCase() === "UNDER_REPAIRED");
-  const closed = counterTickets.filter((t) => t.status === "CLOSED").length;
+  const closed = countDistinctInverters(counterTickets.filter((t) => t.status === "CLOSED"));
 
   const [reportPeriod, setReportPeriod] = useState<DashboardPeriodInput["period"]>("monthly");
   const [reportYear, setReportYear] = useState(defaultYear);
@@ -329,15 +359,18 @@ export default function Dashboard({
   }, [jobCards]);
 
   const underProgressCounts = useMemo(() => {
-    let underRepair = 0;
-    let repaired = 0;
-    let scrap = 0;
+    const repairList: typeof underRepairRaw = [];
+    const repairedList: typeof underRepairRaw = [];
+    const scrapList: typeof underRepairRaw = [];
     (underRepairRaw || []).forEach((t) => {
       const final = String(engineerFinalByTicketId.get(t.id) || "").toUpperCase().trim();
-      if (final === "REPAIRABLE") repaired++;
-      else if (final === "NOT_REPAIRABLE") scrap++;
-      else underRepair++;
+      if (final === "REPAIRABLE") repairedList.push(t);
+      else if (final === "NOT_REPAIRABLE") scrapList.push(t);
+      else repairList.push(t);
     });
+    const underRepair = countDistinctInverters(repairList);
+    const repaired = countDistinctInverters(repairedList);
+    const scrap = countDistinctInverters(scrapList);
     return { underRepair, repaired, scrap, total: underRepair + repaired + scrap };
   }, [underRepairRaw, engineerFinalByTicketId]);
 
@@ -1412,7 +1445,7 @@ export default function Dashboard({
               {
                 label: "Resolved",
                 value: closed,
-                sub: "Tickets closed this month",
+                sub: "Inverters closed this month",
                 color: "#16a34a",
                 Icon: LuCircleCheck,
                 onClick: () => onOpenTickets({ status: "CLOSED" }),

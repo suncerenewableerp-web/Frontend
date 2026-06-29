@@ -291,6 +291,7 @@ type BackendTicket = {
         courierDetails?: { courierName?: string; lrNumber?: string };
       };
   createdAt?: string | Date;
+  updatedAt?: string | Date;
   slaStatus?: string;
   warrantyStatus?: boolean;
   inverterMake?: string;
@@ -639,6 +640,7 @@ function toTicket(t: BackendTicket): Ticket {
     salesAssigneeName: salesAssigneeName ? String(salesAssigneeName) : undefined,
     salesAssigneeEmail: salesAssigneeEmail ? String(salesAssigneeEmail) : undefined,
     createdAt: String(t?.createdAt ? String(t.createdAt).slice(0, 10) : ""),
+    updatedAt: t?.updatedAt ? String(t.updatedAt) : "",
     slaStatus: toSlaStatus(t?.slaStatus),
   };
 }
@@ -826,6 +828,7 @@ export type TicketCreateInput = {
   serviceType?: "STANDARD" | "ONSITE";
   customerName?: string;
   customerCompany?: string;
+  customerPhone?: string;
   inverterLocation?: string;
   inverterMake?: string;
   inverterModel?: string;
@@ -856,6 +859,7 @@ function makeLocalTicketId(used?: Set<string>) {
 function ticketCreatePayloadFromInput(input: TicketCreateInput, ticketId: string) {
   const customerName = String(input.customerName || "").trim();
   const customerCompany = String(input.customerCompany || "").trim();
+  const customerPhone = String(input.customerPhone || "").trim();
   const inverterLocation = String(input.inverterLocation || "").trim();
   const inverterMake = String(input.inverterMake || "").trim();
   const inverterModel = String(input.inverterModel || "").trim();
@@ -883,11 +887,12 @@ function ticketCreatePayloadFromInput(input: TicketCreateInput, ticketId: string
   return {
     ticketId,
     ...(serviceType ? { serviceType } : {}),
-    ...(customerName || customerCompany || inverterLocation
+    ...(customerName || customerCompany || customerPhone || inverterLocation
       ? {
           customer: {
             ...(customerName ? { name: customerName } : {}),
             ...(customerCompany ? { company: customerCompany } : {}),
+            ...(customerPhone ? { phone: customerPhone } : {}),
             ...(inverterLocation ? { address: inverterLocation } : {}),
           },
         }

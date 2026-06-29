@@ -384,6 +384,7 @@ export default function NewTicketModal({
   const [form, setForm] = useState({
     customerName: "",
     customerCompany: "",
+    customerPhone: "",
     inverterMake: "",
     inverterModel: "",
     capacity: "",
@@ -1250,6 +1251,7 @@ export default function NewTicketModal({
       ...(form.onsiteRepairing ? { serviceType: "ONSITE" } : {}),
       customerName: form.customerName.trim() || undefined,
       customerCompany: form.customerCompany.trim() || undefined,
+      customerPhone: form.customerPhone.trim() || undefined,
       inverterMake: form.inverterMake.trim() || undefined,
       inverterModel: form.inverterModel.trim() || undefined,
       serialNumber: isCustomer ? undefined : form.serialNumber.trim() || undefined,
@@ -1634,6 +1636,17 @@ export default function NewTicketModal({
                     placeholder="Customer name"
                     value={form.customerName}
                     onChange={(e) => set("customerName", e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Mobile Number</label>
+                  <input
+                    className="form-input"
+                    type="tel"
+                    inputMode="numeric"
+                    placeholder="Customer mobile number"
+                    value={form.customerPhone}
+                    onChange={(e) => set("customerPhone", e.target.value.replace(/[^\d+\-\s]/g, ""))}
                   />
                 </div>
               </div>

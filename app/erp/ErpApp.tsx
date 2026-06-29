@@ -85,12 +85,13 @@ export default function ErpApp({
   const loadTickets = async () => {
     try {
       const roleNorm = String(user?.role || "").trim().toUpperCase();
+      // Load the full history so every ticket (incl. imported older-dated ones) shows.
       const limit =
         roleNorm === "ADMIN" || roleNorm === "SALES"
-          ? 500
+          ? 20000
           : roleNorm === "ENGINEER"
-            ? 300
-            : 100;
+            ? 5000
+            : 2000;
       const list = await apiTicketsList({ limit });
       setTickets(list);
     } catch {

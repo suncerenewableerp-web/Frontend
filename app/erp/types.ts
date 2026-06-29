@@ -121,6 +121,7 @@ export interface Ticket {
   salesAssigneeName?: string;
   salesAssigneeEmail?: string;
   createdAt: string;
+  updatedAt?: string; // ISO timestamp of last activity/update
   slaStatus: "MET" | "BREACHED" | "AT_RISK";
   jobCard?: JobCard;
 }
