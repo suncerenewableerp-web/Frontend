@@ -83,15 +83,20 @@ export default function ErpApp({
   const notify = (msg: string) => setNotification(msg);
 
   const loadTickets = async () => {
-    const roleNorm = String(user?.role || "").trim().toUpperCase();
-    const limit =
-      roleNorm === "ADMIN" || roleNorm === "SALES"
-        ? 500
-        : roleNorm === "ENGINEER"
-          ? 300
-          : 100;
-    const list = await apiTicketsList({ limit });
-    setTickets(list);
+    try {
+      const roleNorm = String(user?.role || "").trim().toUpperCase();
+      // Load the full history so every ticket (incl. imported older-dated ones) shows.
+      const limit =
+        roleNorm === "ADMIN" || roleNorm === "SALES"
+          ? 20000
+          : roleNorm === "ENGINEER"
+            ? 5000
+            : 2000;
+      const list = await apiTicketsList({ limit });
+      setTickets(list);
+    } catch {
+      // Backend unreachable — keep existing tickets in state, avoid unhandled rejection
+    }
   };
 
   const loadUsers = async () => {
@@ -115,6 +120,23 @@ export default function ErpApp({
         setBootError(e instanceof Error ? e.message : "Failed to load roles");
       });
   }, []);
+
+  // Auto-logout when any API call gets an unrecoverable 401 (expired tokens)
+  useEffect(() => {
+    const onExpired = () => {
+      clearAuthStorage();
+      setUser(null);
+      setPage("dashboard");
+      setSelectedTicket(null);
+      setAuthView("login");
+      setSidebarOpen(false);
+      setTickets([]);
+      setUsers([]);
+      router.push("/login");
+    };
+    window.addEventListener("sunce:auth:expired", onExpired);
+    return () => window.removeEventListener("sunce:auth:expired", onExpired);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -476,6 +498,7 @@ export default function ErpApp({
                   setPage("ticket_detail");
                 }}
                 onNew={() => setShowNewTicket(true)}
+                onBack={() => setPage("dashboard")}
                 onTicketDeleted={(ticketDbId) => {
                   setTickets((prev) => prev.filter((t) => t.id !== ticketDbId));
                   setSelectedTicket((prev) => (prev?.id === ticketDbId ? null : prev));

@@ -156,6 +156,7 @@ export default function TicketsList({
   initialTabOverride,
   onView,
   onNew,
+  onBack,
   onTicketDeleted,
   onNotify,
 }: {
@@ -183,6 +184,7 @@ export default function TicketsList({
     },
   ) => void;
   onNew: () => void;
+  onBack?: () => void;
   onTicketDeleted?: (ticketDbId: string) => void;
   onNotify?: (msg: string) => void;
 }) {
@@ -643,14 +645,14 @@ export default function TicketsList({
         : [];
 
   const baseEmptyColSpanBase = isCustomer
-    ? 6
+    ? 7
     : ticketsTab === "repaired"
       ? canSeeSalesOwner
-        ? 10
-        : 9
+        ? 11
+        : 10
       : canSeeSalesOwner
-        ? 8
-        : 7;
+        ? 9
+        : 8;
   const showEngineerRemarksCol = !isCustomer && canLoadJobCards && ticketsTab !== "offline_booking";
   const offlineBookingExtraCols = ticketsTab === "offline_booking" ? 3 : 0; // engineer/date/remark
   const baseEmptyColSpan =
@@ -663,15 +665,22 @@ export default function TicketsList({
   return (
     <div className="content">
       <div className="page-header page-header-row">
-        <div>
-          <div className="page-title">Service Tickets</div>
-          <div className="page-sub">
-            {rows.length} tickets{" "}
-            {isCustomer
-              ? "found for your account"
-              : user.role === "ENGINEER"
-                ? "assigned to you or in Under Repair"
-                : "found"}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+          {onBack && (
+            <button className="btn btn-ghost btn-sm" onClick={onBack} style={{ marginTop: 2 }}>
+              ← Back
+            </button>
+          )}
+          <div>
+            <div className="page-title">Service Tickets</div>
+            <div className="page-sub">
+              {rows.length} tickets{" "}
+              {isCustomer
+                ? "found for your account"
+                : user.role === "ENGINEER"
+                  ? "assigned to you or in Under Repair"
+                  : "found"}
+            </div>
           </div>
         </div>
         <div className="page-header-actions">
@@ -1007,6 +1016,7 @@ export default function TicketsList({
 		                <th>Ticket ID</th>
                     <th style={{ width: 120 }}>Ticket Date</th>
                     <th>Inverter</th>
+                    <th style={{ minWidth: 110 }}>Inverter Capacity</th>
                     {canSeeSerialNumber ? <th style={{ minWidth: 160 }}>Serial No.</th> : null}
                     {ticketsTab === "offline_booking" ? <th style={{ minWidth: 160 }}>Engineer</th> : null}
                     {ticketsTab === "offline_booking" ? <th style={{ width: 120 }}>Date</th> : null}
@@ -1094,6 +1104,9 @@ export default function TicketsList({
 	                          {t.inverterMake} {t.inverterModel}
 	                        </span>
 	                      </td>
+                        <td>
+                          <span className="tag">{String(t.capacity || "").trim() || "—"}</span>
+                        </td>
                         {canSeeSerialNumber ? (
                           <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text2)" }}>
                             {String(t.serialNumber || "").trim() || "—"}
