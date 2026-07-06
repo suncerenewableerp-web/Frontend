@@ -283,7 +283,13 @@ export default function TicketsList({
   const [approvedByAdminIds, setApprovedByAdminIds] = useState<string[]>([]);
   const [approvedByAdminError, setApprovedByAdminError] = useState("");
 
-  const visibleTickets = tickets;
+  // Only show tickets from 1 Jan 2026 onwards in the list; older (imported historical)
+  // tickets stay in the database but are hidden here.
+  const TICKETS_FROM = "2026-01-01";
+  const visibleTickets = useMemo(
+    () => (tickets || []).filter((t) => String(t.createdAt || "") >= TICKETS_FROM),
+    [tickets],
+  );
 
   const openDelete = (t: Ticket) => {
     setDeleteTarget(t);
