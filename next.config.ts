@@ -1,7 +1,19 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  webpack: (config, { dev }) => {
+    if (dev) {
+      // Polling avoids exhausting inotify watches on large local trees.
+      config.watchOptions = {
+        ...(config.watchOptions ?? {}),
+        poll: 1000,
+        aggregateTimeout: 300,
+        ignored: /node_modules|\.next|\.git/,
+      };
+    }
+
+    return config;
+  },
 };
 
 export default nextConfig;

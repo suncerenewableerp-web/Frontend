@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { STATUS_ORDER } from "../constants";
 import type { RoleDefinition, Ticket, TicketStatus, User } from "../types";
 import { canAccess, formatTicketStatusLabel } from "../utils";
@@ -23,6 +23,7 @@ function includesStatus(haystack: TicketStatus[], needle: string): needle is Tic
 }
 
 type DateFilter = "ALL" | "YESTERDAY" | "WEEK" | "MONTH" | "YEAR";
+type ClosedYearFilter = "ALL" | string;
 
 function toLocalMidnight(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -81,6 +82,12 @@ function matchesDateFilter(createdAtYmd: string, filter: DateFilter, now = new D
   }
 
   return true;
+}
+
+function ticketYear(createdAtYmd: string): string {
+  const raw = String(createdAtYmd || "").trim();
+  const match = raw.match(/^(\d{4})/);
+  return match ? match[1] : "";
 }
 
 function escapeHtmlCell(input: unknown): string {
@@ -270,6 +277,7 @@ export default function TicketsList({
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState(safeInitialStatusFilter);
   const [dateFilter, setDateFilter] = useState<DateFilter>("ALL");
+  const [closedYearFilter, setClosedYearFilter] = useState<ClosedYearFilter>("ALL");
   const [page, setPage] = useState(1);
   const [showAllRows, setShowAllRows] = useState(false);
   const PAGE_SIZE = 8;
@@ -283,13 +291,7 @@ export default function TicketsList({
   const [approvedByAdminIds, setApprovedByAdminIds] = useState<string[]>([]);
   const [approvedByAdminError, setApprovedByAdminError] = useState("");
 
-  // Only show tickets from 1 Jan 2026 onwards in the list; older (imported historical)
-  // tickets stay in the database but are hidden here.
-  const TICKETS_FROM = "2026-01-01";
-  const visibleTickets = useMemo(
-    () => (tickets || []).filter((t) => String(t.createdAt || "") >= TICKETS_FROM),
-    [tickets],
-  );
+  const visibleTickets = useMemo(() => tickets || [], [tickets]);
 
   const openDelete = (t: Ticket) => {
     setDeleteTarget(t);
@@ -499,6 +501,22 @@ export default function TicketsList({
     () => visibleTickets.filter((t) => t.status === "CLOSED"),
     [visibleTickets],
   );
+  const closedYearCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    closedTickets.forEach((t) => {
+      const year = ticketYear(t.createdAt);
+      if (!year) return;
+      counts.set(year, (counts.get(year) || 0) + 1);
+    });
+    return [...counts.entries()]
+      .map(([year, count]) => ({ year, count }))
+      .sort((a, b) => Number(b.year) - Number(a.year));
+  }, [closedTickets]);
+
+  const matchesClosedYearFilter = useCallback(
+    (t: Ticket) => closedYearFilter === "ALL" || ticketYear(t.createdAt) === closedYearFilter,
+    [closedYearFilter],
+  );
 
   const allCount = useMemo(
     () => visibleTickets.filter((t) => matchesDateFilter(t.createdAt, dateFilter)).length,
@@ -543,8 +561,11 @@ export default function TicketsList({
     [approvedByAdminTickets, dateFilter],
   );
   const closedCount = useMemo(
-    () => closedTickets.filter((t) => matchesDateFilter(t.createdAt, dateFilter)).length,
-    [closedTickets, dateFilter],
+    () =>
+      closedTickets.filter(
+        (t) => matchesDateFilter(t.createdAt, dateFilter) && matchesClosedYearFilter(t),
+      ).length,
+    [closedTickets, dateFilter, matchesClosedYearFilter],
   );
 
   const repairedTabCounts = useMemo(() => {
@@ -605,9 +626,10 @@ export default function TicketsList({
         (!isCustomer && t.customer.toLowerCase().includes(q));
       const matchDate = matchesDateFilter(t.createdAt, dateFilter);
       const matchStatus = statusFilter === "ALL" ? true : t.status === statusFilter;
-      return matchSearch && matchDate && matchStatus;
+      const matchClosedYear = ticketsTab === "closed" ? matchesClosedYearFilter(t) : true;
+      return matchSearch && matchDate && matchStatus && matchClosedYear;
     });
-  }, [baseTickets, search, statusFilter, dateFilter, isCustomer]);
+  }, [baseTickets, search, statusFilter, dateFilter, matchesClosedYearFilter, ticketsTab, isCustomer]);
 
   const filteredRepaired = useMemo(() => {
     if (ticketsTab !== "repaired" || !canLoadJobCards) return filtered;
@@ -929,6 +951,26 @@ export default function TicketsList({
               <option value="MONTH">This Month</option>
               <option value="YEAR">This Year</option>
             </select>
+
+            {ticketsTab === "closed" && closedYearCounts.length ? (
+              <select
+                className="select-filter"
+                value={closedYearFilter}
+                onChange={(e) => {
+                  setClosedYearFilter(e.target.value as ClosedYearFilter);
+                  setDateFilter("ALL");
+                  setPage(1);
+                }}
+                title="Filter closed tickets by year"
+              >
+                <option value="ALL">All Years ({closedTickets.length})</option>
+                {closedYearCounts.map(({ year, count }) => (
+                  <option key={year} value={year}>
+                    {year} ({count})
+                  </option>
+                ))}
+              </select>
+            ) : null}
           </div>
         </div>
 
