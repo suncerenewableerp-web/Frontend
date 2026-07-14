@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
+import type { ReactNode } from "react";
 import Footer from "./Footer";
 import { WAModal, FloatingWA } from "./GlobalContact";
 import { ModalProvider, useModal } from "./ModalContext";
@@ -11,7 +12,13 @@ const Navbar = dynamic(() => import("./Navbar"), { ssr: false });
 
 const EXCLUDED_PATHS = ["/dashboard", "/forgot-password", "/reset-password"];
 
-function LayoutContent({ children }: { children: React.ReactNode }) {
+function LayoutContent({
+  children,
+  beforeFooter,
+}: {
+  children: ReactNode;
+  beforeFooter?: ReactNode;
+}) {
   const { isWAModalOpen, openWAModal, closeWAModal } = useModal();
   const pathname = usePathname();
 
@@ -23,6 +30,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
       {!isExcluded && <Navbar onOpen={openWAModal} />}
       <main className="main-content">{children}</main>
       {!isExcluded && !isErp && <PreFooterQuoteCTA />}
+      {!isExcluded && !isErp && beforeFooter}
       {!isExcluded && <Footer />}
       {!isExcluded && <FloatingWA onClick={openWAModal} />}
       {!isExcluded && isWAModalOpen && <WAModal onClose={closeWAModal} />}
@@ -30,10 +38,16 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function RootClientLayout({ children }: { children: React.ReactNode }) {
+export default function RootClientLayout({
+  children,
+  beforeFooter,
+}: {
+  children: ReactNode;
+  beforeFooter?: ReactNode;
+}) {
   return (
     <ModalProvider>
-      <LayoutContent>{children}</LayoutContent>
+      <LayoutContent beforeFooter={beforeFooter}>{children}</LayoutContent>
     </ModalProvider>
   );
 }
