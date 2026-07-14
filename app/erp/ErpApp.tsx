@@ -50,6 +50,7 @@ export default function ErpApp({
   const [user, setUser] = useState<User | null>(null);
   const [page, setPage] = useState("dashboard");
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [ticketsError, setTicketsError] = useState("");
   const [roles, setRoles] = useState<RoleDefinition[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
@@ -94,8 +95,10 @@ export default function ErpApp({
             : 2000;
       const list = await apiTicketsList({ limit });
       setTickets(list);
-    } catch {
-      // Backend unreachable — keep existing tickets in state, avoid unhandled rejection
+      setTicketsError("");
+    } catch (e) {
+      // Keep existing tickets in state, but make the load failure visible.
+      setTicketsError(e instanceof Error ? e.message : "Failed to load tickets");
     }
   };
 
@@ -131,6 +134,7 @@ export default function ErpApp({
       setAuthView("login");
       setSidebarOpen(false);
       setTickets([]);
+      setTicketsError("");
       setUsers([]);
       router.push("/login");
     };
@@ -206,6 +210,7 @@ export default function ErpApp({
     setSidebarOpen(false);
     router.push("/login");
     setTickets([]);
+    setTicketsError("");
     setUsers([]);
   };
 
@@ -471,6 +476,7 @@ export default function ErpApp({
                 user={user}
                 roles={roles}
                 tickets={tickets}
+                loadError={ticketsError}
                 initialStatusFilter={ticketsListPreset?.status}
                 initialPriorityFilter={ticketsListPreset?.priority}
                 initialTabOverride={ticketsListPreset?.tab}

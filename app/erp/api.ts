@@ -548,14 +548,17 @@ function toJobCard(jc: BackendJobCard, ticketId: string): JobCard {
 
 function toTicket(t: BackendTicket): Ticket {
   const normalizeTicketStatus = (raw: unknown): TicketStatus => {
-    const s = String(raw || "CREATED").toUpperCase();
+    const s = String(raw || "CREATED").trim().toUpperCase();
     if (s === "CREATED") return "CREATED";
     if (s === "PICKUP_SCHEDULED") return "PICKUP_SCHEDULED";
     if (s === "IN_TRANSIT") return "IN_TRANSIT";
     if (s === "UNDER_REPAIRED") return "UNDER_REPAIRED";
+    if (s === "UNDER_REPAIR" || s === "UNDER REPAIR" || s === "UNDER REPAIRED") return "UNDER_REPAIRED";
     if (s === "UNDER_DISPATCH") return "UNDER_DISPATCH";
+    if (s === "UNDER DISPATCH" || s === "UNDER_DISPATCHED" || s === "UNDER DISPATCHED") return "UNDER_DISPATCH";
     if (s === "DISPATCHED") return "DISPATCHED";
     if (s === "INSTALLATION_DONE") return "INSTALLATION_DONE";
+    if (s === "INSTALLATION DONE") return "INSTALLATION_DONE";
     if (s === "CLOSED") return "CLOSED";
 
     // Legacy backend statuses (collapse into the single "Under repaired" stage)

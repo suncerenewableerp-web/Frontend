@@ -158,6 +158,7 @@ export default function TicketsList({
   user,
   roles,
   tickets,
+  loadError,
   initialStatusFilter,
   initialPriorityFilter,
   initialTabOverride,
@@ -170,6 +171,7 @@ export default function TicketsList({
   user: User;
   roles: RoleDefinition[];
   tickets: Ticket[];
+  loadError?: string;
   initialStatusFilter?: string;
   initialPriorityFilter?: string;
   initialTabOverride?:
@@ -868,6 +870,12 @@ export default function TicketsList({
             </>
           )}
         </div>
+
+        {loadError ? (
+          <div className="form-error" style={{ margin: "14px 20px 0" }}>
+            Tickets could not be loaded: {loadError}
+          </div>
+        ) : null}
 
         <div className="table-header">
           <div className="table-actions">
