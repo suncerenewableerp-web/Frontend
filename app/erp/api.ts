@@ -842,24 +842,9 @@ export type TicketCreateInput = {
   warrantyEndDate?: string; // YYYY-MM-DD (only when under warranty)
 };
 
-function makeLocalTicketId(used?: Set<string>) {
-  const year = new Date().getFullYear();
-  // Keep legacy format `SR-YYYY-XXXX` but try to avoid collisions in-batch.
-  for (let i = 0; i < 20; i++) {
-    const id = `SR-${year}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
-    if (!used || !used.has(id)) {
-      used?.add(id);
-      return id;
-    }
-  }
-  // Fallback with timestamp if RNG keeps colliding.
-  const stamp = Date.now().toString().slice(-6);
-  const id = `SR-${year}-${stamp}`;
-  used?.add(id);
-  return id;
-}
-
-function ticketCreatePayloadFromInput(input: TicketCreateInput, ticketId: string) {
+// The backend allocates the ticket ID (sequential, collision-free), so no ID is
+// sent from here.
+function ticketCreatePayloadFromInput(input: TicketCreateInput) {
   const customerName = String(input.customerName || "").trim();
   const customerCompany = String(input.customerCompany || "").trim();
   const customerPhone = String(input.customerPhone || "").trim();
@@ -888,7 +873,6 @@ function ticketCreatePayloadFromInput(input: TicketCreateInput, ticketId: string
   }
 
   return {
-    ticketId,
     ...(serviceType ? { serviceType } : {}),
     ...(customerName || customerCompany || customerPhone || inverterLocation
       ? {
@@ -916,7 +900,7 @@ function ticketCreatePayloadFromInput(input: TicketCreateInput, ticketId: string
 }
 
 export async function apiCreateTicket(input: TicketCreateInput): Promise<Ticket> {
-  const payload = ticketCreatePayloadFromInput(input, makeLocalTicketId());
+  const payload = ticketCreatePayloadFromInput(input);
   const env = await apiFetch<BackendTicket>("/api/tickets", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -928,8 +912,7 @@ export async function apiCreateTicket(input: TicketCreateInput): Promise<Ticket>
 export async function apiCreateTicketsBulk(inputs: TicketCreateInput[]): Promise<Ticket[]> {
   if (!Array.isArray(inputs) || inputs.length === 0) return [];
 
-  const used = new Set<string>();
-  const tickets = inputs.map((input) => ticketCreatePayloadFromInput(input, makeLocalTicketId(used)));
+  const tickets = inputs.map((input) => ticketCreatePayloadFromInput(input));
 
   const env = await apiFetch<{ tickets: BackendTicket[] }>("/api/tickets/bulk", {
     method: "POST",

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { STATUS_ORDER } from "../constants";
 import type { RoleDefinition, Ticket, TicketStatus, User } from "../types";
-import { canAccess, formatTicketStatusLabel } from "../utils";
+import { canAccess, formatTicketStatusLabel, isOnsiteTicket } from "../utils";
 import { EngineerOutcomeBadge, StatusBadge } from "./Badges";
 import { LuDownload, LuSearch, LuTicket, LuTrash2 } from "react-icons/lu";
 import {
@@ -27,12 +27,6 @@ type ClosedYearFilter = "ALL" | string;
 
 function toLocalMidnight(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
-
-function isOnsiteTicket(t: Ticket): boolean {
-  return String(t.serviceType || "")
-    .trim()
-    .toUpperCase() === "ONSITE";
 }
 
 function parseLocalDateOnly(yyyyMmDd: string): Date | null {
@@ -275,6 +269,7 @@ export default function TicketsList({
     | "closed"
   >(initialTab);
   const [repairedTab, setRepairedTab] = useState<"all" | "repairable" | "not_repairable">("all");
+  const [inwardTab, setInwardTab] = useState<"all" | "created" | "pickup_scheduled" | "in_transit">("all");
   const [offlineBookingTab, setOfflineBookingTab] = useState<"running" | "done">("running");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState(safeInitialStatusFilter);
@@ -583,6 +578,20 @@ export default function TicketsList({
     return { repairable, notRepairable };
   }, [canLoadJobCards, repairedTickets, engineerFinalByTicketId, dateFilter]);
 
+  const inwardTabCounts = useMemo(() => {
+    let created = 0;
+    let pickupScheduled = 0;
+    let inTransit = 0;
+    inwardTickets.forEach((t) => {
+      if (!matchesDateFilter(t.createdAt, dateFilter)) return;
+      const status = String(t.status || "").toUpperCase();
+      if (status === "CREATED") created++;
+      else if (status === "PICKUP_SCHEDULED") pickupScheduled++;
+      else if (status === "IN_TRANSIT") inTransit++;
+    });
+    return { created, pickupScheduled, inTransit };
+  }, [inwardTickets, dateFilter]);
+
   const baseTickets = useMemo(() => {
     if (ticketsTab === "open") return openTickets;
     if (ticketsTab === "all") return visibleTickets;
@@ -643,7 +652,23 @@ export default function TicketsList({
     });
   }, [filtered, ticketsTab, canLoadJobCards, repairedTab, engineerFinalByTicketId]);
 
-  const rows = ticketsTab === "repaired" ? filteredRepaired : filtered;
+  const filteredInward = useMemo(() => {
+    if (ticketsTab !== "inward" || inwardTab === "all") return filtered;
+    const wanted =
+      inwardTab === "created"
+        ? "CREATED"
+        : inwardTab === "pickup_scheduled"
+          ? "PICKUP_SCHEDULED"
+          : "IN_TRANSIT";
+    return filtered.filter((t) => String(t.status || "").toUpperCase() === wanted);
+  }, [filtered, ticketsTab, inwardTab]);
+
+  const rows =
+    ticketsTab === "repaired"
+      ? filteredRepaired
+      : ticketsTab === "inward"
+        ? filteredInward
+        : filtered;
 
   const totalPages = showAllRows ? 1 : Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const currentPage = showAllRows ? 1 : Math.min(page, totalPages);
@@ -982,6 +1007,48 @@ export default function TicketsList({
           </div>
         </div>
 
+        {ticketsTab === "inward" ? (
+          <div style={{ padding: "16px 20px 0" }}>
+            <div className="tabs" style={{ marginBottom: 14 }}>
+              <div
+                className={`tab ${inwardTab === "all" ? "active" : ""}`}
+                onClick={() => {
+                  setInwardTab("all");
+                  setPage(1);
+                }}
+              >
+                All ({inwardCount})
+              </div>
+              <div
+                className={`tab ${inwardTab === "created" ? "active" : ""}`}
+                onClick={() => {
+                  setInwardTab("created");
+                  setPage(1);
+                }}
+              >
+                Created ({inwardTabCounts.created})
+              </div>
+              <div
+                className={`tab ${inwardTab === "pickup_scheduled" ? "active" : ""}`}
+                onClick={() => {
+                  setInwardTab("pickup_scheduled");
+                  setPage(1);
+                }}
+              >
+                Pickup Schedule ({inwardTabCounts.pickupScheduled})
+              </div>
+              <div
+                className={`tab ${inwardTab === "in_transit" ? "active" : ""}`}
+                onClick={() => {
+                  setInwardTab("in_transit");
+                  setPage(1);
+                }}
+              >
+                In Transit ({inwardTabCounts.inTransit})
+              </div>
+            </div>
+          </div>
+        ) : null}
         {ticketsTab === "repaired" && canLoadJobCards && !isEngineer ? (
           <div style={{ padding: "16px 20px 0" }}>
             {jobCardsError ? (

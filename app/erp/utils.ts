@@ -1,5 +1,5 @@
 import { ALL_MODULES } from "./constants";
-import type { ModulePermission, Role, RoleDefinition } from "./types";
+import type { ModulePermission, Role, RoleDefinition, Ticket } from "./types";
 
 export const canAccess = (
   roles: RoleDefinition[],
@@ -8,6 +8,7 @@ export const canAccess = (
   action: keyof ModulePermission = "view",
 ): boolean => {
   const roleNorm = String(userRole || "").toUpperCase();
+  if (roleNorm === "SUPER_ADMIN") return true;
   if (roleNorm === "ADMIN") return true;
   if (roleNorm === "SALES" && module === "tickets" && action !== "delete") return true;
   if (roleNorm === "SALES" && module === "logistics" && action !== "delete") return true;
@@ -26,6 +27,15 @@ export function formatTicketStatusLabel(status: string): string {
   if (!raw) return "";
   if (raw === "UNDER_REPAIRED") return "UNDER REPAIR";
   return raw.replace(/_/g, " ");
+}
+
+// Onsite jobs are serviced at the customer site, so they never enter workshop
+// inventory. Shared by the dashboard counters and the ticket lists so both
+// exclude them consistently.
+export function isOnsiteTicket(t: Ticket): boolean {
+  return String(t.serviceType || "")
+    .trim()
+    .toUpperCase() === "ONSITE";
 }
 
 export function getPasswordStrength(pwd: string): {

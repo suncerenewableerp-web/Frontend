@@ -30,7 +30,7 @@ import {
   type TicketTrendsPoint,
 } from "../api";
 import ComboBarLineChart from "./ComboBarLineChart";
-import { formatTicketStatusLabel } from "../utils";
+import { formatTicketStatusLabel, isOnsiteTicket } from "../utils";
 
 const VENDOR_PIE_COLORS = ["#0d9488", "#f97316", "#0ea5e9", "#7c3aed", "#16a34a", "#dc2626", "#2563eb", "#d97706"];
 
@@ -74,19 +74,6 @@ function describePieSlice(cx: number, cy: number, radius: number, startAngle: nu
   const end = piePoint(cx, cy, radius, startAngle);
   const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
   return [`M ${cx} ${cy}`, `L ${start.x} ${start.y}`, `A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`, "Z"].join(" ");
-}
-
-// Counts distinct inverters in a list of tickets: same serial number = one inverter.
-// Tickets without a serial number are each counted individually.
-function countDistinctInverters(list: { serialNumber?: string }[]): number {
-  const seen = new Set<string>();
-  let blanks = 0;
-  for (const t of list) {
-    const sn = String(t.serialNumber || "").trim().toUpperCase();
-    if (sn && sn !== "—") seen.add(sn);
-    else blanks += 1;
-  }
-  return seen.size + blanks;
 }
 
 export default function Dashboard({
@@ -217,28 +204,38 @@ export default function Dashboard({
     return tickets;
   }, [tickets, counterPeriod, counterCustomFrom, counterCustomTo]);
 
-  // All counter cards report distinct inverters (by serial number), not raw ticket rows.
-  const inwardCreated = countDistinctInverters(
-    counterTickets.filter((t) => String(t.status || "").toUpperCase() === "CREATED"),
-  );
-  const inwardUnderPickup = countDistinctInverters(
-    counterTickets.filter((t) => ["PICKUP_SCHEDULED", "IN_TRANSIT"].includes(String(t.status || "").toUpperCase())),
-  );
-  const inward = inwardCreated + inwardUnderPickup;
-
-  const warrantyTickets = counterTickets.filter((t) => Boolean(t.warrantyStatus));
-  const underWarranty = countDistinctInverters(warrantyTickets);
-  const outOfWarranty = countDistinctInverters(counterTickets.filter((t) => !t.warrantyStatus));
-
-  const underDispatch = countDistinctInverters(
-    counterTickets.filter((t) => String(t.status || "").toUpperCase() === "UNDER_DISPATCH"),
-  );
-  const dispatched = countDistinctInverters(
-    counterTickets.filter((t) => ["DISPATCHED", "INSTALLATION_DONE"].includes(String(t.status || "").toUpperCase())),
+  // Counter cards report ticket rows, matching the ticket lists. Onsite jobs are
+  // serviced at the customer site and never enter the workshop, so they are
+  // excluded here the same way the lists exclude them.
+  const workshopTickets = useMemo(
+    () => counterTickets.filter((t) => !isOnsiteTicket(t)),
+    [counterTickets],
   );
 
-  const underRepairRaw = counterTickets.filter((t) => String(t.status || "").toUpperCase() === "UNDER_REPAIRED");
-  const closed = countDistinctInverters(counterTickets.filter((t) => t.status === "CLOSED"));
+  const inwardCreated = workshopTickets.filter(
+    (t) => String(t.status || "").toUpperCase() === "CREATED",
+  ).length;
+  const inwardPickupScheduled = workshopTickets.filter(
+    (t) => String(t.status || "").toUpperCase() === "PICKUP_SCHEDULED",
+  ).length;
+  const inwardInTransit = workshopTickets.filter(
+    (t) => String(t.status || "").toUpperCase() === "IN_TRANSIT",
+  ).length;
+  const inward = inwardCreated + inwardPickupScheduled + inwardInTransit;
+
+  const warrantyTickets = workshopTickets.filter((t) => Boolean(t.warrantyStatus));
+  const underWarranty = warrantyTickets.length;
+  const outOfWarranty = workshopTickets.filter((t) => !t.warrantyStatus).length;
+
+  const underDispatch = workshopTickets.filter(
+    (t) => String(t.status || "").toUpperCase() === "UNDER_DISPATCH",
+  ).length;
+  const dispatched = workshopTickets.filter((t) =>
+    ["DISPATCHED", "INSTALLATION_DONE"].includes(String(t.status || "").toUpperCase()),
+  ).length;
+
+  const underRepairRaw = workshopTickets.filter((t) => String(t.status || "").toUpperCase() === "UNDER_REPAIRED");
+  const closed = workshopTickets.filter((t) => t.status === "CLOSED").length;
 
   const [reportPeriod, setReportPeriod] = useState<DashboardPeriodInput["period"]>("monthly");
   const [reportYear, setReportYear] = useState(defaultYear);
@@ -368,9 +365,9 @@ export default function Dashboard({
       else if (final === "NOT_REPAIRABLE") scrapList.push(t);
       else repairList.push(t);
     });
-    const underRepair = countDistinctInverters(repairList);
-    const repaired = countDistinctInverters(repairedList);
-    const scrap = countDistinctInverters(scrapList);
+    const underRepair = repairList.length;
+    const repaired = repairedList.length;
+    const scrap = scrapList.length;
     return { underRepair, repaired, scrap, total: underRepair + repaired + scrap };
   }, [underRepairRaw, engineerFinalByTicketId]);
 
@@ -1395,7 +1392,7 @@ export default function Dashboard({
               {
                 label: "Inward Stage",
                 value: inward,
-                sub: `Created: ${inwardCreated} · Under pickup: ${inwardUnderPickup}`,
+                sub: `Created: ${inwardCreated} · Pickup schedule: ${inwardPickupScheduled} · In transit: ${inwardInTransit}`,
                 color: "#0d9488",
                 Icon: LuTicket,
                 onClick: () => onOpenTickets({ tab: "inward" }),
