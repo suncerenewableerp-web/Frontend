@@ -50,9 +50,24 @@ export default function UserManagement({
   const [userPage, setUserPage] = useState(1);
   const PAGE_SIZE = 10;
 
-  const isAdmin = String(userRole || "").trim().toUpperCase() === "ADMIN";
+  const roleNorm = String(userRole || "").trim().toUpperCase();
+  const isSuperAdmin = roleNorm === "SUPER_ADMIN";
+  const isAdmin = roleNorm === "ADMIN" || isSuperAdmin;
   const canUpdateUserRole = isAdmin && canAccess(roles, userRole, "users", "edit");
   const canDeleteUsers = canAccess(roles, userRole, "users", "delete");
+
+  // Admin accounts may only be added or removed by a Super Admin. Ordinary
+  // users stay manageable by Admins, so this only gates the elevated roles.
+  const ELEVATED_ROLES = ["ADMIN", "SUPER_ADMIN"];
+  const canManageAccount = (targetRole: string) =>
+    isSuperAdmin || !ELEVATED_ROLES.includes(String(targetRole || "").trim().toUpperCase());
+
+  // Roles this actor is allowed to hand out when creating an account.
+  const assignableRoles = useMemo(
+    () => roles.filter((r) => canManageAccount(r.id)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [roles, isSuperAdmin],
+  );
   const currentUserId = getStoredAuth()?.user?.id || null;
 
   const roleLabelById = useMemo(
@@ -246,7 +261,7 @@ export default function UserManagement({
                         {u.email}
                       </td>
                       <td>
-                        {canUpdateUserRole ? (
+                        {canUpdateUserRole && canManageAccount(u.role) ? (
                           <select
                             value={u.role}
                             disabled={updatingRoleForId === u.id}
@@ -281,11 +296,15 @@ export default function UserManagement({
                             }}
                             title="Change role"
                           >
-                            {roles.map((r) => (
-                              <option key={r.id} value={r.id}>
-                                {r.label}
-                              </option>
-                            ))}
+                            {roles
+                              // Without this an Admin could promote an ordinary
+                              // user into an Admin and sidestep the restriction.
+                              .filter((r) => canManageAccount(r.id))
+                              .map((r) => (
+                                <option key={r.id} value={r.id}>
+                                  {r.label}
+                                </option>
+                              ))}
                           </select>
                         ) : (
                           <Badge
@@ -324,6 +343,7 @@ export default function UserManagement({
                             </button>
                           )}
                           {canDeleteUsers &&
+                            canManageAccount(u.role) &&
                             (deleteUserConfirm === u.id ? (
                               <>
                                 <button
@@ -669,7 +689,7 @@ export default function UserManagement({
       {showCreateUser && (
         <UserProvisionModal
           mode="create"
-          roles={roles}
+          roles={assignableRoles}
           onClose={() => setShowCreateUser(false)}
           onDone={() => {
             void reloadUsers();
