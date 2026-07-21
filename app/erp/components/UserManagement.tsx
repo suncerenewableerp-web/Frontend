@@ -54,7 +54,8 @@ export default function UserManagement({
   const isSuperAdmin = roleNorm === "SUPER_ADMIN";
   const isAdmin = roleNorm === "ADMIN" || isSuperAdmin;
   const canUpdateUserRole = isAdmin && canAccess(roles, userRole, "users", "edit");
-  const canDeleteUsers = canAccess(roles, userRole, "users", "delete");
+  // Deleting accounts is Super Admin only, regardless of the target's role.
+  const canDeleteUsers = isSuperAdmin && canAccess(roles, userRole, "users", "delete");
 
   // Admin accounts may only be added or removed by a Super Admin. Ordinary
   // users stay manageable by Admins, so this only gates the elevated roles.
