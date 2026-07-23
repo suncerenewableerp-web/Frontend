@@ -276,6 +276,8 @@ export default function TicketsList({
   >(initialTab);
   const [repairedTab, setRepairedTab] = useState<"all" | "repairable" | "not_repairable">("all");
   const [offlineBookingTab, setOfflineBookingTab] = useState<"running" | "done">("running");
+  const [inwardTab, setInwardTab] = useState<"all" | "created" | "pickup_scheduled" | "in_transit">("all");
+  const [outwardTab, setOutwardTab] = useState<"all" | "under_dispatch" | "dispatched" | "installation_done">("all");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState(safeInitialStatusFilter);
   const [dateFilter, setDateFilter] = useState<DateFilter>("ALL");
@@ -532,6 +534,19 @@ export default function TicketsList({
     () => inwardTickets.filter((t) => matchesDateFilter(t.createdAt, dateFilter)).length,
     [inwardTickets, dateFilter],
   );
+  const inwardTabCounts = useMemo(() => {
+    let created = 0;
+    let pickupScheduled = 0;
+    let inTransit = 0;
+    inwardTickets.forEach((t) => {
+      if (!matchesDateFilter(t.createdAt, dateFilter)) return;
+      const status = String(t.status || "").toUpperCase();
+      if (status === "CREATED") created++;
+      else if (status === "PICKUP_SCHEDULED") pickupScheduled++;
+      else if (status === "IN_TRANSIT") inTransit++;
+    });
+    return { created, pickupScheduled, inTransit };
+  }, [inwardTickets, dateFilter]);
   const repairedCount = useMemo(
     () => repairedTickets.filter((t) => matchesDateFilter(t.createdAt, dateFilter)).length,
     [repairedTickets, dateFilter],
@@ -554,6 +569,19 @@ export default function TicketsList({
     () => outwardTickets.filter((t) => matchesDateFilter(t.createdAt, dateFilter)).length,
     [outwardTickets, dateFilter],
   );
+  const outwardTabCounts = useMemo(() => {
+    let underDispatch = 0;
+    let dispatched = 0;
+    let installationDone = 0;
+    outwardTickets.forEach((t) => {
+      if (!matchesDateFilter(t.createdAt, dateFilter)) return;
+      const status = String(t.status || "").toUpperCase();
+      if (status === "UNDER_DISPATCH") underDispatch++;
+      else if (status === "DISPATCHED") dispatched++;
+      else if (status === "INSTALLATION_DONE") installationDone++;
+    });
+    return { underDispatch, dispatched, installationDone };
+  }, [outwardTickets, dateFilter]);
   const approvalPendingCount = useMemo(
     () => approvalPendingTickets.filter((t) => matchesDateFilter(t.createdAt, dateFilter)).length,
     [approvalPendingTickets, dateFilter],
@@ -643,7 +671,36 @@ export default function TicketsList({
     });
   }, [filtered, ticketsTab, canLoadJobCards, repairedTab, engineerFinalByTicketId]);
 
-  const rows = ticketsTab === "repaired" ? filteredRepaired : filtered;
+  const filteredOutward = useMemo(() => {
+    if (ticketsTab !== "outward" || outwardTab === "all") return filtered;
+    const wanted =
+      outwardTab === "under_dispatch"
+        ? "UNDER_DISPATCH"
+        : outwardTab === "dispatched"
+          ? "DISPATCHED"
+          : "INSTALLATION_DONE";
+    return filtered.filter((t) => String(t.status || "").toUpperCase() === wanted);
+  }, [filtered, ticketsTab, outwardTab]);
+
+  const filteredInward = useMemo(() => {
+    if (ticketsTab !== "inward" || inwardTab === "all") return filtered;
+    const wanted =
+      inwardTab === "created"
+        ? "CREATED"
+        : inwardTab === "pickup_scheduled"
+          ? "PICKUP_SCHEDULED"
+          : "IN_TRANSIT";
+    return filtered.filter((t) => String(t.status || "").toUpperCase() === wanted);
+  }, [filtered, ticketsTab, inwardTab]);
+
+  const rows =
+    ticketsTab === "repaired"
+      ? filteredRepaired
+      : ticketsTab === "inward"
+        ? filteredInward
+        : ticketsTab === "outward"
+          ? filteredOutward
+          : filtered;
 
   const totalPages = showAllRows ? 1 : Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const currentPage = showAllRows ? 1 : Math.min(page, totalPages);
@@ -982,6 +1039,48 @@ export default function TicketsList({
           </div>
         </div>
 
+        {ticketsTab === "inward" ? (
+          <div style={{ padding: "16px 20px 0" }}>
+            <div className="tabs" style={{ marginBottom: 14 }}>
+              <div
+                className={`tab ${inwardTab === "all" ? "active" : ""}`}
+                onClick={() => {
+                  setInwardTab("all");
+                  setPage(1);
+                }}
+              >
+                All ({inwardCount})
+              </div>
+              <div
+                className={`tab ${inwardTab === "created" ? "active" : ""}`}
+                onClick={() => {
+                  setInwardTab("created");
+                  setPage(1);
+                }}
+              >
+                Created ({inwardTabCounts.created})
+              </div>
+              <div
+                className={`tab ${inwardTab === "pickup_scheduled" ? "active" : ""}`}
+                onClick={() => {
+                  setInwardTab("pickup_scheduled");
+                  setPage(1);
+                }}
+              >
+                Pickup Schedule ({inwardTabCounts.pickupScheduled})
+              </div>
+              <div
+                className={`tab ${inwardTab === "in_transit" ? "active" : ""}`}
+                onClick={() => {
+                  setInwardTab("in_transit");
+                  setPage(1);
+                }}
+              >
+                In Transit ({inwardTabCounts.inTransit})
+              </div>
+            </div>
+          </div>
+        ) : null}
         {ticketsTab === "repaired" && canLoadJobCards && !isEngineer ? (
           <div style={{ padding: "16px 20px 0" }}>
             {jobCardsError ? (
@@ -1044,6 +1143,48 @@ export default function TicketsList({
                 }}
               >
                 Mark as Done ({offlineBookingTabCounts.done})
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {ticketsTab === "outward" ? (
+          <div style={{ padding: "16px 20px 0" }}>
+            <div className="tabs" style={{ marginBottom: 14 }}>
+              <div
+                className={`tab ${outwardTab === "all" ? "active" : ""}`}
+                onClick={() => {
+                  setOutwardTab("all");
+                  setPage(1);
+                }}
+              >
+                All ({outwardCount})
+              </div>
+              <div
+                className={`tab ${outwardTab === "under_dispatch" ? "active" : ""}`}
+                onClick={() => {
+                  setOutwardTab("under_dispatch");
+                  setPage(1);
+                }}
+              >
+                Under Dispatch ({outwardTabCounts.underDispatch})
+              </div>
+              <div
+                className={`tab ${outwardTab === "dispatched" ? "active" : ""}`}
+                onClick={() => {
+                  setOutwardTab("dispatched");
+                  setPage(1);
+                }}
+              >
+                Dispatched ({outwardTabCounts.dispatched})
+              </div>
+              <div
+                className={`tab ${outwardTab === "installation_done" ? "active" : ""}`}
+                onClick={() => {
+                  setOutwardTab("installation_done");
+                  setPage(1);
+                }}
+              >
+                Installation Done ({outwardTabCounts.installationDone})
               </div>
             </div>
           </div>
