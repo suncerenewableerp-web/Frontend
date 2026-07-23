@@ -238,7 +238,22 @@ export default function Dashboard({
   );
 
   const underRepairRaw = counterTickets.filter((t) => String(t.status || "").toUpperCase() === "UNDER_REPAIRED");
-  const closed = countDistinctInverters(counterTickets.filter((t) => t.status === "CLOSED"));
+  // Count raw closed ticket rows (not distinct inverters) so this matches the
+  // "Closed Tickets" tab in the Tickets list, which this card links to.
+  const closed = counterTickets.filter((t) => t.status === "CLOSED").length;
+
+  // Human label for the currently selected counter period, used in card sub-text
+  // so it never says "this month" while a different period (e.g. All Time) is active.
+  const counterPeriodLabel =
+    counterPeriod === "last_day"
+      ? "last day"
+      : counterPeriod === "this_month"
+        ? "this month"
+        : counterPeriod === "last_month"
+          ? "last month"
+          : counterPeriod === "custom"
+            ? "selected range"
+            : "all time";
 
   const [reportPeriod, setReportPeriod] = useState<DashboardPeriodInput["period"]>("monthly");
   const [reportYear, setReportYear] = useState(defaultYear);
@@ -1445,7 +1460,7 @@ export default function Dashboard({
               {
                 label: "Resolved",
                 value: closed,
-                sub: "Inverters closed this month",
+                sub: `Closed tickets · ${counterPeriodLabel}`,
                 color: "#16a34a",
                 Icon: LuCircleCheck,
                 onClick: () => onOpenTickets({ status: "CLOSED" }),
