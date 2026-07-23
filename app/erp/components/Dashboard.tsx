@@ -242,8 +242,9 @@ export default function Dashboard({
   // "Closed Tickets" tab in the Tickets list, which this card links to.
   const closed = counterTickets.filter((t) => t.status === "CLOSED").length;
 
-  // Human label for the currently selected counter period, used in card sub-text
-  // so it never says "this month" while a different period (e.g. All Time) is active.
+  // Human label for the currently selected counter period, used in the card
+  // sub-text so it never says "this month" while a different period (e.g. All
+  // Time) is active.
   const counterPeriodLabel =
     counterPeriod === "last_day"
       ? "last day"
