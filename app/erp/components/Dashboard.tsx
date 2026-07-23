@@ -217,7 +217,9 @@ export default function Dashboard({
     return tickets;
   }, [tickets, counterPeriod, counterCustomFrom, counterCustomTo]);
 
-  // All counter cards report distinct inverters (by serial number), not raw ticket rows.
+  // Most counter cards report distinct inverters (by serial number), not raw ticket
+  // rows. The exception is "Under Progress" below, which counts raw rows to stay in
+  // sync with the Tickets list tab it links to.
   const inwardCreated = countDistinctInverters(
     counterTickets.filter((t) => String(t.status || "").toUpperCase() === "CREATED"),
   );
@@ -237,7 +239,14 @@ export default function Dashboard({
     counterTickets.filter((t) => ["DISPATCHED", "INSTALLATION_DONE"].includes(String(t.status || "").toUpperCase())),
   );
 
-  const underRepairRaw = counterTickets.filter((t) => String(t.status || "").toUpperCase() === "UNDER_REPAIRED");
+  // Mirror the Tickets list "Under Progress" tab exactly: non-onsite tickets in
+  // the UNDER_REPAIRED status. (Onsite / offline-booking tickets live in their own
+  // tab, so the list excludes them here.)
+  const underRepairRaw = counterTickets.filter(
+    (t) =>
+      String(t.serviceType || "").trim().toUpperCase() !== "ONSITE" &&
+      String(t.status || "").toUpperCase() === "UNDER_REPAIRED",
+  );
   // Count raw closed ticket rows (not distinct inverters) so this matches the
   // "Closed Tickets" tab in the Tickets list, which this card links to.
   const closed = counterTickets.filter((t) => t.status === "CLOSED").length;
@@ -384,9 +393,11 @@ export default function Dashboard({
       else if (final === "NOT_REPAIRABLE") scrapList.push(t);
       else repairList.push(t);
     });
-    const underRepair = countDistinctInverters(repairList);
-    const repaired = countDistinctInverters(repairedList);
-    const scrap = countDistinctInverters(scrapList);
+    // Count raw ticket rows (not distinct inverters) so these match the Tickets
+    // list "Under Progress / Repaired / Scrap" tabs, which this card links to.
+    const underRepair = repairList.length;
+    const repaired = repairedList.length;
+    const scrap = scrapList.length;
     return { underRepair, repaired, scrap, total: underRepair + repaired + scrap };
   }, [underRepairRaw, engineerFinalByTicketId]);
 
