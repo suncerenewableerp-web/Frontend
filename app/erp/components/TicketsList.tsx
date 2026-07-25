@@ -98,7 +98,11 @@ function escapeHtmlCell(input: unknown): string {
     .replaceAll('"', "&quot;");
 }
 
-function downloadTicketsAsExcel(tickets: Ticket[], filenameBase: string) {
+function downloadTicketsAsExcel(
+  tickets: Ticket[],
+  filenameBase: string,
+  statusLabelFor?: (t: Ticket) => string,
+) {
   const headers = [
     "Ticket ID",
     "Status",
@@ -119,7 +123,7 @@ function downloadTicketsAsExcel(tickets: Ticket[], filenameBase: string) {
 
   const bodyRows = (tickets || []).map((t) => [
     t.ticketId,
-    t.status,
+    statusLabelFor ? statusLabelFor(t) : t.status,
     t.customer,
     t.salesAssigneeName || t.salesAssigneeEmail || "",
     t.serviceType || "",
@@ -274,7 +278,9 @@ export default function TicketsList({
     | "approved_by_admin"
     | "closed"
   >(initialTab);
-  const [repairedTab, setRepairedTab] = useState<"all" | "repairable" | "not_repairable">("all");
+  const [repairedTab, setRepairedTab] = useState<
+    "all" | "under_repair" | "repairable" | "not_repairable"
+  >("all");
   const [offlineBookingTab, setOfflineBookingTab] = useState<"running" | "done">("running");
   const [inwardTab, setInwardTab] = useState<"all" | "created" | "pickup_scheduled" | "in_transit">("all");
   const [outwardTab, setOutwardTab] = useState<"all" | "under_dispatch" | "dispatched" | "installation_done">("all");
@@ -599,16 +605,18 @@ export default function TicketsList({
   );
 
   const repairedTabCounts = useMemo(() => {
-    if (!canLoadJobCards) return { repairable: 0, notRepairable: 0 };
+    if (!canLoadJobCards) return { underRepair: 0, repairable: 0, notRepairable: 0 };
+    let underRepair = 0;
     let repairable = 0;
     let notRepairable = 0;
     repairedTickets.forEach((t) => {
       if (!matchesDateFilter(t.createdAt, dateFilter)) return;
       const final = String(engineerFinalByTicketId.get(t.id) || "").toUpperCase().trim();
       if (final === "REPAIRABLE") repairable++;
-      if (final === "NOT_REPAIRABLE") notRepairable++;
+      else if (final === "NOT_REPAIRABLE") notRepairable++;
+      else underRepair++;
     });
-    return { repairable, notRepairable };
+    return { underRepair, repairable, notRepairable };
   }, [canLoadJobCards, repairedTickets, engineerFinalByTicketId, dateFilter]);
 
   const baseTickets = useMemo(() => {
@@ -667,7 +675,8 @@ export default function TicketsList({
     return filtered.filter((t) => {
       const final = String(engineerFinalByTicketId.get(t.id) || "").toUpperCase().trim();
       if (repairedTab === "repairable") return final === "REPAIRABLE";
-      return final === "NOT_REPAIRABLE";
+      if (repairedTab === "not_repairable") return final === "NOT_REPAIRABLE";
+      return final !== "REPAIRABLE" && final !== "NOT_REPAIRABLE";
     });
   }, [filtered, ticketsTab, canLoadJobCards, repairedTab, engineerFinalByTicketId]);
 
@@ -961,7 +970,22 @@ export default function TicketsList({
                     today.getDate(),
                   ).padStart(2, "0")}`;
                   const base = `tickets_${ticketsTab}_${statusFilter || "ALL"}_${ymd}`;
-                  downloadTicketsAsExcel(rows, base);
+                  // In the "Under Progress" tab, tickets stay in the UNDER_REPAIRED
+                  // status while the engineer's outcome bifurcates them into Under
+                  // Repair / Repaired / Scrap. Reflect that outcome in the exported
+                  // Status column instead of the raw UNDER_REPAIRED value.
+                  const statusLabelFor =
+                    ticketsTab === "repaired" && canLoadJobCards
+                      ? (t: Ticket) => {
+                          const final = String(engineerFinalByTicketId.get(t.id) || "")
+                            .toUpperCase()
+                            .trim();
+                          if (final === "REPAIRABLE") return "REPAIRED";
+                          if (final === "NOT_REPAIRABLE") return "SCRAP";
+                          return "UNDER REPAIR";
+                        }
+                      : undefined;
+                  downloadTicketsAsExcel(rows, base, statusLabelFor);
                 }}
                 title="Download tickets as Excel"
               >
@@ -1100,6 +1124,15 @@ export default function TicketsList({
                   }}
                 >
                   All ({repairedCount})
+                </div>
+                <div
+                  className={`tab ${repairedTab === "under_repair" ? "active" : ""}`}
+                  onClick={() => {
+                    setRepairedTab("under_repair");
+                    setPage(1);
+                  }}
+                >
+                  Under Repair ({repairedTabCounts.underRepair})
                 </div>
                 <div
                   className={`tab ${repairedTab === "repairable" ? "active" : ""}`}
