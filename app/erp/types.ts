@@ -122,6 +122,14 @@ export interface Ticket {
   salesAssigneeEmail?: string;
   createdAt: string;
   updatedAt?: string; // ISO timestamp of last activity/update
+  // Stage entry dates (YYYY-MM-DD), derived from the ticket's status history: the date the
+  // ticket moved INTO each stage. Empty when the ticket has not reached that stage.
+  // Repaired / Scrap dates are not here — those come from the job card's
+  // engineerFinalizedAt, since they are an engineer outcome rather than a ticket status.
+  underRepairDate?: string;
+  underDispatchDate?: string;
+  dispatchedDate?: string;
+  closedDate?: string;
   slaStatus: "MET" | "BREACHED" | "AT_RISK";
   jobCard?: JobCard;
 }

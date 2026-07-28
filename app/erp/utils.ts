@@ -1,6 +1,20 @@
 import { ALL_MODULES } from "./constants";
 import type { ModulePermission, Role, RoleDefinition } from "./types";
 
+// "SUPER ADMIN" / "super-admin" / "Super_Admin" all normalize to SUPER_ADMIN.
+export const normalizeRoleName = (role: Role | undefined | null): string =>
+  String(role || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+
+// The admin tier: privileges reserved for Admin and Super Admin. Kept separate from
+// `canAccess` because these are role-tier checks, not per-module RBAC permissions.
+export const isAdminTierRole = (role: Role | undefined | null): boolean => {
+  const norm = normalizeRoleName(role);
+  return norm === "ADMIN" || norm === "SUPER_ADMIN";
+};
+
 export const canAccess = (
   roles: RoleDefinition[],
   userRole: Role,

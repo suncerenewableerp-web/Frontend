@@ -63,7 +63,7 @@ function toCatalogKey(input: any): string | null {
   if (!collapsed) return null;
   return collapsed.toLowerCase();
 }
-import { canAccess, formatTicketStatusLabel } from "../utils";
+import { canAccess, formatTicketStatusLabel, isAdminTierRole } from "../utils";
 import { Badge, SlaBadge, StatusBadge } from "./Badges";
 import DatePicker from "./DatePicker";
 import NameCombobox from "./NameCombobox";
@@ -355,13 +355,26 @@ export default function TicketDetail({
   const [modelAddError, setModelAddError] = useState("");
   const [modelAdding, setModelAdding] = useState(false);
   const canEditTicketDetails = useMemo(() => {
-    if (roleName !== "ADMIN" && roleName !== "SALES") return false;
+    if (!isAdminTierRole(user.role) && roleName !== "SALES") return false;
     return canAccess(roles, user.role, "tickets", "edit") && ticket.status !== "CLOSED";
   }, [roles, user.role, ticket.status, roleName]);
   const canEditFaultDescription = useMemo(() => {
     if (roleName !== "SALES" || canEditTicketDetails) return false;
     return canAccess(roles, user.role, "tickets", "edit") && ticket.status !== "CLOSED";
   }, [roles, user.role, ticket.status, roleName, canEditTicketDetails]);
+  // The raise date is a correction-only field, so it stays with the admin tier even
+  // though SALES can edit the rest of the ticket details.
+  const canEditRaiseDate = useMemo(
+    () => canEditTicketDetails && isAdminTierRole(user.role),
+    [canEditTicketDetails, user.role],
+  );
+  // A ticket cannot be raised in the future; the backend enforces this too.
+  const todayYmd = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+      d.getDate(),
+    ).padStart(2, "0")}`;
+  }, []);
 
   const [details, setDetails] = useState({
     customerName: ticket.customerName || "",
@@ -377,6 +390,7 @@ export default function TicketDetail({
     priority: ticket.priority,
     warrantyStatus: Boolean(ticket.warrantyStatus),
     warrantyEndDate: ticket.warrantyEndDate || "",
+    raiseDate: ticket.createdAt || "",
   });
 
   const [engineerDropdown, setEngineerDropdown] = useState<string[]>(() => [...DEFAULT_ENGINEER_DROPDOWN]);
@@ -2327,6 +2341,21 @@ export default function TicketDetail({
                     </select>
                   </div>
 
+                  {canEditRaiseDate ? (
+                    <div>
+                      <div className="form-label">Ticket Raise Date</div>
+                      <DatePicker
+                        value={details.raiseDate}
+                        onChange={(next) => setDetails((p) => ({ ...p, raiseDate: next }))}
+                        max={todayYmd}
+                        placeholder="Select raise date"
+                      />
+                      <div style={{ marginTop: 6, fontSize: 11, color: "var(--text3)" }}>
+                        Editable by Admin / Super Admin only.
+                      </div>
+                    </div>
+                  ) : null}
+
                   {canShowWarranty ? (
                     <>
                       <div>
@@ -2368,13 +2397,21 @@ export default function TicketDetail({
                       detailsSaving ||
                       !details.capacity.trim() ||
                       !details.faultDescription.trim() ||
-                      (canShowWarranty && details.warrantyStatus && !details.warrantyEndDate.trim())
+                      (canShowWarranty && details.warrantyStatus && !details.warrantyEndDate.trim()) ||
+                      (canEditRaiseDate && !details.raiseDate.trim())
                     }
                     onClick={() => {
                       setDetailsSaving(true);
                       setDetailsError("");
                       setDetailsSavedMsg("");
-                      apiUpdateTicketDetails(ticket.id, details)
+                      // Only send the raise date when the admin actually changed it, so a
+                      // normal details save never rewrites the original timestamp.
+                      const raiseDateChanged =
+                        canEditRaiseDate && details.raiseDate !== (ticket.createdAt || "");
+                      apiUpdateTicketDetails(ticket.id, {
+                        ...details,
+                        raiseDate: raiseDateChanged ? details.raiseDate : undefined,
+                      })
                         .then((updated) => {
                           onTicketUpdated(updated);
                           setDetails({
@@ -2391,6 +2428,7 @@ export default function TicketDetail({
                             priority: updated.priority,
                             warrantyStatus: Boolean(updated.warrantyStatus),
                             warrantyEndDate: updated.warrantyEndDate || "",
+                            raiseDate: updated.createdAt || "",
                           });
                           setDetailsSavedMsg("Ticket details saved.");
                         })

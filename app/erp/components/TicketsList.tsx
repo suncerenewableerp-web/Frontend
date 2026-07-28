@@ -101,8 +101,18 @@ function escapeHtmlCell(input: unknown): string {
 function downloadTicketsAsExcel(
   tickets: Ticket[],
   filenameBase: string,
-  statusLabelFor?: (t: Ticket) => string,
+  options?: {
+    statusLabelFor?: (t: Ticket) => string;
+    // Engineer / closing remarks come from the ticket's job card, not the ticket itself,
+    // so the caller resolves them. Supplied whenever the on-screen table shows the
+    // "Engineer Remarks" column, which is where closed-ticket remarks live.
+    engineerRemarkFor?: (t: Ticket) => string;
+    // Per-stage entry dates for the tab being exported, mirroring the on-screen columns.
+    stageDateCols?: ReadonlyArray<{ label: string; valueFor: (t: Ticket) => string }>;
+  },
 ) {
+  const { statusLabelFor, engineerRemarkFor, stageDateCols = [] } = options || {};
+
   const headers = [
     "Ticket ID",
     "Status",
@@ -112,6 +122,7 @@ function downloadTicketsAsExcel(
     "Engineer",
     "Visit Date",
     "Remark",
+    ...(engineerRemarkFor ? ["Engineer Remarks"] : []),
     "Inverter Make",
     "Inverter Model",
     "Capacity",
@@ -119,6 +130,7 @@ function downloadTicketsAsExcel(
     "Fault",
     "Error Code",
     "Created",
+    ...stageDateCols.map((c) => c.label),
   ];
 
   const bodyRows = (tickets || []).map((t) => [
@@ -130,6 +142,7 @@ function downloadTicketsAsExcel(
     t.onsiteEngineerName || (t.assignedEngineer && t.assignedEngineer !== "-" ? t.assignedEngineer : ""),
     t.onsiteVisitDate || t.onsiteMarkedRepairedAt || "",
     t.onsiteRemark || "",
+    ...(engineerRemarkFor ? [engineerRemarkFor(t)] : []),
     t.inverterMake,
     t.inverterModel,
     t.capacity,
@@ -137,6 +150,7 @@ function downloadTicketsAsExcel(
     t.faultDescription,
     t.errorCode,
     t.createdAt,
+    ...stageDateCols.map((c) => c.valueFor(t)),
   ]);
 
   const table = `<table border="1"><thead><tr>${headers
@@ -429,6 +443,25 @@ export default function TicketsList({
     latestByTicket.forEach((r, id) => {
       const final = String(r?.engineerFinalStatus || "").toUpperCase().trim();
       if (final) out.set(id, final);
+    });
+    return out;
+  }, [jobCards]);
+
+  // Date the engineer finalised the outcome. Read as the Repaired Date for REPAIRABLE
+  // tickets and the Scrap Date for NOT_REPAIRABLE ones.
+  const engineerFinalizedAtByTicketId = useMemo(() => {
+    const latestByTicket = new Map<string, JobCardListRow>();
+    (jobCards || []).forEach((r) => {
+      const t = r?.ticket;
+      const ticketId = String(t?.id || "");
+      if (!ticketId) return;
+      const prev = latestByTicket.get(ticketId);
+      if (!prev || (r.updatedAtMs || 0) >= (prev.updatedAtMs || 0)) latestByTicket.set(ticketId, r);
+    });
+    const out = new Map<string, string>();
+    latestByTicket.forEach((r, id) => {
+      const at = String(r?.engineerFinalizedAt || "").trim();
+      if (at) out.set(id, at);
     });
     return out;
   }, [jobCards]);
@@ -740,6 +773,58 @@ export default function TicketsList({
         ? STATUS_ORDER.filter((s) => OUTWARD_STATUSES.includes(s))
         : [];
 
+  // Per-stage entry dates shown next to Ticket Date. Which columns appear depends on the
+  // tab (and sub-tab) being viewed, so headers, cells, the empty-state colspan and the
+  // Excel export all derive from this one list and cannot drift apart.
+  const stageDateCols = useMemo(() => {
+    type StageDateCol = { key: string; label: string; valueFor: (t: Ticket) => string };
+    if (isCustomer) return [] as StageDateCol[];
+
+    const outcomeDate = (t: Ticket, wanted: "REPAIRABLE" | "NOT_REPAIRABLE") => {
+      const final = String(engineerFinalByTicketId.get(t.id) || "").toUpperCase().trim();
+      if (final !== wanted) return "";
+      return String(engineerFinalizedAtByTicketId.get(t.id) || "").trim();
+    };
+
+    if (ticketsTab === "repaired") {
+      const cols: StageDateCol[] = [
+        { key: "underRepair", label: "Under Repair Date", valueFor: (t) => t.underRepairDate || "" },
+      ];
+      // Repaired / Scrap are engineer outcomes read off the job card, so they need it loaded.
+      if (canLoadJobCards) {
+        if (repairedTab === "all" || repairedTab === "repairable") {
+          cols.push({ key: "repaired", label: "Repaired Date", valueFor: (t) => outcomeDate(t, "REPAIRABLE") });
+        }
+        if (repairedTab === "all" || repairedTab === "not_repairable") {
+          cols.push({ key: "scrap", label: "Scrap Date", valueFor: (t) => outcomeDate(t, "NOT_REPAIRABLE") });
+        }
+      }
+      return cols;
+    }
+
+    if (ticketsTab === "outward") {
+      return [
+        { key: "underDispatch", label: "Under Dispatch Date", valueFor: (t) => t.underDispatchDate || "" },
+        { key: "dispatched", label: "Dispatched Date", valueFor: (t) => t.dispatchedDate || "" },
+      ] as StageDateCol[];
+    }
+
+    if (ticketsTab === "closed") {
+      return [
+        { key: "closed", label: "Closed Date", valueFor: (t) => t.closedDate || "" },
+      ] as StageDateCol[];
+    }
+
+    return [] as StageDateCol[];
+  }, [
+    isCustomer,
+    ticketsTab,
+    repairedTab,
+    canLoadJobCards,
+    engineerFinalByTicketId,
+    engineerFinalizedAtByTicketId,
+  ]);
+
   const baseEmptyColSpanBase = isCustomer
     ? 7
     : ticketsTab === "repaired"
@@ -755,7 +840,8 @@ export default function TicketsList({
     baseEmptyColSpanBase +
     (canSeeSerialNumber ? 1 : 0) +
     offlineBookingExtraCols +
-    (showEngineerRemarksCol ? 1 : 0);
+    (showEngineerRemarksCol ? 1 : 0) +
+    stageDateCols.length;
   const emptyColSpan = baseEmptyColSpan + (canDeleteTickets ? 1 : 0);
 
   return (
@@ -985,7 +1071,16 @@ export default function TicketsList({
                           return "UNDER REPAIR";
                         }
                       : undefined;
-                  downloadTicketsAsExcel(rows, base, statusLabelFor);
+                  // Mirror the on-screen "Engineer Remarks" column so closed tickets
+                  // carry their remarks into the exported sheet.
+                  const engineerRemarkFor = showEngineerRemarksCol
+                    ? (t: Ticket) => String(engineerRemarksByTicketId.get(t.id) || "").trim()
+                    : undefined;
+                  downloadTicketsAsExcel(rows, base, {
+                    statusLabelFor,
+                    engineerRemarkFor,
+                    stageDateCols,
+                  });
                 }}
                 title="Download tickets as Excel"
               >
@@ -1245,6 +1340,11 @@ export default function TicketsList({
 		                <th style={{ width: 70 }}>Sr No.</th>
 		                <th>Ticket ID</th>
                     <th style={{ width: 120 }}>Ticket Date</th>
+                    {stageDateCols.map((c) => (
+                      <th key={c.key} style={{ width: 130 }}>
+                        {c.label}
+                      </th>
+                    ))}
                     <th>Inverter</th>
                     <th style={{ minWidth: 110 }}>Inverter Capacity</th>
                     {canSeeSerialNumber ? <th style={{ minWidth: 160 }}>Serial No.</th> : null}
@@ -1329,6 +1429,18 @@ export default function TicketsList({
                         >
                           {t.createdAt}
                         </td>
+                        {stageDateCols.map((c) => (
+                          <td
+                            key={c.key}
+                            style={{
+                              fontSize: 12,
+                              color: "var(--text3)",
+                              fontFamily: "var(--mono)",
+                            }}
+                          >
+                            {c.valueFor(t) || "—"}
+                          </td>
+                        ))}
 	                      <td>
 	                        <span className="tag">
 	                          {t.inverterMake} {t.inverterModel}

@@ -292,6 +292,11 @@ type BackendTicket = {
       };
   createdAt?: string | Date;
   updatedAt?: string | Date;
+  statusHistory?: Array<{
+    status?: string;
+    changedAt?: string | Date;
+    changedBy?: BackendUser | string;
+  }>;
   slaStatus?: string;
   warrantyStatus?: boolean;
   inverterMake?: string;
@@ -457,6 +462,28 @@ function toDateInput(value: unknown): string {
   const t = d.getTime();
   if (Number.isNaN(t)) return "";
   return new Date(t - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+// Date (YYYY-MM-DD) on which a ticket most recently entered `status`, from its status
+// history. Uses the latest matching entry so a re-entered stage reports the current visit
+// rather than the first one. Returns "" when the ticket never reached that stage.
+function stageEntryDate(
+  statusHistory: BackendTicket["statusHistory"],
+  status: string,
+): string {
+  const target = String(status || "").toUpperCase();
+  const rows = Array.isArray(statusHistory) ? statusHistory : [];
+  let bestMs = -Infinity;
+  let best: string | Date | undefined;
+  for (const row of rows) {
+    if (String(row?.status || "").toUpperCase() !== target) continue;
+    if (!row?.changedAt) continue;
+    const ms = new Date(row.changedAt as string).getTime();
+    if (Number.isNaN(ms) || ms <= bestMs) continue;
+    bestMs = ms;
+    best = row.changedAt;
+  }
+  return best ? toDateInput(best) : "";
 }
 
 function toYesNo(v: unknown): "YES" | "NO" | "" {
@@ -644,6 +671,10 @@ function toTicket(t: BackendTicket): Ticket {
     salesAssigneeEmail: salesAssigneeEmail ? String(salesAssigneeEmail) : undefined,
     createdAt: String(t?.createdAt ? String(t.createdAt).slice(0, 10) : ""),
     updatedAt: t?.updatedAt ? String(t.updatedAt) : "",
+    underRepairDate: stageEntryDate(t?.statusHistory, "UNDER_REPAIRED"),
+    underDispatchDate: stageEntryDate(t?.statusHistory, "UNDER_DISPATCH"),
+    dispatchedDate: stageEntryDate(t?.statusHistory, "DISPATCHED"),
+    closedDate: stageEntryDate(t?.statusHistory, "CLOSED"),
     slaStatus: toSlaStatus(t?.slaStatus),
   };
 }
@@ -751,6 +782,9 @@ export type JobCardListRow = {
   ticket: Ticket;
   jobStatus: string;
   engineerFinalStatus: string;
+  // Date (YYYY-MM-DD) the engineer finalised the outcome — the Repaired Date when
+  // engineerFinalStatus is REPAIRABLE, the Scrap Date when it is NOT_REPAIRABLE.
+  engineerFinalizedAt: string;
   finalRemarks: string;
   repairActionsByName: string;
   checkedByName: string;
@@ -778,6 +812,7 @@ export async function apiJobCardsList(): Promise<JobCardListRow[]> {
         ticket,
         jobStatus: String(jc?.currentStatus || ""),
         engineerFinalStatus: String(jc?.engineerFinalStatus || ""),
+        engineerFinalizedAt: toDateInput(jc?.engineerFinalizedAt),
         finalRemarks: String(jc?.finalRemarks || ""),
         repairActionsByName: String(jc?.repairActionsByName || ""),
         checkedByName: String(jc?.checkedByName || ""),
@@ -990,6 +1025,9 @@ export type TicketEditInput = {
   priority: "LOW" | "MEDIUM" | "HIGH";
   warrantyStatus: boolean;
   warrantyEndDate?: string; // YYYY-MM-DD (only when under warranty)
+  // Ticket raise date. Send only when an Admin / Super Admin actually changed it —
+  // the backend rejects it outright for every other role.
+  raiseDate?: string; // YYYY-MM-DD
 };
 
 export async function apiUpdateTicketDetails(
@@ -1024,6 +1062,7 @@ export async function apiUpdateTicketDetails(
       errorCode: String(input.errorCode || "").trim(),
       priority: input.priority,
     },
+    ...(input.raiseDate ? { createdAt: input.raiseDate } : {}),
   };
 
   const env = await apiFetch<BackendTicket>(`/api/tickets/${encodeURIComponent(id)}`, {
