@@ -392,6 +392,7 @@ export default function NewTicketModal({
     inverterLocation: "",
     faultDescription: "",
     errorCode: "",
+    remarks: "",
     onsiteRepairing: false,
     priority: "MEDIUM" as "LOW" | "MEDIUM" | "HIGH",
     warrantyStatus: false,
@@ -444,6 +445,7 @@ export default function NewTicketModal({
     serialNumber: string;
     faultDescription: string;
     errorCode: string;
+    remarks: string;
   };
 
   const emptyBulkItem = (): BulkItem => ({
@@ -456,6 +458,7 @@ export default function NewTicketModal({
     serialNumber: "",
     faultDescription: "",
     errorCode: "",
+    remarks: "",
   });
 
   const [bulkCustomer, setBulkCustomer] = useState({
@@ -486,6 +489,7 @@ export default function NewTicketModal({
         it.serialNumber,
         it.faultDescription,
         it.errorCode,
+        it.remarks,
       ].some((v) => Boolean(String(v || "").trim()));
       const partial = hasAny && !complete;
       return { complete, partial };
@@ -1257,6 +1261,7 @@ export default function NewTicketModal({
       serialNumber: isCustomer ? undefined : form.serialNumber.trim() || undefined,
       inverterLocation: form.inverterLocation.trim() || undefined,
       errorCode: isCustomer ? undefined : form.errorCode.trim() || undefined,
+      remarks: form.remarks.trim() || undefined,
       ...(canSetPriorityAndWarranty ? { priority: form.priority || undefined } : {}),
       ...(canSetPriorityAndWarranty
         ? {
@@ -1332,6 +1337,7 @@ export default function NewTicketModal({
         inverterModel: it.inverterModel.trim() || undefined,
         serialNumber: isCustomer ? undefined : it.serialNumber.trim() || undefined,
         errorCode: isCustomer ? undefined : it.errorCode.trim() || undefined,
+        remarks: it.remarks.trim() || undefined,
         ...(canSetPriorityAndWarranty ? { priority: bulkSettings.priority || undefined } : {}),
         ...(canSetPriorityAndWarranty
           ? {
@@ -2269,6 +2275,15 @@ export default function NewTicketModal({
                     ) : null}
                   </>
                 ) : null}
+                <div className="form-group full">
+                  <label className="form-label">Remarks</label>
+                  <textarea
+                    className="form-textarea"
+                    placeholder="Any remarks for this ticket..."
+                    value={form.remarks}
+                    onChange={(e) => set("remarks", e.target.value)}
+                  />
+                </div>
               </div>
             </>
           ) : (
@@ -3236,6 +3251,18 @@ export default function NewTicketModal({
                         />
                       </div>
                     ) : null}
+                    <div className="form-group" style={{ gridColumn: "span 3" }}>
+                      <label className="form-label">Remarks</label>
+                      <textarea
+                        className="form-textarea"
+                        rows={1}
+                        placeholder="Any remarks for this ticket..."
+                        value={bulkItems[bulkActiveIndex]!.remarks}
+                        onChange={(e) => setBulkItem(bulkActiveIndex, { remarks: e.target.value })}
+                        disabled={loading}
+                        style={{ minHeight: 38 }}
+                      />
+                    </div>
                   </div>
                 </div>
               ) : null}

@@ -38,7 +38,12 @@ export const getNavItems = (roles: RoleDefinition[], userRole: Role) => {
 export function formatTicketStatusLabel(status: string): string {
   const raw = String(status || "").trim().toUpperCase();
   if (!raw) return "";
-  if (raw === "UNDER_REPAIRED") return "UNDER REPAIR";
+  // The UNDER_REPAIRED status covers every ticket in the workshop, which the Tickets
+  // list and the dashboard counters both call "Under Progress". "Under Repair" is the
+  // narrower sub-tab inside it (tickets whose engineer has not finalised the job card
+  // as REPAIRABLE / SCRAP yet), so labelling the whole status that way overstated the
+  // Under Repair count wherever a raw status was rendered.
+  if (raw === "UNDER_REPAIRED") return "UNDER PROGRESS";
   return raw.replace(/_/g, " ");
 }
 

@@ -387,6 +387,7 @@ export default function TicketDetail({
     serialNumber: ticket.serialNumber === "—" ? "" : ticket.serialNumber,
     faultDescription: ticket.faultDescription === "—" ? "" : ticket.faultDescription,
     errorCode: ticket.errorCode || "",
+    remarks: ticket.remarks || "",
     priority: ticket.priority,
     warrantyStatus: Boolean(ticket.warrantyStatus),
     warrantyEndDate: ticket.warrantyEndDate || "",
@@ -1148,12 +1149,13 @@ export default function TicketDetail({
     dispatchAdvanceUnlocked &&
     !dispatchDirty;
 
-  const canAdvanceToClosed =
-    canEditLogistics &&
-    ticket.status === "INSTALLATION_DONE" &&
-    Boolean(dispatchBaseline) &&
-    dispatchAdvanceUnlocked &&
-    !dispatchDirty;
+  // Closing must NOT depend on `dispatchAdvanceUnlocked`: that flag is reset on every
+  // logistics load and can only be re-armed by "Save Dispatch", which is itself disabled
+  // once the status moves past DISPATCHED. Requiring it here made CLOSED unreachable.
+  // By the time a ticket is INSTALLATION_DONE the dispatch details are already saved and
+  // the installation PDF is already on file (both backend-enforced), so the status is the
+  // only precondition left.
+  const canAdvanceToClosed = canEditLogistics && ticket.status === "INSTALLATION_DONE";
 
   useEffect(() => {
     if (!showSlaSettings || !canEditSla) return;
@@ -1547,10 +1549,13 @@ export default function TicketDetail({
                   }
 
                   if (newStatus === "CLOSED") {
-                    if (!canAdvanceToClosed) {
-                      openLogistics(
-                        "dispatch",
-                        "Please open Logistics and save dispatch details first (Save Dispatch).",
+                    // Closing only needs the installation step to be confirmed. It must not be
+                    // gated on the logistics "Save Dispatch" unlock, which is unavailable at this
+                    // point in the flow (see canAdvanceToClosed).
+                    if (ticket.status !== "INSTALLATION_DONE") {
+                      redirectToInstallationOverview();
+                      setStatusError(
+                        "Please complete the Installation Done step before closing the ticket.",
                       );
                       return;
                     }
@@ -2010,6 +2015,24 @@ export default function TicketDetail({
             </div>
           </div>
 
+          {/* Ticket-level remarks — shown for every service type, not just on-site. */}
+          <div className="table-card" style={{ marginBottom: 16 }}>
+            <div className="table-header">
+              <div className="table-title">Remarks</div>
+            </div>
+            <div
+              style={{
+                padding: "16px 20px",
+                fontSize: 14,
+                color: "var(--text2)",
+                lineHeight: 1.7,
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {String(ticket.remarks || "").trim() || "—"}
+            </div>
+          </div>
+
           {roleName === "CUSTOMER" && (
             <div className="table-card" style={{ marginBottom: 16 }}>
               <div className="table-header">
@@ -2318,6 +2341,18 @@ export default function TicketDetail({
                     />
                   </div>
 
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <div className="form-label">Remarks</div>
+                    <textarea
+                      className="form-input"
+                      value={details.remarks}
+                      onChange={(e) => setDetails((p) => ({ ...p, remarks: e.target.value }))}
+                      rows={3}
+                      placeholder="Any remarks for this ticket..."
+                      style={{ resize: "vertical" }}
+                    />
+                  </div>
+
                   <div>
                     <div className="form-label">Error Code</div>
                     <input
@@ -2425,6 +2460,7 @@ export default function TicketDetail({
                             serialNumber: updated.serialNumber === "—" ? "" : updated.serialNumber,
                             faultDescription: updated.faultDescription === "—" ? "" : updated.faultDescription,
                             errorCode: updated.errorCode || "",
+                            remarks: updated.remarks || "",
                             priority: updated.priority,
                             warrantyStatus: Boolean(updated.warrantyStatus),
                             warrantyEndDate: updated.warrantyEndDate || "",
@@ -4919,7 +4955,8 @@ export default function TicketDetail({
                           <>Save dispatch to go to next step.</>
                         )}
                       </div>
-                      {dispatchAdvanceUnlocked && (ticket.status === "DISPATCHED" || ticket.status === "INSTALLATION_DONE") ? (
+                      {(ticket.status === "INSTALLATION_DONE" ||
+                        (dispatchAdvanceUnlocked && ticket.status === "DISPATCHED")) ? (
                         <button
                           className="btn btn-accent btn-sm"
 		                          disabled={

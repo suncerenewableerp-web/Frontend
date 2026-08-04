@@ -1715,7 +1715,10 @@ export default function Dashboard({
                 <div className="modal-header" style={{ flexWrap: "wrap", gap: 12 }}>
                   <div>
                     <div className="modal-title">
-                      {inventoryFilter.type === "vendor" ? "Vendor" : inventoryFilter.type === "model" ? "Model" : "Status"} · {inventoryFilter.label.replace(/_/g, " ")}
+                      {inventoryFilter.type === "vendor" ? "Vendor" : inventoryFilter.type === "model" ? "Model" : "Status"} ·{" "}
+                      {inventoryFilter.type === "status"
+                        ? formatTicketStatusLabel(inventoryFilter.label)
+                        : inventoryFilter.label.replace(/_/g, " ")}
                     </div>
                     <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
                       {modalFilteredTickets.length} ticket{modalFilteredTickets.length !== 1 ? "s" : ""}

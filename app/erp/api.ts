@@ -298,6 +298,7 @@ type BackendTicket = {
     changedBy?: BackendUser | string;
   }>;
   slaStatus?: string;
+  remarks?: string;
   warrantyStatus?: boolean;
   inverterMake?: string;
   inverterModel?: string;
@@ -660,6 +661,9 @@ function toTicket(t: BackendTicket): Ticket {
     errorCode: String(t?.issue?.errorCode || t?.errorCode || ""),
     priority: toPriority(t?.issue?.priority || t?.priority),
     status: normalizeTicketStatus(t?.status),
+    // Ticket-level remark, applies to every service type. On-site tickets additionally
+    // carry the engineer's visit note in `onsiteRemark`.
+    remarks: t?.remarks ? String(t.remarks) : "",
     warrantyStatus: isInWarranty(t?.inverter?.warrantyEnd) || Boolean(t?.warrantyStatus),
     warrantyEndDate: toDateInput(t?.inverter?.warrantyEnd),
     onsiteEngineerName: t?.onsite?.engineerName ? String(t.onsite.engineerName) : undefined,
@@ -875,6 +879,7 @@ export type TicketCreateInput = {
   priority?: "LOW" | "MEDIUM" | "HIGH";
   warrantyStatus?: boolean;
   warrantyEndDate?: string; // YYYY-MM-DD (only when under warranty)
+  remarks?: string;
 };
 
 function makeLocalTicketId(used?: Set<string>) {
@@ -905,6 +910,7 @@ function ticketCreatePayloadFromInput(input: TicketCreateInput, ticketId: string
   const serialNumber = String(input.serialNumber || "").trim();
   const faultDescription = String(input.faultDescription || "").trim();
   const errorCode = String(input.errorCode || "").trim();
+  const remarks = String(input.remarks || "").trim();
   const serviceType =
     String(input.serviceType || "")
       .trim()
@@ -925,6 +931,7 @@ function ticketCreatePayloadFromInput(input: TicketCreateInput, ticketId: string
   return {
     ticketId,
     ...(serviceType ? { serviceType } : {}),
+    ...(remarks ? { remarks } : {}),
     ...(customerName || customerCompany || customerPhone || inverterLocation
       ? {
           customer: {
@@ -1025,6 +1032,7 @@ export type TicketEditInput = {
   priority: "LOW" | "MEDIUM" | "HIGH";
   warrantyStatus: boolean;
   warrantyEndDate?: string; // YYYY-MM-DD (only when under warranty)
+  remarks?: string;
   // Ticket raise date. Send only when an Admin / Super Admin actually changed it —
   // the backend rejects it outright for every other role.
   raiseDate?: string; // YYYY-MM-DD
@@ -1062,6 +1070,7 @@ export async function apiUpdateTicketDetails(
       errorCode: String(input.errorCode || "").trim(),
       priority: input.priority,
     },
+    ...(input.remarks !== undefined ? { remarks: String(input.remarks || "").trim() } : {}),
     ...(input.raiseDate ? { createdAt: input.raiseDate } : {}),
   };
 

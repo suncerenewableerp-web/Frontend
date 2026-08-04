@@ -90,6 +90,17 @@ function ticketYear(createdAtYmd: string): string {
   return match ? match[1] : "";
 }
 
+// Ticket-level remarks apply to every service type (single, bulk and on-site). On-site
+// tickets fall back to the engineer's visit note so offline bookings keep showing the
+// remark they always showed.
+function ticketRemarks(t: Ticket): string {
+  return String(t.remarks || "").trim() || String(t.onsiteRemark || "").trim();
+}
+
+function warrantyLabel(t: Ticket): string {
+  return t.warrantyStatus ? "Under Warranty" : "Out of Warranty";
+}
+
 function escapeHtmlCell(input: unknown): string {
   return String(input ?? "")
     .replaceAll("&", "&amp;")
@@ -121,12 +132,14 @@ function downloadTicketsAsExcel(
     "Service Type",
     "Engineer",
     "Visit Date",
-    "Remark",
+    "Remarks",
     ...(engineerRemarkFor ? ["Engineer Remarks"] : []),
     "Inverter Make",
     "Inverter Model",
     "Capacity",
     "Serial No",
+    "Warranty",
+    "Warranty End Date",
     "Fault",
     "Error Code",
     "Created",
@@ -141,12 +154,14 @@ function downloadTicketsAsExcel(
     t.serviceType || "",
     t.onsiteEngineerName || (t.assignedEngineer && t.assignedEngineer !== "-" ? t.assignedEngineer : ""),
     t.onsiteVisitDate || t.onsiteMarkedRepairedAt || "",
-    t.onsiteRemark || "",
+    ticketRemarks(t),
     ...(engineerRemarkFor ? [engineerRemarkFor(t)] : []),
     t.inverterMake,
     t.inverterModel,
     t.capacity,
     t.serialNumber,
+    warrantyLabel(t),
+    t.warrantyEndDate || "",
     t.faultDescription,
     t.errorCode,
     t.createdAt,
@@ -221,6 +236,10 @@ export default function TicketsList({
   const isSales = roleNorm === "SALES";
   const isCustomer = roleNorm === "CUSTOMER";
   const canSeeSerialNumber = !isCustomer;
+  // Same rule the ticket detail page uses (canShowWarranty): the customer list query
+  // deliberately drops `inverter.warrantyEnd`, so a Warranty column would read
+  // "Out of Warranty" for every one of their tickets.
+  const canSeeWarranty = !isCustomer;
   const canSeeSalesOwner = !isCustomer && (isSales || isAdmin);
   const canSeeAllTab = (isAdmin || isSales) && !isEngineer;
   const canExport = (isAdmin || isSales) && canAccess(roles, user.role, "tickets", "view");
@@ -835,11 +854,13 @@ export default function TicketsList({
         ? 9
         : 8;
   const showEngineerRemarksCol = !isCustomer && canLoadJobCards && ticketsTab !== "offline_booking";
-  const offlineBookingExtraCols = ticketsTab === "offline_booking" ? 3 : 0; // engineer/date/remark
+  const offlineBookingExtraCols = ticketsTab === "offline_booking" ? 2 : 0; // engineer/date
   const baseEmptyColSpan =
     baseEmptyColSpanBase +
     (canSeeSerialNumber ? 1 : 0) +
     offlineBookingExtraCols +
+    1 + // Remarks — shown on every tab, for every ticket type
+    (canSeeWarranty ? 1 : 0) +
     (showEngineerRemarksCol ? 1 : 0) +
     stageDateCols.length;
   const emptyColSpan = baseEmptyColSpan + (canDeleteTickets ? 1 : 0);
@@ -1348,14 +1369,15 @@ export default function TicketsList({
                     <th>Inverter</th>
                     <th style={{ minWidth: 110 }}>Inverter Capacity</th>
                     {canSeeSerialNumber ? <th style={{ minWidth: 160 }}>Serial No.</th> : null}
+                    {canSeeWarranty ? <th style={{ minWidth: 130 }}>Warranty</th> : null}
                     {ticketsTab === "offline_booking" ? <th style={{ minWidth: 160 }}>Engineer</th> : null}
                     {ticketsTab === "offline_booking" ? <th style={{ width: 120 }}>Date</th> : null}
-                    {ticketsTab === "offline_booking" ? <th style={{ minWidth: 220 }}>Remark</th> : null}
 		                {!isCustomer ? <th>Customer</th> : null}
 		                {canSeeSalesOwner ? <th>Sales Owner</th> : null}
 	                    {ticketsTab === "repaired" ? <th>Repair Engineer</th> : null}
 	                    {ticketsTab === "repaired" ? <th>QA</th> : null}
 			                <th>Fault</th>
+                      <th style={{ minWidth: 220 }}>Remarks</th>
                       {showEngineerRemarksCol ? <th style={{ minWidth: 240 }}>Engineer Remarks</th> : null}
                 <th>Status</th>
                 {canDeleteTickets ? <th style={{ width: 64 }}>Delete</th> : null}
@@ -1383,6 +1405,7 @@ export default function TicketsList({
                     const engineerRemark = showEngineerRemarksCol
                       ? String(engineerRemarksByTicketId.get(t.id) || "").trim()
                       : "";
+                    const remarks = ticketRemarks(t);
 
 	                  return (
                     <tr key={t.id}>
@@ -1454,6 +1477,17 @@ export default function TicketsList({
                             {String(t.serialNumber || "").trim() || "—"}
                           </td>
                         ) : null}
+                        {canSeeWarranty ? (
+                          <td style={{ fontSize: 12 }}>
+                            <span
+                              className="tag"
+                              title={t.warrantyEndDate ? `Valid up to: ${t.warrantyEndDate}` : undefined}
+                              style={{ color: t.warrantyStatus ? "#16a34a" : "#c0392b" }}
+                            >
+                              {warrantyLabel(t)}
+                            </span>
+                          </td>
+                        ) : null}
                         {ticketsTab === "offline_booking" ? (
                           <td style={{ fontSize: 12, color: "var(--text2)" }}>
                             {String(t.onsiteEngineerName || "").trim() ||
@@ -1463,21 +1497,6 @@ export default function TicketsList({
                         {ticketsTab === "offline_booking" ? (
                           <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text3)" }}>
                             {t.onsiteVisitDate || t.onsiteMarkedRepairedAt || "—"}
-                          </td>
-                        ) : null}
-                        {ticketsTab === "offline_booking" ? (
-                          <td
-                            style={{
-                              maxWidth: 260,
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                              color: "var(--text2)",
-                              fontSize: 12,
-                            }}
-                            title={String(t.onsiteRemark || "").trim() || undefined}
-                          >
-                            {String(t.onsiteRemark || "").trim() || "—"}
                           </td>
                         ) : null}
 	                      {!isCustomer ? <td style={{ fontWeight: 500 }}>{t.customer}</td> : null}
@@ -1508,6 +1527,19 @@ export default function TicketsList({
 	                      >
 	                        {t.faultDescription}
 	                      </td>
+                        <td
+                          style={{
+                            maxWidth: 260,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            color: "var(--text2)",
+                            fontSize: 12,
+                          }}
+                          title={remarks || undefined}
+                        >
+                          {remarks || "—"}
+                        </td>
                         {showEngineerRemarksCol ? (
                           <td
                             style={{

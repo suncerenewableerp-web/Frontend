@@ -111,6 +111,9 @@ export interface Ticket {
   errorCode: string;
   priority: "LOW" | "MEDIUM" | "HIGH";
   status: TicketStatus;
+  // Ticket-level remark for any service type (single / bulk / on-site). Distinct from
+  // `onsiteRemark`, which is the engineer's visit note on offline bookings.
+  remarks?: string;
   warrantyStatus: boolean;
   warrantyEndDate?: string; // YYYY-MM-DD (derived from inverter.warrantyEnd)
   onsiteEngineerName?: string;
