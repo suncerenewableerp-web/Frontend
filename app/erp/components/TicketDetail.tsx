@@ -296,19 +296,24 @@ export default function TicketDetail({
   const [updating, setUpdating] = useState(false);
   const [statusError, setStatusError] = useState("");
   const currentIdx = STATUS_ORDER.indexOf(ticket.status);
+  // Super Admin has full system access, so every admin-tier gate has to accept it too —
+  // matching `isAdminTierRole` on the backend. Checking `roleName === "ADMIN"` alone left
+  // the Super Admin account with no Update Status card and no dispatch stage, i.e. no way
+  // to move a ticket to CLOSED at all.
+  const isAdminTier = isAdminTierRole(user.role);
   const canSeeStatusUpdate = useMemo(() => {
-    if (roleName !== "ADMIN" && roleName !== "SALES") return false;
+    if (!isAdminTier && roleName !== "SALES") return false;
     return canAccess(roles, user.role, "tickets", "edit");
-  }, [roles, user.role, roleName]);
+  }, [roles, user.role, roleName, isAdminTier]);
   const statusUpdatesLocked = ticket.status === "CLOSED";
   const canEditLogistics = useMemo(() => {
-    if (roleName !== "ADMIN" && roleName !== "SALES") return false;
+    if (!isAdminTier && roleName !== "SALES") return false;
     return (
       ticket.status !== "CLOSED" &&
       (canAccess(roles, user.role, "logistics", "edit") ||
         canAccess(roles, user.role, "logistics", "create"))
     );
-  }, [roles, user.role, ticket.status, roleName]);
+  }, [roles, user.role, ticket.status, roleName, isAdminTier]);
 
   const canEditSla = useMemo(() => {
     if (roleName !== "ADMIN" && roleName !== "SALES") return false;
@@ -667,7 +672,7 @@ export default function TicketDetail({
   const dispatchApprovedForSales =
     roleName === "SALES" ? Boolean(dispatchLogistics?.billing?.dispatchApproved) : true;
   const canSeeDispatchStage =
-    roleName === "ADMIN" || (roleName === "SALES" && dispatchApprovedForSales);
+    isAdminTier || (roleName === "SALES" && dispatchApprovedForSales);
   const [logisticsLoading, setLogisticsLoading] = useState(false);
   const [logisticsSaving, setLogisticsSaving] = useState(false);
   const [logisticsAdvancing, setLogisticsAdvancing] = useState(false);
@@ -1563,7 +1568,12 @@ export default function TicketDetail({
 
 	                  await updateStatusAndShare(newStatus);
 	                })()
-                  .catch(() => {})
+                  // Never swallow the failure: a rejected status update (e.g. the backend
+                  // refusing CLOSED because the installation PDF is missing) used to leave
+                  // the button silently doing nothing, which read as "the app is broken".
+                  .catch((e) =>
+                    setStatusError(e instanceof Error ? e.message : "Failed to update status"),
+                  )
                   .finally(() => setUpdating(false));
               }}
             >
@@ -4973,8 +4983,14 @@ export default function TicketDetail({
 		                              return;
 		                            }
 		                            setLogisticsAdvancing(true);
+		                            setLogisticsError("");
 		                            updateStatusAndShare("CLOSED")
-		                              .catch(() => {})
+		                              // Surface the reason instead of leaving the button dead.
+		                              .catch((e) =>
+		                                setLogisticsError(
+		                                  e instanceof Error ? e.message : "Failed to close the ticket",
+		                                ),
+		                              )
 		                              .finally(() => setLogisticsAdvancing(false));
 		                          }}
                         >

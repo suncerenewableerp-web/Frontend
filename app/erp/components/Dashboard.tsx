@@ -232,12 +232,23 @@ export default function Dashboard({
   const underWarranty = countDistinctInverters(warrantyTickets);
   const outOfWarranty = countDistinctInverters(counterTickets.filter((t) => !t.warrantyStatus));
 
-  const underDispatch = countDistinctInverters(
-    counterTickets.filter((t) => String(t.status || "").toUpperCase() === "UNDER_DISPATCH"),
+  // Mirror the Tickets list "Outward" tab exactly: raw ticket rows (not distinct
+  // inverters) for the three outward statuses, excluding onsite / offline-booking
+  // tickets, which live in their own tab. Counting distinct inverters here made the
+  // card disagree with the list whenever two outward tickets shared a serial number,
+  // and folding INSTALLATION_DONE into "Dispatched" hid the list's third sub-tab.
+  const outwardRaw = counterTickets.filter(
+    (t) => String(t.serviceType || "").trim().toUpperCase() !== "ONSITE",
   );
-  const dispatched = countDistinctInverters(
-    counterTickets.filter((t) => ["DISPATCHED", "INSTALLATION_DONE"].includes(String(t.status || "").toUpperCase())),
-  );
+  const underDispatch = outwardRaw.filter(
+    (t) => String(t.status || "").toUpperCase() === "UNDER_DISPATCH",
+  ).length;
+  const dispatched = outwardRaw.filter(
+    (t) => String(t.status || "").toUpperCase() === "DISPATCHED",
+  ).length;
+  const installationDone = outwardRaw.filter(
+    (t) => String(t.status || "").toUpperCase() === "INSTALLATION_DONE",
+  ).length;
 
   // Mirror the Tickets list "Under Progress" tab exactly: non-onsite tickets in
   // the UNDER_REPAIRED status. (Onsite / offline-booking tickets live in their own
@@ -402,8 +413,13 @@ export default function Dashboard({
   }, [underRepairRaw, engineerFinalByTicketId]);
 
   const outwardCounts = useMemo(() => {
-    return { underDispatch, dispatched, total: underDispatch + dispatched };
-  }, [underDispatch, dispatched]);
+    return {
+      underDispatch,
+      dispatched,
+      installationDone,
+      total: underDispatch + dispatched + installationDone,
+    };
+  }, [underDispatch, dispatched, installationDone]);
 
   // Fetch inventory summary from backend whenever period changes
   useEffect(() => {
@@ -1438,7 +1454,7 @@ export default function Dashboard({
               {
                 label: "Outward",
                 value: outwardCounts.total,
-                sub: `Under dispatch: ${outwardCounts.underDispatch} · Dispatched: ${outwardCounts.dispatched}`,
+                sub: `Under dispatch: ${outwardCounts.underDispatch} · Dispatched: ${outwardCounts.dispatched} · Installation done: ${outwardCounts.installationDone}`,
                 color: "#0ea5e9",
                 Icon: LuTruck,
                 onClick: () => onOpenTickets({ tab: "outward" }),
