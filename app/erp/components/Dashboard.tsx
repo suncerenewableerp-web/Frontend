@@ -228,9 +228,12 @@ export default function Dashboard({
   );
   const inward = inwardCreated + inwardUnderPickup;
 
+  // Count raw ticket rows (not distinct inverters) so the tile matches the ticket list it
+  // opens: two tickets on one inverter are two warranty tickets. Counting distinct
+  // inverters made the tile read lower than the number of rows in its own modal.
   const warrantyTickets = counterTickets.filter((t) => Boolean(t.warrantyStatus));
-  const underWarranty = countDistinctInverters(warrantyTickets);
-  const outOfWarranty = countDistinctInverters(counterTickets.filter((t) => !t.warrantyStatus));
+  const underWarranty = warrantyTickets.length;
+  const outOfWarranty = counterTickets.filter((t) => !t.warrantyStatus).length;
 
   // Mirror the Tickets list "Outward" tab exactly: raw ticket rows (not distinct
   // inverters) for the three outward statuses, excluding onsite / offline-booking

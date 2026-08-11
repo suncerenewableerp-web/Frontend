@@ -450,11 +450,16 @@ function toPriority(p: unknown): "LOW" | "MEDIUM" | "HIGH" {
   return "HIGH";
 }
 
-function isInWarranty(warrantyEnd?: string | Date | null) {
+// Warranty is judged as of `asOf` — for a ticket that is its raise (created) date, not the
+// wall clock. A ticket raised while the inverter was still covered stays a warranty ticket
+// for good. Judging against `Date.now()` made the warranty counts shrink on their own as
+// coverage lapsed, so the dashboard tile and the ticket rows behind it drifted apart.
+function isInWarranty(warrantyEnd?: string | Date | null, asOf?: string | Date | null) {
   if (!warrantyEnd) return false;
   const end = new Date(warrantyEnd).getTime();
   if (Number.isNaN(end)) return false;
-  return Date.now() <= end;
+  const at = asOf ? new Date(asOf).getTime() : Date.now();
+  return (Number.isNaN(at) ? Date.now() : at) <= end;
 }
 
 function toDateInput(value: unknown): string {
@@ -639,6 +644,10 @@ function toTicket(t: BackendTicket): Ticket {
       ? "ONSITE"
       : "STANDARD";
 
+  // The ticket's raise date, shared by `createdAt` and `warrantyUpdateDate` so the warranty
+  // block on a ticket can never report a different date than the ticket itself.
+  const createdAtYmd = t?.createdAt ? String(t.createdAt).slice(0, 10) : "";
+
   return {
     id: String(t?._id || t?.id || ""),
     ticketId: String(t?.ticketId || ""),
@@ -664,8 +673,9 @@ function toTicket(t: BackendTicket): Ticket {
     // Ticket-level remark, applies to every service type. On-site tickets additionally
     // carry the engineer's visit note in `onsiteRemark`.
     remarks: t?.remarks ? String(t.remarks) : "",
-    warrantyStatus: isInWarranty(t?.inverter?.warrantyEnd) || Boolean(t?.warrantyStatus),
+    warrantyStatus: isInWarranty(t?.inverter?.warrantyEnd, t?.createdAt) || Boolean(t?.warrantyStatus),
     warrantyEndDate: toDateInput(t?.inverter?.warrantyEnd),
+    warrantyUpdateDate: createdAtYmd,
     onsiteEngineerName: t?.onsite?.engineerName ? String(t.onsite.engineerName) : undefined,
     onsiteVisitDate: toDateInput(t?.onsite?.visitDate),
     onsiteRemark: t?.onsite?.remark ? String(t.onsite.remark) : undefined,
@@ -673,7 +683,7 @@ function toTicket(t: BackendTicket): Ticket {
     assignedEngineer: String(assignedEngineer),
     salesAssigneeName: salesAssigneeName ? String(salesAssigneeName) : undefined,
     salesAssigneeEmail: salesAssigneeEmail ? String(salesAssigneeEmail) : undefined,
-    createdAt: String(t?.createdAt ? String(t.createdAt).slice(0, 10) : ""),
+    createdAt: createdAtYmd,
     updatedAt: t?.updatedAt ? String(t.updatedAt) : "",
     underRepairDate: stageEntryDate(t?.statusHistory, "UNDER_REPAIRED"),
     underDispatchDate: stageEntryDate(t?.statusHistory, "UNDER_DISPATCH"),

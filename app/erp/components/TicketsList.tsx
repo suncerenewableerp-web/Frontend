@@ -97,8 +97,24 @@ function ticketRemarks(t: Ticket): string {
   return String(t.remarks || "").trim() || String(t.onsiteRemark || "").trim();
 }
 
+// Make + model, exactly as the "Inverter" column renders it, so a picked filter value
+// always reads back the same as the row it matched.
+function inverterLabel(t: Ticket): string {
+  return [t.inverterMake, t.inverterModel]
+    .map((x) => String(x || "").trim())
+    .filter((x) => x && x !== "—" && x !== "-")
+    .join(" ");
+}
+
 function warrantyLabel(t: Ticket): string {
   return t.warrantyStatus ? "Under Warranty" : "Out of Warranty";
+}
+
+// The warranty status is judged as of the ticket's raise date, so that date is what the
+// warranty was last "updated" on. `createdAt` is the fallback for any ticket mapped before
+// the field existed — it is the same value either way.
+function warrantyUpdateDate(t: Ticket): string {
+  return String(t.warrantyUpdateDate || t.createdAt || "").trim();
 }
 
 function escapeHtmlCell(input: unknown): string {
@@ -140,6 +156,7 @@ function downloadTicketsAsExcel(
     "Serial No",
     "Warranty",
     "Warranty End Date",
+    "Warranty Update Date",
     "Fault",
     "Error Code",
     "Created",
@@ -162,6 +179,8 @@ function downloadTicketsAsExcel(
     t.serialNumber,
     warrantyLabel(t),
     t.warrantyEndDate || "",
+    // The date the warranty status was judged on: always the ticket's raise date.
+    warrantyUpdateDate(t),
     t.faultDescription,
     t.errorCode,
     t.createdAt,
@@ -319,6 +338,11 @@ export default function TicketsList({
   const [outwardTab, setOutwardTab] = useState<"all" | "under_dispatch" | "dispatched" | "installation_done">("all");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState(safeInitialStatusFilter);
+  // Equipment filters. Free-text search already looks at the inverter and serial number,
+  // but it also matches fault text and ticket ids, so "SQ050" pulls in rows that merely
+  // mention it. These two narrow to one exact inverter / serial instead.
+  const [inverterFilter, setInverterFilter] = useState("ALL");
+  const [serialFilter, setSerialFilter] = useState("");
   const [dateFilter, setDateFilter] = useState<DateFilter>("ALL");
   const [closedYearFilter, setClosedYearFilter] = useState<ClosedYearFilter>("ALL");
   const [page, setPage] = useState(1);
@@ -335,6 +359,31 @@ export default function TicketsList({
   const [approvedByAdminError, setApprovedByAdminError] = useState("");
 
   const visibleTickets = useMemo(() => tickets || [], [tickets]);
+
+  // Options come from every ticket the user can see, not just the active tab, so the two
+  // dropdowns keep their choices (and the current selection) while tabs are switched.
+  const inverterOptions = useMemo(() => {
+    const set = new Set<string>();
+    visibleTickets.forEach((t) => {
+      const label = inverterLabel(t);
+      if (label) set.add(label);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [visibleTickets]);
+
+  const serialOptions = useMemo(() => {
+    const set = new Set<string>();
+    visibleTickets.forEach((t) => {
+      const serial = String(t.serialNumber || "").trim();
+      if (serial && serial !== "—") set.add(serial);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [visibleTickets]);
+
+  // If the picked inverter disappears from the data (refetch, ticket deleted), fall back
+  // to "All Inverters" instead of leaving a blank dropdown over an empty list.
+  const activeInverterFilter =
+    inverterFilter !== "ALL" && !inverterOptions.includes(inverterFilter) ? "ALL" : inverterFilter;
 
   const openDelete = (t: Ticket) => {
     setDeleteTarget(t);
@@ -704,6 +753,7 @@ export default function TicketsList({
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const serialQ = serialFilter.trim().toLowerCase();
     return baseTickets.filter((t) => {
       const inverter = `${t.inverterMake} ${t.inverterModel}`.toLowerCase();
       const matchSearch =
@@ -714,12 +764,26 @@ export default function TicketsList({
         t.faultDescription.toLowerCase().includes(q) ||
         String(t.errorCode || "").toLowerCase().includes(q) ||
         (!isCustomer && t.customer.toLowerCase().includes(q));
+      const matchInverter = activeInverterFilter === "ALL" || inverterLabel(t) === activeInverterFilter;
+      // Substring, so a partial serial still narrows the list; picking one from the
+      // dropdown pins it to that exact unit.
+      const matchSerial = !serialQ || String(t.serialNumber || "").toLowerCase().includes(serialQ);
       const matchDate = matchesDateFilter(t.createdAt, dateFilter);
       const matchStatus = statusFilter === "ALL" ? true : t.status === statusFilter;
       const matchClosedYear = ticketsTab === "closed" ? matchesClosedYearFilter(t) : true;
-      return matchSearch && matchDate && matchStatus && matchClosedYear;
+      return matchSearch && matchInverter && matchSerial && matchDate && matchStatus && matchClosedYear;
     });
-  }, [baseTickets, search, statusFilter, dateFilter, matchesClosedYearFilter, ticketsTab, isCustomer]);
+  }, [
+    baseTickets,
+    search,
+    statusFilter,
+    activeInverterFilter,
+    serialFilter,
+    dateFilter,
+    matchesClosedYearFilter,
+    ticketsTab,
+    isCustomer,
+  ]);
 
   const filteredRepaired = useMemo(() => {
     if (ticketsTab !== "repaired" || !canLoadJobCards) return filtered;
@@ -1142,6 +1206,51 @@ export default function TicketsList({
               </select>
             ) : null}
 
+            {inverterOptions.length ? (
+              <select
+                className="select-filter"
+                value={activeInverterFilter}
+                onChange={(e) => {
+                  setInverterFilter(e.target.value);
+                  setPage(1);
+                }}
+                aria-label="Filter by inverter"
+                title="Filter by inverter make & model"
+              >
+                <option value="ALL">All Inverters</option>
+                {inverterOptions.map((inv) => (
+                  <option key={inv} value={inv}>
+                    {inv}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+
+            {canSeeSerialNumber ? (
+              <>
+                {/* A datalist rather than a <select>: there is one serial per inverter, so
+                    the list runs long, and typing a partial serial is the quicker path. */}
+                <input
+                  className="select-filter"
+                  style={{ cursor: "text", width: 170 }}
+                  list="tickets-serial-options"
+                  value={serialFilter}
+                  placeholder="Serial No."
+                  aria-label="Filter by serial number"
+                  title="Filter by serial number"
+                  onChange={(e) => {
+                    setSerialFilter(e.target.value);
+                    setPage(1);
+                  }}
+                />
+                <datalist id="tickets-serial-options">
+                  {serialOptions.map((sn) => (
+                    <option key={sn} value={sn} />
+                  ))}
+                </datalist>
+              </>
+            ) : null}
+
             <select
               className="select-filter"
               value={dateFilter}
@@ -1481,7 +1590,12 @@ export default function TicketsList({
                           <td style={{ fontSize: 12 }}>
                             <span
                               className="tag"
-                              title={t.warrantyEndDate ? `Valid up to: ${t.warrantyEndDate}` : undefined}
+                              title={[
+                                t.warrantyEndDate ? `Valid up to: ${t.warrantyEndDate}` : "",
+                                warrantyUpdateDate(t) ? `Updated on: ${warrantyUpdateDate(t)}` : "",
+                              ]
+                                .filter(Boolean)
+                                .join(" · ") || undefined}
                               style={{ color: t.warrantyStatus ? "#16a34a" : "#c0392b" }}
                             >
                               {warrantyLabel(t)}

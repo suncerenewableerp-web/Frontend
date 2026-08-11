@@ -114,8 +114,12 @@ export interface Ticket {
   // Ticket-level remark for any service type (single / bulk / on-site). Distinct from
   // `onsiteRemark`, which is the engineer's visit note on offline bookings.
   remarks?: string;
+  // Warranty as it stood when the ticket was raised, not as of today — see `isInWarranty`.
   warrantyStatus: boolean;
   warrantyEndDate?: string; // YYYY-MM-DD (derived from inverter.warrantyEnd)
+  // The date the warranty state above was determined on. Always the ticket's created
+  // (raise) date, so the warranty block and the ticket never show two different dates.
+  warrantyUpdateDate?: string; // YYYY-MM-DD
   onsiteEngineerName?: string;
   onsiteVisitDate?: string; // YYYY-MM-DD
   onsiteRemark?: string;

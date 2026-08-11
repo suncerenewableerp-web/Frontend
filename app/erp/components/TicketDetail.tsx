@@ -2010,6 +2010,11 @@ export default function TicketDetail({
                     <div style={{ fontSize: 12, color: "var(--text3)", fontFamily: "var(--mono)" }}>
                       {ticket.warrantyEndDate ? `Valid up to: ${ticket.warrantyEndDate}` : "Valid up to: —"}
                     </div>
+                    {/* The status above is the warranty as of this date — the ticket's own
+                        raise date — so it never contradicts the ticket it belongs to. */}
+                    <div style={{ fontSize: 12, color: "var(--text3)", fontFamily: "var(--mono)" }}>
+                      {`Updated on: ${ticket.warrantyUpdateDate || ticket.createdAt || "—"}`}
+                    </div>
                   </div>
                 </div>
               </div>
