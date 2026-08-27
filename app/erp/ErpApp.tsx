@@ -87,12 +87,13 @@ export default function ErpApp({
     try {
       const roleNorm = String(user?.role || "").trim().toUpperCase();
       // Load the full history so every ticket (incl. imported older-dated ones) shows.
-      const limit =
-        roleNorm === "ADMIN" || roleNorm === "SALES"
-          ? 20000
-          : roleNorm === "ENGINEER"
-            ? 5000
-            : 2000;
+      //
+      // Engineers get the same ceiling as Admin/Sales: their visible set is every
+      // non-on-site ticket in the workshop plus every ticket whose job card they ever
+      // finalised, which grows past 5000 over time. Truncating it made the dashboard
+      // counter tiles (computed from this list) read lower than the Inverter Details
+      // total, which the backend aggregates without a page limit.
+      const limit = roleNorm === "CUSTOMER" ? 2000 : 20000;
       const list = await apiTicketsList({ limit });
       setTickets(list);
       setTicketsError("");

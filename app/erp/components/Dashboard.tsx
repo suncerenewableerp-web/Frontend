@@ -6,6 +6,7 @@ import { StatusBadge } from "./Badges";
 import { STATUS_COLORS } from "../constants";
 import {
   LuCircleCheck,
+  LuMapPin,
   LuShieldAlert,
   LuShieldCheck,
   LuTicket,
@@ -39,6 +40,7 @@ const STATUS_PIE_COLORS: Record<string, string> = {
   PICKUP_SCHEDULED: "#0ea5e9",
   IN_TRANSIT: "#38bdf8",
   UNDER_REPAIRED: "#f97316",
+  ONSITE_REPAIR: "#eab308",
   UNDER_DISPATCH: "#7c3aed",
   DISPATCHED: "#16a34a",
   INSTALLATION_DONE: "#4ade80",
@@ -76,17 +78,14 @@ function describePieSlice(cx: number, cy: number, radius: number, startAngle: nu
   return [`M ${cx} ${cy}`, `L ${start.x} ${start.y}`, `A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`, "Z"].join(" ");
 }
 
-// Counts distinct inverters in a list of tickets: same serial number = one inverter.
-// Tickets without a serial number are each counted individually.
-function countDistinctInverters(list: { serialNumber?: string }[]): number {
-  const seen = new Set<string>();
-  let blanks = 0;
-  for (const t of list) {
-    const sn = String(t.serialNumber || "").trim().toUpperCase();
-    if (sn && sn !== "—") seen.add(sn);
-    else blanks += 1;
-  }
-  return seen.size + blanks;
+// Synthetic status bucket the inventory summary reports for on-site (offline booking)
+// tickets under repair. They are stored as UNDER_REPAIRED like workshop repairs, but the
+// tickets list and the counter tiles keep them apart, so the status pie does too.
+// Mirrors ONSITE_REPAIR_STATUS in the backend dashboard controller.
+const ONSITE_REPAIR_STATUS = "ONSITE_REPAIR";
+
+function isOnsiteTicket(t: { serviceType?: string }): boolean {
+  return String(t.serviceType || "").trim().toUpperCase() === "ONSITE";
 }
 
 export default function Dashboard({
@@ -217,32 +216,39 @@ export default function Dashboard({
     return tickets;
   }, [tickets, counterPeriod, counterCustomFrom, counterCustomTo]);
 
-  // Most counter cards report distinct inverters (by serial number), not raw ticket
-  // rows. The exception is "Under Progress" below, which counts raw rows to stay in
-  // sync with the Tickets list tab it links to.
-  const inwardCreated = countDistinctInverters(
-    counterTickets.filter((t) => String(t.status || "").toUpperCase() === "CREATED"),
-  );
-  const inwardUnderPickup = countDistinctInverters(
-    counterTickets.filter((t) => ["PICKUP_SCHEDULED", "IN_TRANSIT"].includes(String(t.status || "").toUpperCase())),
-  );
+  // Every counter card counts raw ticket rows — the same unit the Tickets list tabs and
+  // the Inverter Details total use. Inward alone used to count distinct inverters (two
+  // tickets on one serial counted once), which is why the tiles never added up to the
+  // total and "Resolved" could not be reconciled against it.
+  //
+  // Inward also excludes on-site tickets, exactly like the Tickets list "Inward Stage"
+  // tab: on-site bookings are counted by the "On-site Repairing" tile below.
+  const inwardRaw = counterTickets.filter((t) => !isOnsiteTicket(t));
+  const inwardCreated = inwardRaw.filter(
+    (t) => String(t.status || "").toUpperCase() === "CREATED",
+  ).length;
+  const inwardUnderPickup = inwardRaw.filter((t) =>
+    ["PICKUP_SCHEDULED", "IN_TRANSIT"].includes(String(t.status || "").toUpperCase()),
+  ).length;
   const inward = inwardCreated + inwardUnderPickup;
 
   // Count raw ticket rows (not distinct inverters) so the tile matches the ticket list it
   // opens: two tickets on one inverter are two warranty tickets. Counting distinct
   // inverters made the tile read lower than the number of rows in its own modal.
+  //
+  // Warranty splits the same set the other tiles partition, so under + out is exactly the
+  // total. The tile sub-text spells that out; it is what the total is reconciled against.
+  const totalTickets = counterTickets.length;
   const warrantyTickets = counterTickets.filter((t) => Boolean(t.warrantyStatus));
   const underWarranty = warrantyTickets.length;
-  const outOfWarranty = counterTickets.filter((t) => !t.warrantyStatus).length;
+  const outOfWarranty = totalTickets - underWarranty;
 
   // Mirror the Tickets list "Outward" tab exactly: raw ticket rows (not distinct
   // inverters) for the three outward statuses, excluding onsite / offline-booking
   // tickets, which live in their own tab. Counting distinct inverters here made the
   // card disagree with the list whenever two outward tickets shared a serial number,
   // and folding INSTALLATION_DONE into "Dispatched" hid the list's third sub-tab.
-  const outwardRaw = counterTickets.filter(
-    (t) => String(t.serviceType || "").trim().toUpperCase() !== "ONSITE",
-  );
+  const outwardRaw = counterTickets.filter((t) => !isOnsiteTicket(t));
   const underDispatch = outwardRaw.filter(
     (t) => String(t.status || "").toUpperCase() === "UNDER_DISPATCH",
   ).length;
@@ -257,10 +263,18 @@ export default function Dashboard({
   // the UNDER_REPAIRED status. (Onsite / offline-booking tickets live in their own
   // tab, so the list excludes them here.)
   const underRepairRaw = counterTickets.filter(
-    (t) =>
-      String(t.serviceType || "").trim().toUpperCase() !== "ONSITE" &&
-      String(t.status || "").toUpperCase() === "UNDER_REPAIRED",
+    (t) => !isOnsiteTicket(t) && String(t.status || "").toUpperCase() === "UNDER_REPAIRED",
   );
+
+  // Mirror the Tickets list "On-site Repairing" tab: on-site bookings that are not closed.
+  // Without this tile the counters skipped on-site work entirely, so they could never sum
+  // to the total shown on the Inverter Details card.
+  const onsiteOpenTickets = counterTickets.filter(
+    (t) => isOnsiteTicket(t) && String(t.status || "").toUpperCase() !== "CLOSED",
+  );
+  const onsiteDone = onsiteOpenTickets.filter((t) => Boolean(t.onsiteMarkedRepairedAt)).length;
+  const onsiteRunning = onsiteOpenTickets.length - onsiteDone;
+
   // Count raw closed ticket rows (not distinct inverters) so this matches the
   // "Closed Tickets" tab in the Tickets list, which this card links to.
   const closed = counterTickets.filter((t) => t.status === "CLOSED").length;
@@ -574,7 +588,16 @@ export default function Dashboard({
       const vendor = normalizeInventoryLabel(t.inverterMake, "Unknown Vendor");
       const model = normalizeInventoryLabel(t.inverterModel, "Unknown Model");
       if (inventoryFilter.type === "vendor") return vendor === inventoryFilter.vendor;
-      if (inventoryFilter.type === "status") return String(t.status || "").toUpperCase().trim() === inventoryFilter.status;
+      if (inventoryFilter.type === "status") {
+        const status = String(t.status || "").toUpperCase().trim();
+        if (inventoryFilter.status === ONSITE_REPAIR_STATUS) {
+          return status === "UNDER_REPAIRED" && isOnsiteTicket(t);
+        }
+        if (inventoryFilter.status === "UNDER_REPAIRED") {
+          return status === "UNDER_REPAIRED" && !isOnsiteTicket(t);
+        }
+        return status === inventoryFilter.status;
+      }
       return vendor === inventoryFilter.vendor && model === inventoryFilter.model;
     });
     if (invModalPeriod === "all") return byVendorModel;
@@ -1455,6 +1478,14 @@ export default function Dashboard({
                 onClick: () => onOpenTickets({ tab: "repaired" }),
               },
               {
+                label: "On-site Repairing",
+                value: onsiteOpenTickets.length,
+                sub: `Running: ${onsiteRunning} · Marked done: ${onsiteDone}`,
+                color: "#eab308",
+                Icon: LuMapPin,
+                onClick: () => onOpenTickets({ tab: "offline_booking" }),
+              },
+              {
                 label: "Outward",
                 value: outwardCounts.total,
                 sub: `Under dispatch: ${outwardCounts.underDispatch} · Dispatched: ${outwardCounts.dispatched} · Installation done: ${outwardCounts.installationDone}`,
@@ -1465,7 +1496,7 @@ export default function Dashboard({
               {
                 label: "Under Approval",
                 value: approvalPending.length,
-                sub: "Waiting for Admin approval",
+                sub: "Awaiting Admin approval · already counted by stage",
                 color: "#7c3aed",
                 Icon: LuShieldAlert,
                 onClick: () => onOpenTickets({ tab: "approval_pending" }),
@@ -1491,7 +1522,7 @@ export default function Dashboard({
               {
                 label: "Resolved",
                 value: closed,
-                sub: `Closed tickets · ${counterPeriodLabel}`,
+                sub: `Closed of ${totalTickets} tickets · ${counterPeriodLabel}`,
                 color: "#16a34a",
                 Icon: LuCircleCheck,
                 onClick: () => onOpenTickets({ status: "CLOSED" }),
@@ -1499,7 +1530,7 @@ export default function Dashboard({
               {
                 label: "Under Warranty",
                 value: underWarranty,
-                sub: `Out of warranty: ${outOfWarranty}`,
+                sub: `Out of warranty: ${outOfWarranty} · Total: ${totalTickets}`,
                 color: "#0891b2",
                 Icon: LuShieldCheck,
                 onClick: () =>

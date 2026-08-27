@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { STATUS_ORDER } from "../constants";
 import type { RoleDefinition, Ticket, TicketStatus, User } from "../types";
 import { canAccess, formatTicketStatusLabel } from "../utils";
 import { EngineerOutcomeBadge, StatusBadge } from "./Badges";
-import { LuDownload, LuSearch, LuTicket, LuTrash2 } from "react-icons/lu";
+import { LuDownload, LuSearch, LuTicket, LuTrash2, LuX } from "react-icons/lu";
 import {
   apiApprovedDispatchApprovalsList,
   apiJobCardsList,
@@ -106,6 +106,25 @@ function inverterLabel(t: Ticket): string {
     .join(" ");
 }
 
+// Capacities are typed by hand all over the imported data ("5kW", "5 KW", "5kw"), so
+// filtering compares them with spacing and case removed. A typed fragment matches as a
+// substring, which is what makes the box work by typing as well as by picking.
+function normalizeCapacity(raw: unknown): string {
+  return String(raw || "").trim().toLowerCase().replace(/\s+/g, "");
+}
+
+// Sort capacities by their leading number ("5kW" before "12.5kW" before "100kW") and fall
+// back to plain text for anything that does not start with one.
+function compareCapacity(a: string, b: string): number {
+  const na = Number.parseFloat(a);
+  const nb = Number.parseFloat(b);
+  const aNum = Number.isFinite(na);
+  const bNum = Number.isFinite(nb);
+  if (aNum && bNum && na !== nb) return na - nb;
+  if (aNum !== bNum) return aNum ? -1 : 1;
+  return a.localeCompare(b);
+}
+
 function warrantyLabel(t: Ticket): string {
   return t.warrantyStatus ? "Under Warranty" : "Out of Warranty";
 }
@@ -130,6 +149,11 @@ function downloadTicketsAsExcel(
   filenameBase: string,
   options?: {
     statusLabelFor?: (t: Ticket) => string;
+    // The engineer's final job-card decision (Repaired / Scrap), as its own column. A
+    // scrapped inverter keeps moving through Under Dispatch → Dispatched → Closed, so its
+    // status alone never says it was scrapped; without this column the sheet showed those
+    // rows as ordinary repairs.
+    engineerOutcomeFor?: (t: Ticket) => string;
     // Engineer / closing remarks come from the ticket's job card, not the ticket itself,
     // so the caller resolves them. Supplied whenever the on-screen table shows the
     // "Engineer Remarks" column, which is where closed-ticket remarks live.
@@ -138,11 +162,12 @@ function downloadTicketsAsExcel(
     stageDateCols?: ReadonlyArray<{ label: string; valueFor: (t: Ticket) => string }>;
   },
 ) {
-  const { statusLabelFor, engineerRemarkFor, stageDateCols = [] } = options || {};
+  const { statusLabelFor, engineerOutcomeFor, engineerRemarkFor, stageDateCols = [] } = options || {};
 
   const headers = [
     "Ticket ID",
     "Status",
+    ...(engineerOutcomeFor ? ["Engineer Outcome"] : []),
     "Customer",
     "Sales Owner",
     "Service Type",
@@ -166,6 +191,7 @@ function downloadTicketsAsExcel(
   const bodyRows = (tickets || []).map((t) => [
     t.ticketId,
     statusLabelFor ? statusLabelFor(t) : t.status,
+    ...(engineerOutcomeFor ? [engineerOutcomeFor(t)] : []),
     t.customer,
     t.salesAssigneeName || t.salesAssigneeEmail || "",
     t.serviceType || "",
@@ -204,6 +230,190 @@ function downloadTicketsAsExcel(
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+// A filter box that can be typed into *or* picked from, for one column of the table.
+//
+// Typing filters the rows as you go (substring match, no Enter needed) and narrows the
+// suggestion list at the same time; clicking a suggestion pins the exact value. This
+// replaces the plain <select> the Inverter column used to have, which could only ever
+// match one whole make+model string and had no equivalent for capacity at all.
+function ColumnFilterBox({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+  width = 190,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+  placeholder?: string;
+  width?: number;
+}) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") setOpen(false);
+    };
+    const onPointerDown = (ev: MouseEvent | TouchEvent) => {
+      const el = wrapRef.current;
+      const target = ev.target as Node | null;
+      if (el && target && !el.contains(target)) setOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+    };
+  }, [open]);
+
+  // Suggestions track what has been typed, so the list always shows what a click would
+  // actually select. Capped so a few thousand serial numbers never build a giant menu.
+  const suggestions = useMemo(() => {
+    const q = String(value || "").trim().toLowerCase();
+    const src = (options || []).filter(Boolean);
+    const matched = q ? src.filter((o) => o.toLowerCase().includes(q)) : src;
+    return matched.slice(0, 100);
+  }, [options, value]);
+
+  const inputId = `ticket-filter-${label.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
+  const listboxId = `${inputId}-listbox`;
+
+  return (
+    <div style={{ display: "grid", gap: 4 }}>
+      <label
+        htmlFor={inputId}
+        style={{
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          color: "var(--text3)",
+        }}
+      >
+        {label}
+      </label>
+      <div ref={wrapRef} style={{ position: "relative", width }}>
+        <input
+          id={inputId}
+          ref={inputRef}
+          className="select-filter"
+          style={{ cursor: "text", width: "100%", paddingRight: value ? 26 : 12 }}
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={listboxId}
+          aria-autocomplete="list"
+          autoComplete="off"
+          placeholder={placeholder}
+          value={value}
+          onFocus={() => setOpen(true)}
+          onClick={() => setOpen(true)}
+          onChange={(e) => {
+            onChange(e.target.value);
+            setOpen(true);
+          }}
+        />
+        {value ? (
+          <button
+            type="button"
+            aria-label={`Clear ${label} filter`}
+            title={`Clear ${label} filter`}
+            onClick={() => {
+              onChange("");
+              setOpen(false);
+              queueMicrotask(() => inputRef.current?.focus());
+            }}
+            style={{
+              position: "absolute",
+              right: 4,
+              top: "50%",
+              transform: "translateY(-50%)",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 18,
+              height: 18,
+              padding: 0,
+              border: "none",
+              borderRadius: 4,
+              background: "transparent",
+              color: "var(--text3)",
+              cursor: "pointer",
+              fontSize: 12,
+            }}
+          >
+            <LuX aria-hidden />
+          </button>
+        ) : null}
+
+        {open ? (
+          <div
+            id={listboxId}
+            role="listbox"
+            aria-label={`${label} options`}
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: "calc(100% + 4px)",
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-sm)",
+              boxShadow: "var(--shadow-md)",
+              zIndex: 30,
+              maxHeight: 220,
+              overflowY: "auto",
+            }}
+          >
+            {suggestions.length ? (
+              suggestions.map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  role="option"
+                  aria-selected={opt === value}
+                  // Select before the input blurs, so the click always registers.
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    onChange(opt);
+                    setOpen(false);
+                    queueMicrotask(() => inputRef.current?.focus());
+                  }}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    textAlign: "left",
+                    background: opt === value ? "var(--surface2)" : "transparent",
+                    border: "none",
+                    padding: "7px 10px",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    color: "var(--text)",
+                  }}
+                >
+                  {opt}
+                </button>
+              ))
+            ) : (
+              <div style={{ padding: "8px 10px", fontSize: 12, color: "var(--text3)" }}>
+                No matches
+              </div>
+            )}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 export default function TicketsList({
@@ -338,10 +548,14 @@ export default function TicketsList({
   const [outwardTab, setOutwardTab] = useState<"all" | "under_dispatch" | "dispatched" | "installation_done">("all");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState(safeInitialStatusFilter);
-  // Equipment filters. Free-text search already looks at the inverter and serial number,
-  // but it also matches fault text and ticket ids, so "SQ050" pulls in rows that merely
-  // mention it. These two narrow to one exact inverter / serial instead.
-  const [inverterFilter, setInverterFilter] = useState("ALL");
+  // Equipment filters, one per column, shown above the table. Free-text search already
+  // looks at the inverter and serial number, but it also matches fault text and ticket
+  // ids, so "SQ050" pulls in rows that merely mention it. These narrow to one column each.
+  //
+  // All three hold plain text: they are typed into or picked from a suggestion list, and
+  // match as a substring so partial input already narrows the table.
+  const [inverterFilter, setInverterFilter] = useState("");
+  const [capacityFilter, setCapacityFilter] = useState("");
   const [serialFilter, setSerialFilter] = useState("");
   const [dateFilter, setDateFilter] = useState<DateFilter>("ALL");
   const [closedYearFilter, setClosedYearFilter] = useState<ClosedYearFilter>("ALL");
@@ -371,6 +585,15 @@ export default function TicketsList({
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [visibleTickets]);
 
+  const capacityOptions = useMemo(() => {
+    const set = new Set<string>();
+    visibleTickets.forEach((t) => {
+      const capacity = String(t.capacity || "").trim();
+      if (capacity && capacity !== "—" && capacity !== "-") set.add(capacity);
+    });
+    return Array.from(set).sort(compareCapacity);
+  }, [visibleTickets]);
+
   const serialOptions = useMemo(() => {
     const set = new Set<string>();
     visibleTickets.forEach((t) => {
@@ -380,10 +603,16 @@ export default function TicketsList({
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [visibleTickets]);
 
-  // If the picked inverter disappears from the data (refetch, ticket deleted), fall back
-  // to "All Inverters" instead of leaving a blank dropdown over an empty list.
-  const activeInverterFilter =
-    inverterFilter !== "ALL" && !inverterOptions.includes(inverterFilter) ? "ALL" : inverterFilter;
+  const hasColumnFilters = Boolean(
+    inverterFilter.trim() || capacityFilter.trim() || serialFilter.trim(),
+  );
+
+  const clearColumnFilters = () => {
+    setInverterFilter("");
+    setCapacityFilter("");
+    setSerialFilter("");
+    setPage(1);
+  };
 
   const openDelete = (t: Ticket) => {
     setDeleteTarget(t);
@@ -570,6 +799,37 @@ export default function TicketsList({
     return out;
   }, [jobCards]);
 
+  // The engineer's final job-card decision for a ticket: "REPAIRED", "SCRAP" or "" when
+  // no decision has been recorded (or job cards could not be loaded). Used by the table
+  // badge and the Excel export so both say the same thing on every tab.
+  const engineerOutcomeOf = useCallback(
+    (t: Ticket): "REPAIRED" | "SCRAP" | "" => {
+      if (!canLoadJobCards || jobCardsError) return "";
+      const final = String(engineerFinalByTicketId.get(t.id) || "").toUpperCase().trim();
+      if (final === "REPAIRABLE") return "REPAIRED";
+      if (final === "NOT_REPAIRABLE") return "SCRAP";
+      return "";
+    },
+    [canLoadJobCards, jobCardsError, engineerFinalByTicketId],
+  );
+
+  // What the Status column should read for a ticket, on screen and in the sheet.
+  //
+  // While a ticket sits in UNDER_REPAIRED the workshop outcome is what the UI shows —
+  // Under Repair / Repaired / Scrap — so that is what gets exported. This used to run only
+  // on the "Under Progress" tab, which is why a scrapped inverter exported as the raw
+  // "UNDER_REPAIRED" (i.e. still under repair) from every other tab.
+  const exportStatusLabel = useCallback(
+    (t: Ticket): string => {
+      const status = String(t.status || "").toUpperCase().trim();
+      if (status === "UNDER_REPAIRED" && !isOnsiteTicket(t) && canLoadJobCards && !jobCardsError) {
+        return engineerOutcomeOf(t) || "UNDER REPAIR";
+      }
+      return formatTicketStatusLabel(t.status);
+    },
+    [canLoadJobCards, jobCardsError, engineerOutcomeOf],
+  );
+
   const openTickets = useMemo(
     () => visibleTickets.filter((t) => t.status !== "CLOSED"),
     [visibleTickets],
@@ -753,7 +1013,19 @@ export default function TicketsList({
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const inverterQ = inverterFilter.trim().toLowerCase();
+    const capacityQ = normalizeCapacity(capacityFilter);
     const serialQ = serialFilter.trim().toLowerCase();
+
+    // A half-typed entry narrows by substring, but once it names one of the real values —
+    // typed out in full or picked from the list — it means that value and nothing else.
+    // Without this, choosing "5kW" still matched "12.5kW", and "SG5" still matched "SG50".
+    const inverterExact = Boolean(
+      inverterQ && inverterOptions.some((o) => o.toLowerCase() === inverterQ),
+    );
+    const capacityExact = Boolean(
+      capacityQ && capacityOptions.some((o) => normalizeCapacity(o) === capacityQ),
+    );
     return baseTickets.filter((t) => {
       const inverter = `${t.inverterMake} ${t.inverterModel}`.toLowerCase();
       const matchSearch =
@@ -764,20 +1036,36 @@ export default function TicketsList({
         t.faultDescription.toLowerCase().includes(q) ||
         String(t.errorCode || "").toLowerCase().includes(q) ||
         (!isCustomer && t.customer.toLowerCase().includes(q));
-      const matchInverter = activeInverterFilter === "ALL" || inverterLabel(t) === activeInverterFilter;
-      // Substring, so a partial serial still narrows the list; picking one from the
-      // dropdown pins it to that exact unit.
+      // A partial entry ("SQ0", "5k") narrows by substring as it is typed; a complete one
+      // pins that exact inverter / capacity.
+      const inverterVal = inverterLabel(t).toLowerCase();
+      const matchInverter =
+        !inverterQ || (inverterExact ? inverterVal === inverterQ : inverterVal.includes(inverterQ));
+      const capacityVal = normalizeCapacity(t.capacity);
+      const matchCapacity =
+        !capacityQ || (capacityExact ? capacityVal === capacityQ : capacityVal.includes(capacityQ));
       const matchSerial = !serialQ || String(t.serialNumber || "").toLowerCase().includes(serialQ);
       const matchDate = matchesDateFilter(t.createdAt, dateFilter);
       const matchStatus = statusFilter === "ALL" ? true : t.status === statusFilter;
       const matchClosedYear = ticketsTab === "closed" ? matchesClosedYearFilter(t) : true;
-      return matchSearch && matchInverter && matchSerial && matchDate && matchStatus && matchClosedYear;
+      return (
+        matchSearch &&
+        matchInverter &&
+        matchCapacity &&
+        matchSerial &&
+        matchDate &&
+        matchStatus &&
+        matchClosedYear
+      );
     });
   }, [
     baseTickets,
     search,
     statusFilter,
-    activeInverterFilter,
+    inverterFilter,
+    inverterOptions,
+    capacityFilter,
+    capacityOptions,
     serialFilter,
     dateFilter,
     matchesClosedYearFilter,
@@ -1141,28 +1429,17 @@ export default function TicketsList({
                     today.getDate(),
                   ).padStart(2, "0")}`;
                   const base = `tickets_${ticketsTab}_${statusFilter || "ALL"}_${ymd}`;
-                  // In the "Under Progress" tab, tickets stay in the UNDER_REPAIRED
-                  // status while the engineer's outcome bifurcates them into Under
-                  // Repair / Repaired / Scrap. Reflect that outcome in the exported
-                  // Status column instead of the raw UNDER_REPAIRED value.
-                  const statusLabelFor =
-                    ticketsTab === "repaired" && canLoadJobCards
-                      ? (t: Ticket) => {
-                          const final = String(engineerFinalByTicketId.get(t.id) || "")
-                            .toUpperCase()
-                            .trim();
-                          if (final === "REPAIRABLE") return "REPAIRED";
-                          if (final === "NOT_REPAIRABLE") return "SCRAP";
-                          return "UNDER REPAIR";
-                        }
-                      : undefined;
                   // Mirror the on-screen "Engineer Remarks" column so closed tickets
                   // carry their remarks into the exported sheet.
                   const engineerRemarkFor = showEngineerRemarksCol
                     ? (t: Ticket) => String(engineerRemarksByTicketId.get(t.id) || "").trim()
                     : undefined;
                   downloadTicketsAsExcel(rows, base, {
-                    statusLabelFor,
+                    statusLabelFor: exportStatusLabel,
+                    engineerOutcomeFor:
+                      canLoadJobCards && !jobCardsError
+                        ? (t: Ticket) => engineerOutcomeOf(t) || "—"
+                        : undefined,
                     engineerRemarkFor,
                     stageDateCols,
                   });
@@ -1204,51 +1481,6 @@ export default function TicketsList({
                   </option>
                 ))}
               </select>
-            ) : null}
-
-            {inverterOptions.length ? (
-              <select
-                className="select-filter"
-                value={activeInverterFilter}
-                onChange={(e) => {
-                  setInverterFilter(e.target.value);
-                  setPage(1);
-                }}
-                aria-label="Filter by inverter"
-                title="Filter by inverter make & model"
-              >
-                <option value="ALL">All Inverters</option>
-                {inverterOptions.map((inv) => (
-                  <option key={inv} value={inv}>
-                    {inv}
-                  </option>
-                ))}
-              </select>
-            ) : null}
-
-            {canSeeSerialNumber ? (
-              <>
-                {/* A datalist rather than a <select>: there is one serial per inverter, so
-                    the list runs long, and typing a partial serial is the quicker path. */}
-                <input
-                  className="select-filter"
-                  style={{ cursor: "text", width: 170 }}
-                  list="tickets-serial-options"
-                  value={serialFilter}
-                  placeholder="Serial No."
-                  aria-label="Filter by serial number"
-                  title="Filter by serial number"
-                  onChange={(e) => {
-                    setSerialFilter(e.target.value);
-                    setPage(1);
-                  }}
-                />
-                <datalist id="tickets-serial-options">
-                  {serialOptions.map((sn) => (
-                    <option key={sn} value={sn} />
-                  ))}
-                </datalist>
-              </>
             ) : null}
 
             <select
@@ -1460,6 +1692,71 @@ export default function TicketsList({
           </div>
         ) : null}
 
+        {/* Column filters, sitting directly above the columns they act on. Each one takes
+            typing or a pick from its suggestion list and re-filters the table immediately —
+            no Apply button, no exact-match-only dropdown. They live here rather than inside
+            <thead> because the table scrolls sideways on narrow screens, which would carry
+            column-aligned inputs off the edge. */}
+        <div
+          style={{
+            padding: "14px 20px",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            alignItems: "flex-end",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <ColumnFilterBox
+            label="Inverter"
+            value={inverterFilter}
+            onChange={(v) => {
+              setInverterFilter(v);
+              setPage(1);
+            }}
+            options={inverterOptions}
+            placeholder="Make or model…"
+            width={220}
+          />
+          <ColumnFilterBox
+            label="Inverter Capacity"
+            value={capacityFilter}
+            onChange={(v) => {
+              setCapacityFilter(v);
+              setPage(1);
+            }}
+            options={capacityOptions}
+            placeholder="e.g. 5kW"
+            width={160}
+          />
+          {canSeeSerialNumber ? (
+            <ColumnFilterBox
+              label="Serial No."
+              value={serialFilter}
+              onChange={(v) => {
+                setSerialFilter(v);
+                setPage(1);
+              }}
+              options={serialOptions}
+              placeholder="Serial number…"
+              width={200}
+            />
+          ) : null}
+          {hasColumnFilters ? (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={clearColumnFilters}
+              title="Clear the inverter, capacity and serial filters"
+            >
+              Clear filters
+            </button>
+          ) : null}
+          <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text3)" }}>
+            {rows.length} matching ticket{rows.length !== 1 ? "s" : ""}
+          </div>
+        </div>
+
         <div
           className="scroll-x"
           style={showAllRows ? { maxHeight: "70vh", overflowY: "auto" } : undefined}
@@ -1506,10 +1803,11 @@ export default function TicketsList({
                 </tr>
               ) : (
 	                pageRows.map((t, idx) => {
-	                  const final = String(engineerFinalByTicketId.get(t.id) || "").toUpperCase().trim();
-	                  const showOutcome = ticketsTab === "repaired" && canLoadJobCards && !!final;
-	                  const outcome =
-	                    final === "NOT_REPAIRABLE" ? "SCRAP" : final === "REPAIRABLE" ? "REPAIRED" : null;
+	                  // Shown on every tab: a scrapped inverter stays scrapped after it moves
+	                  // on to Under Dispatch / Dispatched / Closed, and the status alone can
+	                  // no longer say so.
+	                  const outcome = engineerOutcomeOf(t) || null;
+	                  const showOutcome = Boolean(outcome);
 	                  const meta = ticketsTab === "repaired" ? repairMetaByTicketId.get(t.id) : null;
                     const engineerRemark = showEngineerRemarksCol
                       ? String(engineerRemarksByTicketId.get(t.id) || "").trim()

@@ -44,6 +44,10 @@ export function formatTicketStatusLabel(status: string): string {
   // as REPAIRABLE / SCRAP yet), so labelling the whole status that way overstated the
   // Under Repair count wherever a raw status was rendered.
   if (raw === "UNDER_REPAIRED") return "UNDER PROGRESS";
+  // Synthetic bucket the dashboard reports for on-site (offline booking) tickets under
+  // repair. They share the UNDER_REPAIRED status but are counted and listed separately,
+  // under the same name the Tickets list gives their tab.
+  if (raw === "ONSITE_REPAIR") return "ON-SITE REPAIRING";
   return raw.replace(/_/g, " ");
 }
 
