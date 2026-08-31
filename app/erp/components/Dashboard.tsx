@@ -344,8 +344,12 @@ export default function Dashboard({
   const [clientPicked, setClientPicked] = useState<{ name: string; address: string } | null>(null);
   const [clientLocationsModal, setClientLocationsModal] = useState<ClientSummaryRow | null>(null);
 
+  // The "Under Approval" card is on every staff dashboard, engineers included, but this
+  // feed only ran for Admin/Sales — so the card sat at 0 for engineers regardless of how
+  // many tickets were actually awaiting approval. The card stays where it was; only its
+  // number is now the real one.
   useEffect(() => {
-    if (!isAdmin && !isSales) return;
+    if (isCustomer) return;
     let cancelled = false;
 
     const tick = () => {
@@ -368,7 +372,7 @@ export default function Dashboard({
       cancelled = true;
       clearInterval(interval);
     };
-  }, [isAdmin, isSales]);
+  }, [isCustomer]);
 
   useEffect(() => {
     if (isCustomer) return;
