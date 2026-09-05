@@ -132,6 +132,24 @@ export default function Dashboard({
   const [approvalPending, setApprovalPending] = useState<PendingDispatchApprovalTicket[]>([]);
   const [jobCards, setJobCards] = useState<JobCardListRow[]>([]);
 
+  // Greeting follows the viewer's own clock. It is resolved after mount, not during render,
+  // because this component is server-rendered too: the server's hour and the browser's hour
+  // can differ (different timezone, or the request straddling a boundary), and React would
+  // flag that as a hydration mismatch. The interval keeps a dashboard that is left open
+  // overnight from being stuck on the greeting it started with.
+  const [greeting, setGreeting] = useState("Hello");
+  useEffect(() => {
+    const greetingForNow = () => {
+      const hour = new Date().getHours();
+      if (hour < 12) return "Good Morning";
+      if (hour < 17) return "Good Afternoon";
+      return "Good Evening";
+    };
+    setGreeting(greetingForNow());
+    const interval = setInterval(() => setGreeting(greetingForNow()), 60000);
+    return () => clearInterval(interval);
+  }, []);
+
   const ymdOf = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
@@ -1340,7 +1358,7 @@ export default function Dashboard({
     <div className="content">
       <div className="page-header">
         <div className="page-title">
-          Good Morning, {user.name.split(" ")[0]}
+          {greeting}, {user.name.split(" ")[0]}
         </div>
         <div className="page-sub">
           Here&apos;s what&apos;s happening with your service operations today
