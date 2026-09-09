@@ -33,6 +33,7 @@ import {
   apiTicketPickupDocumentUpload,
   apiTicketGet,
   apiEngineerNamesList,
+  apiUsersList,
   apiTicketOnsiteAssign,
   apiTicketOnsiteJobCardUpdate,
   apiUpdateTicketStatus,
@@ -40,6 +41,7 @@ import {
   apiUpdateTicketFaultDescription,
   type BackendLogistics,
 } from "../api";
+import { DELIVERY_METHODS } from "../constants";
 import inverterCatalog from "../data/inverter_catalog.json";
 import type {
   JobCard,
@@ -397,6 +399,10 @@ export default function TicketDetail({
     warrantyStatus: Boolean(ticket.warrantyStatus),
     warrantyEndDate: ticket.warrantyEndDate || "",
     raiseDate: ticket.createdAt || "",
+    salesOwnerOption: ticket.salesAssigneeName || "",
+    salesOwnerCustomName: "",
+    deliveryMethodOption: ticket.deliveryMethod || "",
+    deliveryMethodCustom: "",
   });
 
   const [engineerDropdown, setEngineerDropdown] = useState<string[]>(() => [...DEFAULT_ENGINEER_DROPDOWN]);
@@ -411,6 +417,22 @@ export default function TicketDetail({
 
   const [repairActionDropdown, setRepairActionDropdown] = useState<string[]>([]);
   const [customRepairActionNames, setCustomRepairActionNames] = useState<string[]>([]);
+
+  const [salesUsers, setSalesUsers] = useState<{ name: string; email: string }[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiUsersList()
+      .then((users) => {
+        if (cancelled) return;
+        const sales = (users || [])
+          .filter((u) => String(u.role || "").trim().toUpperCase() === "SALES")
+          .map((u) => ({ name: u.name, email: u.email }));
+        setSalesUsers(sales);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [repairActionNameAdding, setRepairActionNameAdding] = useState(false);
   const [repairActionNameDeletingKey, setRepairActionNameDeletingKey] = useState("");
   const [repairActionNameInput, setRepairActionNameInput] = useState("");
@@ -1976,6 +1998,7 @@ export default function TicketDetail({
 	                ["Customer", ticket.customerName || ticket.customer || "—"],
 	                ["Company", ticket.customerCompany || "—"],
 	                ["Sales Owner", ticket.salesAssigneeName || ticket.salesAssigneeEmail || "—"],
+	                ["Delivery Method", ticket.deliveryMethod || "—"],
 	                ["Address", ticket.customerAddress || "—"],
 	              ].map(([label, val]) => (
 	                <div key={label} className="detail-card">
@@ -2438,6 +2461,73 @@ export default function TicketDetail({
                       ) : null}
                     </>
                   ) : null}
+
+                  <div>
+                    <div className="form-label">Sales Owner</div>
+                    <select
+                      className="form-select"
+                      value={details.salesOwnerOption === ticket.salesAssigneeName && details.salesOwnerCustomName === "" ? details.salesOwnerOption : details.salesOwnerCustomName ? "OTHER_SALES" : details.salesOwnerOption}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "OTHER_SALES") {
+                          setDetails((p) => ({ ...p, salesOwnerOption: "OTHER_SALES", salesOwnerCustomName: "" }));
+                        } else {
+                          setDetails((p) => ({ ...p, salesOwnerOption: v, salesOwnerCustomName: "" }));
+                        }
+                      }}
+                    >
+                      <option value="">Select sales owner</option>
+                      {salesUsers.map((u) => (
+                        <option key={u.email} value={u.name}>
+                          {u.name}
+                        </option>
+                      ))}
+                      <option value="OTHER_SALES">Other</option>
+                    </select>
+                    {details.salesOwnerOption === "OTHER_SALES" || (details.salesOwnerCustomName && !salesUsers.some((u) => u.name === details.salesOwnerOption)) ? (
+                      <div style={{ marginTop: 8 }}>
+                        <input
+                          className="form-input"
+                          placeholder="Enter sales owner name"
+                          value={details.salesOwnerCustomName || (details.salesOwnerOption !== "OTHER_SALES" && !salesUsers.some((u) => u.name === details.salesOwnerOption) ? details.salesOwnerOption : "")}
+                          onChange={(e) => setDetails((p) => ({ ...p, salesOwnerOption: "OTHER_SALES", salesOwnerCustomName: e.target.value }))}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <div className="form-label">Delivery Method</div>
+                    <select
+                      className="form-select"
+                      value={DELIVERY_METHODS.includes(details.deliveryMethodOption as any) ? details.deliveryMethodOption : details.deliveryMethodCustom ? "Other" : details.deliveryMethodOption}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "Other") {
+                          setDetails((p) => ({ ...p, deliveryMethodOption: "Other", deliveryMethodCustom: "" }));
+                        } else {
+                          setDetails((p) => ({ ...p, deliveryMethodOption: v, deliveryMethodCustom: "" }));
+                        }
+                      }}
+                    >
+                      <option value="">Select delivery method</option>
+                      {DELIVERY_METHODS.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                    {details.deliveryMethodOption === "Other" || (details.deliveryMethodCustom && !DELIVERY_METHODS.includes(details.deliveryMethodOption as any)) ? (
+                      <div style={{ marginTop: 8 }}>
+                        <input
+                          className="form-input"
+                          placeholder="Enter delivery method"
+                          value={details.deliveryMethodCustom || (details.deliveryMethodOption !== "Other" && !DELIVERY_METHODS.includes(details.deliveryMethodOption as any) ? details.deliveryMethodOption : "")}
+                          onChange={(e) => setDetails((p) => ({ ...p, deliveryMethodOption: "Other", deliveryMethodCustom: e.target.value }))}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
@@ -2458,9 +2548,15 @@ export default function TicketDetail({
                       // normal details save never rewrites the original timestamp.
                       const raiseDateChanged =
                         canEditRaiseDate && details.raiseDate !== (ticket.createdAt || "");
+                      const salesOwnerValue =
+                        details.salesOwnerCustomName.trim() || details.salesOwnerOption;
+                      const deliveryMethodValue =
+                        details.deliveryMethodCustom.trim() || details.deliveryMethodOption;
                       apiUpdateTicketDetails(ticket.id, {
                         ...details,
                         raiseDate: raiseDateChanged ? details.raiseDate : undefined,
+                        salesAssigneeName: salesOwnerValue || undefined,
+                        deliveryMethod: deliveryMethodValue || undefined,
                       })
                         .then((updated) => {
                           onTicketUpdated(updated);
@@ -2480,6 +2576,10 @@ export default function TicketDetail({
                             warrantyStatus: Boolean(updated.warrantyStatus),
                             warrantyEndDate: updated.warrantyEndDate || "",
                             raiseDate: updated.createdAt || "",
+                            salesOwnerOption: updated.salesAssigneeName || "",
+                            salesOwnerCustomName: "",
+                            deliveryMethodOption: updated.deliveryMethod || "",
+                            deliveryMethodCustom: "",
                           });
                           setDetailsSavedMsg("Ticket details saved.");
                         })

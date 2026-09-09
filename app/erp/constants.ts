@@ -269,3 +269,5 @@ export const ROLE_DESCRIPTIONS: Record<string, string> = {
   ENGINEER: "Job cards, diagnosis & repairs",
   CUSTOMER: "Track your service requests",
 };
+
+export const DELIVERY_METHODS = ["Blue Dart", "Delhivery", "Porter", "Other"] as const;

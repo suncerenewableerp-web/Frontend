@@ -284,6 +284,7 @@ type BackendTicket = {
   salesAssignee?: BackendUser | string;
   salesAssigneeEmail?: string;
   salesAssigneeName?: string;
+  deliveryMethod?: string;
   logistics?:
     | string
     | {
@@ -683,6 +684,7 @@ function toTicket(t: BackendTicket): Ticket {
     assignedEngineer: String(assignedEngineer),
     salesAssigneeName: salesAssigneeName ? String(salesAssigneeName) : undefined,
     salesAssigneeEmail: salesAssigneeEmail ? String(salesAssigneeEmail) : undefined,
+    deliveryMethod: String(t?.deliveryMethod || ""),
     createdAt: createdAtYmd,
     updatedAt: t?.updatedAt ? String(t.updatedAt) : "",
     underRepairDate: stageEntryDate(t?.statusHistory, "UNDER_REPAIRED"),
@@ -890,6 +892,8 @@ export type TicketCreateInput = {
   warrantyStatus?: boolean;
   warrantyEndDate?: string; // YYYY-MM-DD (only when under warranty)
   remarks?: string;
+  salesAssigneeName?: string;
+  deliveryMethod?: string;
 };
 
 function makeLocalTicketId(used?: Set<string>) {
@@ -964,6 +968,8 @@ function ticketCreatePayloadFromInput(input: TicketCreateInput, ticketId: string
       ...(input.priority ? { priority: input.priority } : {}),
       ...(errorCode ? { errorCode } : {}),
     },
+    ...(input.salesAssigneeName ? { salesAssigneeName: String(input.salesAssigneeName).trim() } : {}),
+    ...(input.deliveryMethod ? { deliveryMethod: String(input.deliveryMethod).trim() } : {}),
   };
 }
 
@@ -1043,6 +1049,8 @@ export type TicketEditInput = {
   warrantyStatus: boolean;
   warrantyEndDate?: string; // YYYY-MM-DD (only when under warranty)
   remarks?: string;
+  salesAssigneeName?: string;
+  deliveryMethod?: string;
   // Ticket raise date. Send only when an Admin / Super Admin actually changed it —
   // the backend rejects it outright for every other role.
   raiseDate?: string; // YYYY-MM-DD
@@ -1081,6 +1089,8 @@ export async function apiUpdateTicketDetails(
       priority: input.priority,
     },
     ...(input.remarks !== undefined ? { remarks: String(input.remarks || "").trim() } : {}),
+    ...(input.salesAssigneeName !== undefined ? { salesAssigneeName: String(input.salesAssigneeName || "").trim() } : {}),
+    ...(input.deliveryMethod !== undefined ? { deliveryMethod: String(input.deliveryMethod || "").trim() } : {}),
     ...(input.raiseDate ? { createdAt: input.raiseDate } : {}),
   };
 

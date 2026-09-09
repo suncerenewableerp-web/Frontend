@@ -127,6 +127,7 @@ export interface Ticket {
   assignedEngineer: string;
   salesAssigneeName?: string;
   salesAssigneeEmail?: string;
+  deliveryMethod?: string;
   createdAt: string;
   updatedAt?: string; // ISO timestamp of last activity/update
   // Stage entry dates (YYYY-MM-DD), derived from the ticket's status history: the date the
