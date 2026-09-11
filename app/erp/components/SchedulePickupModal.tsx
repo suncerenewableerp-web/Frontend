@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import type { Ticket } from "../types";
 import DatePicker from "./DatePicker";
 import { apiTicketPickupDocumentUpload } from "../api";
@@ -36,7 +36,7 @@ export default function SchedulePickupModal({
   const [pickupDate, setPickupDate] = useState(() =>
     toDateInputValue(new Date(Date.now() + 24 * 60 * 60 * 1000)),
   );
-  const [courierName, setCourierName] = useState("BlueDart");
+  const [courierName, setCourierName] = useState(eligible[0]?.courierName || "");
   const [lrNumber, setLrNumber] = useState("");
   const [pickupLocation, setPickupLocation] = useState("");
   const [pickupDocFile, setPickupDocFile] = useState<File | null>(null);
@@ -45,6 +45,13 @@ export default function SchedulePickupModal({
 
   const eligibleIds = useMemo(() => new Set(eligible.map((t) => t.id)), [eligible]);
   const selectedTicketId = eligibleIds.has(ticketId) ? ticketId : eligible[0]?.id || "";
+
+  useEffect(() => {
+    const selected = eligible.find((t) => t.id === selectedTicketId);
+    if (selected?.courierName) {
+      setCourierName(selected.courierName);
+    }
+  }, [selectedTicketId, eligible]);
 
   const handleSubmit = () => {
     if (!selectedTicketId) {
@@ -134,7 +141,7 @@ export default function SchedulePickupModal({
               <label className="form-label">Courier</label>
               <input
                 className="form-input"
-                placeholder="e.g. BlueDart"
+                placeholder="e.g. Delhivery, DTDC"
                 value={courierName}
                 onChange={(e) => setCourierName(e.target.value)}
               />

@@ -661,13 +661,13 @@ export default function TicketDetail({
 
   // Keep pickup date blank unless it is explicitly scheduled (sales/admin can still pick a date).
   const [pickupDate, setPickupDate] = useState(() => ticket.pickupDate || "");
-  const [courierName, setCourierName] = useState(ticket.courierName || "BlueDart");
+  const [courierName, setCourierName] = useState(ticket.courierName || "");
   const [lrNumber, setLrNumber] = useState(ticket.lrNumber || "");
   const [pickupLocation, setPickupLocation] = useState(ticket.customerAddress || "");
   const [dispatchDate, setDispatchDate] = useState(() =>
     toDateInputValue(new Date()),
   );
-  const [dispatchCourierName, setDispatchCourierName] = useState("BlueDart");
+  const [dispatchCourierName, setDispatchCourierName] = useState("");
   const [dispatchLrNumber, setDispatchLrNumber] = useState("");
   const [dispatchLocation, setDispatchLocation] = useState("");
   const [dispatchInvoiceGenerated, setDispatchInvoiceGenerated] = useState(false);
@@ -902,7 +902,7 @@ export default function TicketDetail({
         const nextPickupDate =
           pickupDateFromApi ||
           (canEditLogistics ? toDateInputValue(new Date(Date.now() + 86400000)) : "");
-        const nextCourier = String(pickup?.courierDetails?.courierName || "BlueDart");
+        const nextCourier = String(pickup?.courierDetails?.courierName || "");
         const nextLr = String(pickup?.courierDetails?.lrNumber || "");
         const nextPickupLocation = String(
           pickup?.pickupDetails?.pickupLocation || ticket.customerAddress || "",
@@ -930,7 +930,7 @@ export default function TicketDetail({
 
         const dispatchDateFromApi = toDateInputValueSafe(dispatch?.pickupDetails?.scheduledDate);
         const nextDispatchDate = dispatchDateFromApi || toDateInputValue(new Date());
-        const nextDispatchCourier = String(dispatch?.courierDetails?.courierName || "BlueDart");
+        const nextDispatchCourier = String(dispatch?.courierDetails?.courierName || "");
         const nextDispatchLr = String(dispatch?.courierDetails?.lrNumber || "");
         const nextDispatchLoc = String(dispatch?.pickupDetails?.pickupLocation || "");
 	        const nextInvoice = Boolean(dispatch?.billing?.invoiceGenerated);
@@ -4501,7 +4501,7 @@ export default function TicketDetail({
                       value={courierName}
                       onChange={(e) => setCourierName(e.target.value)}
                       disabled={!canEditLogistics}
-                      placeholder="e.g. BlueDart"
+                      placeholder="e.g. Delhivery, DTDC"
                     />
                   </div>
                   <div className="detail-card">
@@ -5028,7 +5028,7 @@ export default function TicketDetail({
                       value={dispatchCourierName}
                       onChange={(e) => setDispatchCourierName(e.target.value)}
                       disabled={!canEditLogistics}
-                      placeholder="e.g. BlueDart"
+                      placeholder="e.g. Delhivery, DTDC"
                     />
                   </div>
                   <div className="detail-card">

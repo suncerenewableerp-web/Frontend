@@ -62,7 +62,7 @@ export default function Logistics({
                     <span className="td-mono">{t.ticketId}</span>
                   </td>
                   <td>{t.customer}</td>
-                  <td>BlueDart</td>
+                  <td>{t.courierName || t.deliveryMethod || "—"}</td>
                   <td>
                     <StatusBadge status={t.status} />
                   </td>
