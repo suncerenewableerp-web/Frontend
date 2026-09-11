@@ -4,12 +4,19 @@ import { useMemo, useState, useEffect } from "react";
 import type { Ticket } from "../types";
 import DatePicker from "./DatePicker";
 import { apiTicketPickupDocumentUpload } from "../api";
+import { DELIVERY_METHODS } from "../constants";
 
 function toDateInputValue(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function resolveCourierOption(value: string): { option: string; custom: string } {
+  if (!value) return { option: "", custom: "" };
+  if (DELIVERY_METHODS.includes(value as any)) return { option: value, custom: "" };
+  return { option: "Other", custom: value };
 }
 
 export default function SchedulePickupModal({
@@ -32,11 +39,15 @@ export default function SchedulePickupModal({
     [tickets],
   );
 
+  const firstCourier = eligible[0]?.courierName || eligible[0]?.deliveryMethod || "";
+  const firstResolved = resolveCourierOption(firstCourier);
+
   const [ticketId, setTicketId] = useState(eligible[0]?.id || "");
   const [pickupDate, setPickupDate] = useState(() =>
     toDateInputValue(new Date(Date.now() + 24 * 60 * 60 * 1000)),
   );
-  const [courierName, setCourierName] = useState(eligible[0]?.courierName || "");
+  const [courierOption, setCourierOption] = useState(firstResolved.option);
+  const [courierCustom, setCourierCustom] = useState(firstResolved.custom);
   const [lrNumber, setLrNumber] = useState("");
   const [pickupLocation, setPickupLocation] = useState("");
   const [pickupDocFile, setPickupDocFile] = useState<File | null>(null);
@@ -48,10 +59,15 @@ export default function SchedulePickupModal({
 
   useEffect(() => {
     const selected = eligible.find((t) => t.id === selectedTicketId);
-    if (selected?.courierName) {
-      setCourierName(selected.courierName);
+    if (selected) {
+      const courier = selected.courierName || selected.deliveryMethod || "";
+      const resolved = resolveCourierOption(courier);
+      setCourierOption(resolved.option);
+      setCourierCustom(resolved.custom);
     }
   }, [selectedTicketId, eligible]);
+
+  const courierName = courierOption === "Other" ? courierCustom.trim() : courierOption;
 
   const handleSubmit = () => {
     if (!selectedTicketId) {
@@ -139,12 +155,32 @@ export default function SchedulePickupModal({
             </div>
             <div className="form-group">
               <label className="form-label">Courier</label>
-              <input
-                className="form-input"
-                placeholder="e.g. Delhivery, DTDC"
-                value={courierName}
-                onChange={(e) => setCourierName(e.target.value)}
-              />
+              <select
+                className="form-select"
+                value={courierOption}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setCourierOption(v);
+                  if (v !== "Other") setCourierCustom("");
+                }}
+              >
+                <option value="">Select courier</option>
+                {DELIVERY_METHODS.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+              {courierOption === "Other" && (
+                <div style={{ marginTop: 8 }}>
+                  <input
+                    className="form-input"
+                    placeholder="Enter courier name"
+                    value={courierCustom}
+                    onChange={(e) => setCourierCustom(e.target.value)}
+                  />
+                </div>
+              )}
             </div>
             <div className="form-group">
               <label className="form-label">LR number</label>
