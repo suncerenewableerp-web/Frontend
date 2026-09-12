@@ -230,6 +230,12 @@ function normalizeFinalTesting(
   });
 }
 
+function resolveCourierOption(value: string): { option: string; custom: string } {
+  if (!value) return { option: "", custom: "" };
+  if (DELIVERY_METHODS.includes(value as any)) return { option: value, custom: "" };
+  return { option: "Other", custom: value };
+}
+
 function toDateInputValue(date: Date) {
   return date.toISOString().slice(0, 10);
 }
@@ -662,6 +668,9 @@ export default function TicketDetail({
   // Keep pickup date blank unless it is explicitly scheduled (sales/admin can still pick a date).
   const [pickupDate, setPickupDate] = useState(() => ticket.pickupDate || "");
   const [courierName, setCourierName] = useState(ticket.courierName || "");
+  const initialCourierResolved = resolveCourierOption(ticket.courierName || "");
+  const [courierOption, setCourierOption] = useState(initialCourierResolved.option);
+  const [courierCustom, setCourierCustom] = useState(initialCourierResolved.custom);
   const [lrNumber, setLrNumber] = useState(ticket.lrNumber || "");
   const [pickupLocation, setPickupLocation] = useState(ticket.customerAddress || "");
   const [dispatchDate, setDispatchDate] = useState(() =>
@@ -910,6 +919,9 @@ export default function TicketDetail({
 
         setPickupDate(nextPickupDate);
         setCourierName(nextCourier);
+        const resolved = resolveCourierOption(nextCourier);
+        setCourierOption(resolved.option);
+        setCourierCustom(resolved.custom);
         setLrNumber(nextLr);
         setPickupLocation(nextPickupLocation);
         setPickupDocuments(
@@ -1135,6 +1147,11 @@ export default function TicketDetail({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [docPreviewUrl]);
+
+  useEffect(() => {
+    const derived = courierOption === "Other" ? courierCustom.trim() : courierOption;
+    setCourierName(derived);
+  }, [courierOption, courierCustom]);
 
   const pickupDirty = useMemo(() => {
     if (!pickupBaseline) return true;
@@ -4363,6 +4380,9 @@ export default function TicketDetail({
                         const pickupLocSaved = String(pickup?.pickupDetails?.pickupLocation || pickupLocation);
                         setPickupDate(pickupDateSaved);
                         setCourierName(courierSaved);
+                        const resolvedSaved = resolveCourierOption(courierSaved);
+                        setCourierOption(resolvedSaved.option);
+                        setCourierCustom(resolvedSaved.custom);
                         setLrNumber(lrSaved);
                         setPickupLocation(pickupLocSaved);
                         setPickupBaseline({
@@ -4496,13 +4516,33 @@ export default function TicketDetail({
                   </div>
                   <div className="detail-card">
                     <div className="detail-label">Courier</div>
-                    <input
-                      className="form-input"
-                      value={courierName}
-                      onChange={(e) => setCourierName(e.target.value)}
+                    <select
+                      className="form-select"
+                      value={courierOption}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setCourierOption(v);
+                        if (v !== "Other") setCourierCustom("");
+                      }}
                       disabled={!canEditLogistics}
-                      placeholder="e.g. Delhivery, DTDC"
-                    />
+                    >
+                      <option value="">Select courier</option>
+                      {DELIVERY_METHODS.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                    {courierOption === "Other" && (
+                      <input
+                        className="form-input"
+                        style={{ marginTop: 8 }}
+                        placeholder="Enter courier name"
+                        value={courierCustom}
+                        onChange={(e) => setCourierCustom(e.target.value)}
+                        disabled={!canEditLogistics}
+                      />
+                    )}
                   </div>
                   <div className="detail-card">
                     <div className="detail-label">LR Number</div>
