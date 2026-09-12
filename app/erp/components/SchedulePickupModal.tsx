@@ -15,7 +15,11 @@ function toDateInputValue(date: Date) {
 
 function resolveCourierOption(value: string): { option: string; custom: string } {
   if (!value) return { option: "", custom: "" };
-  if (DELIVERY_METHODS.includes(value as any)) return { option: value, custom: "" };
+  const normalised = value.replace(/\s+/g, " ").trim();
+  const match = DELIVERY_METHODS.find(
+    (m) => m.toLowerCase() === normalised.toLowerCase() || m.replace(/\s+/g, "").toLowerCase() === normalised.replace(/\s+/g, "").toLowerCase(),
+  );
+  if (match) return { option: match, custom: "" };
   return { option: "Other", custom: value };
 }
 
