@@ -867,6 +867,18 @@ export async function apiTicketJobCardFinalize(
   return toJobCard(env.data, ticketId);
 }
 
+export async function apiTicketJobCardClearFinal(ticketId: string): Promise<JobCard> {
+  const env = await apiFetch<BackendJobCard>(
+    `/api/tickets/${encodeURIComponent(ticketId)}/jobcard`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ engineerFinalStatus: "CLEAR" }),
+    },
+  );
+  if (!env.success) throw new Error(env.message || "Failed to clear final decision");
+  return toJobCard(env.data, ticketId);
+}
+
 export async function apiTicketGet(id: string): Promise<Ticket> {
   const env = await apiFetch<BackendTicket>(`/api/tickets/${encodeURIComponent(id)}`, {
     method: "GET",

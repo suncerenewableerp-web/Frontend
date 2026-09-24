@@ -1705,70 +1705,74 @@ export default function NewTicketModal({
                     onChange={(e) => set("customerPhone", e.target.value.replace(/[^\d+\-\s]/g, ""))}
                   />
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Sales Owner</label>
-                  <select
-                    className="form-select"
-                    value={form.salesOwnerOption}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      set("salesOwnerOption", v);
-                      if (v !== "OTHER_SALES") set("salesOwnerCustomName", "");
-                    }}
-                    disabled={loading}
-                  >
-                    <option value="">Select sales owner (optional)</option>
-                    {salesUsers.map((u) => (
-                      <option key={u.email} value={u.name}>
-                        {u.name}
-                      </option>
-                    ))}
-                    <option value="OTHER_SALES">Other</option>
-                  </select>
-                </div>
-                {form.salesOwnerOption === "OTHER_SALES" ? (
-                  <div className="form-group">
-                    <label className="form-label">Other Sales Owner Name</label>
-                    <input
-                      className="form-input"
-                      placeholder="Enter sales owner name"
-                      value={form.salesOwnerCustomName}
-                      onChange={(e) => set("salesOwnerCustomName", e.target.value)}
-                      disabled={loading}
-                    />
-                  </div>
-                ) : null}
-                <div className="form-group">
-                  <label className="form-label">Delivery Method</label>
-                  <select
-                    className="form-select"
-                    value={form.deliveryMethodOption}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      set("deliveryMethodOption", v);
-                      if (v !== "Other") set("deliveryMethodCustom", "");
-                    }}
-                    disabled={loading}
-                  >
-                    <option value="">Select delivery method (optional)</option>
-                    {DELIVERY_METHODS.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {form.deliveryMethodOption === "Other" ? (
-                  <div className="form-group">
-                    <label className="form-label">Other Delivery Method</label>
-                    <input
-                      className="form-input"
-                      placeholder="Enter delivery method"
-                      value={form.deliveryMethodCustom}
-                      onChange={(e) => set("deliveryMethodCustom", e.target.value)}
-                      disabled={loading}
-                    />
-                  </div>
+                {!isCustomer ? (
+                  <>
+                    <div className="form-group">
+                      <label className="form-label">Sales Owner</label>
+                      <select
+                        className="form-select"
+                        value={form.salesOwnerOption}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          set("salesOwnerOption", v);
+                          if (v !== "OTHER_SALES") set("salesOwnerCustomName", "");
+                        }}
+                        disabled={loading}
+                      >
+                        <option value="">Select sales owner (optional)</option>
+                        {salesUsers.map((u) => (
+                          <option key={u.email} value={u.name}>
+                            {u.name}
+                          </option>
+                        ))}
+                        <option value="OTHER_SALES">Other</option>
+                      </select>
+                    </div>
+                    {form.salesOwnerOption === "OTHER_SALES" ? (
+                      <div className="form-group">
+                        <label className="form-label">Other Sales Owner Name</label>
+                        <input
+                          className="form-input"
+                          placeholder="Enter sales owner name"
+                          value={form.salesOwnerCustomName}
+                          onChange={(e) => set("salesOwnerCustomName", e.target.value)}
+                          disabled={loading}
+                        />
+                      </div>
+                    ) : null}
+                    <div className="form-group">
+                      <label className="form-label">Delivery Method</label>
+                      <select
+                        className="form-select"
+                        value={form.deliveryMethodOption}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          set("deliveryMethodOption", v);
+                          if (v !== "Other") set("deliveryMethodCustom", "");
+                        }}
+                        disabled={loading}
+                      >
+                        <option value="">Select delivery method (optional)</option>
+                        {DELIVERY_METHODS.map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {form.deliveryMethodOption === "Other" ? (
+                      <div className="form-group">
+                        <label className="form-label">Other Delivery Method</label>
+                        <input
+                          className="form-input"
+                          placeholder="Enter delivery method"
+                          value={form.deliveryMethodCustom}
+                          onChange={(e) => set("deliveryMethodCustom", e.target.value)}
+                          disabled={loading}
+                        />
+                      </div>
+                    ) : null}
+                  </>
                 ) : null}
               </div>
               <div className="form-section">Inverter Details</div>
@@ -2710,68 +2714,72 @@ export default function NewTicketModal({
                         />
                       </div>
                     ) : null}
-                    <div className="form-group">
-                      <label className="form-label">Sales Owner</label>
-                      <select
-                        className="form-select"
-                        value={bulkSettings.salesOwnerOption}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setBulkSettings((p) => ({ ...p, salesOwnerOption: v, salesOwnerCustomName: v !== "OTHER_SALES" ? "" : p.salesOwnerCustomName }));
-                        }}
-                        disabled={loading}
-                      >
-                        <option value="">Select sales owner (optional)</option>
-                        {salesUsers.map((u) => (
-                          <option key={u.email} value={u.name}>
-                            {u.name}
-                          </option>
-                        ))}
-                        <option value="OTHER_SALES">Other</option>
-                      </select>
-                    </div>
-                    {bulkSettings.salesOwnerOption === "OTHER_SALES" ? (
-                      <div className="form-group">
-                        <label className="form-label">Other Sales Owner Name</label>
-                        <input
-                          className="form-input"
-                          placeholder="Enter sales owner name"
-                          value={bulkSettings.salesOwnerCustomName}
-                          onChange={(e) => setBulkSettings((p) => ({ ...p, salesOwnerCustomName: e.target.value }))}
-                          disabled={loading}
-                        />
-                      </div>
-                    ) : null}
-                    <div className="form-group">
-                      <label className="form-label">Delivery Method</label>
-                      <select
-                        className="form-select"
-                        value={bulkSettings.deliveryMethodOption}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setBulkSettings((p) => ({ ...p, deliveryMethodOption: v, deliveryMethodCustom: v !== "Other" ? "" : p.deliveryMethodCustom }));
-                        }}
-                        disabled={loading}
-                      >
-                        <option value="">Select delivery method (optional)</option>
-                        {DELIVERY_METHODS.map((m) => (
-                          <option key={m} value={m}>
-                            {m}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    {bulkSettings.deliveryMethodOption === "Other" ? (
-                      <div className="form-group">
-                        <label className="form-label">Other Delivery Method</label>
-                        <input
-                          className="form-input"
-                          placeholder="Enter delivery method"
-                          value={bulkSettings.deliveryMethodCustom}
-                          onChange={(e) => setBulkSettings((p) => ({ ...p, deliveryMethodCustom: e.target.value }))}
-                          disabled={loading}
-                        />
-                      </div>
+                    {!isCustomer ? (
+                      <>
+                        <div className="form-group">
+                          <label className="form-label">Sales Owner</label>
+                          <select
+                            className="form-select"
+                            value={bulkSettings.salesOwnerOption}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setBulkSettings((p) => ({ ...p, salesOwnerOption: v, salesOwnerCustomName: v !== "OTHER_SALES" ? "" : p.salesOwnerCustomName }));
+                            }}
+                            disabled={loading}
+                          >
+                            <option value="">Select sales owner (optional)</option>
+                            {salesUsers.map((u) => (
+                              <option key={u.email} value={u.name}>
+                                {u.name}
+                              </option>
+                            ))}
+                            <option value="OTHER_SALES">Other</option>
+                          </select>
+                        </div>
+                        {bulkSettings.salesOwnerOption === "OTHER_SALES" ? (
+                          <div className="form-group">
+                            <label className="form-label">Other Sales Owner Name</label>
+                            <input
+                              className="form-input"
+                              placeholder="Enter sales owner name"
+                              value={bulkSettings.salesOwnerCustomName}
+                              onChange={(e) => setBulkSettings((p) => ({ ...p, salesOwnerCustomName: e.target.value }))}
+                              disabled={loading}
+                            />
+                          </div>
+                        ) : null}
+                        <div className="form-group">
+                          <label className="form-label">Delivery Method</label>
+                          <select
+                            className="form-select"
+                            value={bulkSettings.deliveryMethodOption}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setBulkSettings((p) => ({ ...p, deliveryMethodOption: v, deliveryMethodCustom: v !== "Other" ? "" : p.deliveryMethodCustom }));
+                            }}
+                            disabled={loading}
+                          >
+                            <option value="">Select delivery method (optional)</option>
+                            {DELIVERY_METHODS.map((m) => (
+                              <option key={m} value={m}>
+                                {m}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        {bulkSettings.deliveryMethodOption === "Other" ? (
+                          <div className="form-group">
+                            <label className="form-label">Other Delivery Method</label>
+                            <input
+                              className="form-input"
+                              placeholder="Enter delivery method"
+                              value={bulkSettings.deliveryMethodCustom}
+                              onChange={(e) => setBulkSettings((p) => ({ ...p, deliveryMethodCustom: e.target.value }))}
+                              disabled={loading}
+                            />
+                          </div>
+                        ) : null}
+                      </>
                     ) : null}
                   </div>
                 </>

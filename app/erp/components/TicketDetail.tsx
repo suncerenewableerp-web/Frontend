@@ -28,6 +28,7 @@ import {
   apiJobCardRepairActionNamesList,
   apiTicketJobCardGet,
   apiTicketJobCardFinalize,
+  apiTicketJobCardClearFinal,
   apiTicketJobCardUpdate,
   apiTicketPickupDetailsGet,
   apiTicketPickupDocumentUpload,
@@ -681,6 +682,8 @@ export default function TicketDetail({
     toDateInputValue(new Date()),
   );
   const [dispatchCourierName, setDispatchCourierName] = useState("");
+  // True while "Other" is picked in the Dispatch courier dropdown (custom name may still be empty).
+  const [dispatchCourierOther, setDispatchCourierOther] = useState(false);
   const [dispatchLrNumber, setDispatchLrNumber] = useState("");
   const [dispatchLocation, setDispatchLocation] = useState("");
   const [dispatchInvoiceGenerated, setDispatchInvoiceGenerated] = useState(false);
@@ -957,6 +960,7 @@ export default function TicketDetail({
 
         setDispatchDate(nextDispatchDate);
         setDispatchCourierName(nextDispatchCourier);
+        setDispatchCourierOther(false);
         setDispatchLrNumber(nextDispatchLr);
         setDispatchLocation(nextDispatchLoc);
         setDispatchInvoiceGenerated(nextInvoice);
@@ -1334,6 +1338,20 @@ export default function TicketDetail({
         setJobSavedMsg(decision === "REPAIRABLE" ? "Finalized as REPAIRED." : "Finalized as SCRAP.");
       })
       .catch((e) => setJobError(e instanceof Error ? e.message : "Failed to finalize job card"))
+      .finally(() => setJobSaving(false));
+  };
+
+  const clearJobCardFinal = () => {
+    if (!jobCard) return;
+    setJobSaving(true);
+    setJobError("");
+    setJobSavedMsg("");
+    apiTicketJobCardClearFinal(ticket.id)
+      .then((saved) => {
+        setJobCard(saved);
+        setJobSavedMsg("Final decision cleared. Unit is back to Under Repair.");
+      })
+      .catch((e) => setJobError(e instanceof Error ? e.message : "Failed to clear final decision"))
       .finally(() => setJobSaving(false));
   };
 
@@ -3506,6 +3524,15 @@ export default function TicketDetail({
 	                        >
 		                          Scrap
 	                        </button>
+	                        <button
+	                          className="btn btn-ghost btn-sm"
+	                          type="button"
+	                          disabled={jobSaving || !String(jobCard.engineerFinalStatus || "").trim()}
+	                          onClick={clearJobCardFinal}
+	                          title="Clear Approve (Repaired) / Scrap and move back to Under Repair"
+	                        >
+	                          Clear
+	                        </button>
 	                        {String(jobCard.engineerFinalStatus || "").trim() ? (
 	                          <span style={{ fontSize: 12, color: "var(--text3)" }}>
 		                            Final:{" "}
@@ -5067,13 +5094,48 @@ export default function TicketDetail({
                   </div>
                   <div className="detail-card">
                     <div className="detail-label">Courier</div>
-                    <input
-                      className="form-input"
-                      value={dispatchCourierName}
-                      onChange={(e) => setDispatchCourierName(e.target.value)}
-                      disabled={!canEditLogistics}
-                      placeholder="e.g. Delhivery, DTDC"
-                    />
+                    {(() => {
+                      const dispatchCourierOption = dispatchCourierOther
+                        ? "Other"
+                        : resolveCourierOption(dispatchCourierName).option;
+                      return (
+                        <>
+                          <select
+                            className="form-select"
+                            value={dispatchCourierOption}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              if (v === "Other") {
+                                setDispatchCourierOther(true);
+                                // Keep an already-typed custom name; drop a preset one.
+                                if (dispatchCourierOption !== "Other") setDispatchCourierName("");
+                              } else {
+                                setDispatchCourierOther(false);
+                                setDispatchCourierName(v);
+                              }
+                            }}
+                            disabled={!canEditLogistics}
+                          >
+                            <option value="">Select courier</option>
+                            {DELIVERY_METHODS.map((m) => (
+                              <option key={m} value={m}>
+                                {m}
+                              </option>
+                            ))}
+                          </select>
+                          {dispatchCourierOption === "Other" && (
+                            <input
+                              className="form-input"
+                              style={{ marginTop: 8 }}
+                              placeholder="Enter courier name"
+                              value={dispatchCourierName}
+                              onChange={(e) => setDispatchCourierName(e.target.value)}
+                              disabled={!canEditLogistics}
+                            />
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                   <div className="detail-card">
                     <div className="detail-label">LR Number</div>
