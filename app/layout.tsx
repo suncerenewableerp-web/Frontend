@@ -34,9 +34,6 @@ export const metadata: Metadata = {
   authors: [{ name: "Sunce Renewables Pvt. Ltd." }],
   creator: "Sunce Renewables Pvt. Ltd.",
   publisher: "Sunce Renewables Pvt. Ltd.",
-  alternates: {
-    canonical: "/",
-  },
   openGraph: {
     type: "website",
     locale: "en_IN",
