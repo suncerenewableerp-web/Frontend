@@ -94,7 +94,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Sunce ERP" />
         <meta name="theme-color" content="#faf9f7" />
-        <!-- Google tag (gtag.js) -->
+  
         <script async src="https://www.googletagmanager.com/gtag/js?id=G-PRBL3WKYKV"></script>
         <script>
           window.dataLayer = window.dataLayer || [];
