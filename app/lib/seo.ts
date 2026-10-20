@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { SITE_NAME, SITE_URL } from "./site";
+import { ADDRESS, PHONE, SITE_NAME, SITE_URL } from "./site";
 
 type PageSeo = {
   title: string;
@@ -113,14 +113,72 @@ export function contactPageJsonLd(): object {
     url: `${SITE_URL}/contact`,
     mainEntity: {
       "@type": "Organization",
+      "@id": `${SITE_URL}/#organization`,
       name: SITE_NAME,
-      telephone: "+91-6361991349",
-      address: {
-        "@type": "PostalAddress",
-        addressCountry: "IN",
-        addressRegion: "UP",
-        addressLocality: "Noida",
-      },
+      telephone: PHONE,
+      address: ADDRESS,
     },
+  };
+}
+
+export function absoluteUrl(path: string): string {
+  return path === "/" ? SITE_URL : `${SITE_URL}${path}`;
+}
+
+export function serviceJsonLd(service: {
+  name: string;
+  description: string;
+  path: string;
+  serviceType: string;
+  areaServed?: string[];
+}): object {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Service",
+    name: service.name,
+    serviceType: service.serviceType,
+    description: service.description,
+    url: absoluteUrl(service.path),
+    provider: { "@id": `${SITE_URL}/#localbusiness` },
+    areaServed: (service.areaServed ?? ["India"]).map((name) => ({
+      "@type": name === "India" ? "Country" : "City",
+      name,
+    })),
+  };
+}
+
+export function faqJsonLd(faqs: { q: string; a: string }[]): object {
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqs.map((faq) => ({
+      "@type": "Question",
+      name: faq.q,
+      acceptedAnswer: { "@type": "Answer", text: faq.a },
+    })),
+  };
+}
+
+export function articleJsonLd(post: {
+  title: string;
+  description: string;
+  path: string;
+  datePublished: string;
+  dateModified?: string;
+  image?: string;
+}): object {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline: post.title,
+    description: post.description,
+    url: absoluteUrl(post.path),
+    mainEntityOfPage: absoluteUrl(post.path),
+    image: `${SITE_URL}${post.image ?? "/hero.webp"}`,
+    datePublished: post.datePublished,
+    dateModified: post.dateModified ?? post.datePublished,
+    inLanguage: "en-IN",
+    author: { "@id": `${SITE_URL}/#organization` },
+    publisher: { "@id": `${SITE_URL}/#organization` },
   };
 }

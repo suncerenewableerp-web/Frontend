@@ -183,7 +183,7 @@ function Hero() {
         <div style={{ zIndex: 2 }}>
           <div style={fade(0.08)}>
             <span className="slabel">
-              Solar Inverter Specialists · NOIDA, India
+              Solar Inverter Repair Specialists · Noida, India
             </span>
           </div>
           <h1
@@ -200,7 +200,7 @@ function Hero() {
           >
             India&apos;s Trusted
             <br />
-            Solar Inverter <em className="gi">Doctors.</em>
+            Solar Inverter Repair <em className="gi">Doctors.</em>
           </h1>
           <p
             className="home-hero-copy"
@@ -213,8 +213,8 @@ function Hero() {
               margin: "0 0 40px",
             }}
           >
-            Sunce Renewables is the end-to-end solar service company — covering
-            PCB-level inverter repair, SCADA monitoring, O&amp;M contracts, and
+            Sunce Renewables is the end-to-end solar inverter repair and service
+            company — covering PCB-level solar inverter repair, maintenance &amp; AMC, SCADA monitoring, O&amp;M contracts, and
             full project management from a single expert team.
           </p>
           <div
@@ -1020,9 +1020,9 @@ function About() {
     <section style={{ background: "var(--cream)", padding: "110px 6vw" }}>
       <div className="ag" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "72px", alignItems: "center" }}>
         <div className="rv mg" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "250px 200px", gap: 14, position: "relative" }}>
-          <div className="mi" style={{ gridRow: "1/3" }}><img src="/sunce2.jpg" alt="About" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} /></div>
-          <div className="mi"><img src="/sunce4.jpg" alt="Repair" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} /></div>
-          <div className="mi"><img src="/sunce1.jpeg" alt="Solar" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} /></div>
+          <div className="mi" style={{ gridRow: "1/3" }}><img src="/sunce2.jpg" alt="Sunce Renewables solar inverter repair team in Noida" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} /></div>
+          <div className="mi"><img src="/sunce4.jpg" alt="Solar inverter PCB repair at Sunce workshop" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} /></div>
+          <div className="mi"><img src="/sunce1.jpeg" alt="Rooftop solar plant maintained by Sunce Renewables" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} /></div>
           <div style={{ position: "absolute", bottom: -22, right: -22, zIndex: 3, background: "var(--brown)", color: "var(--cream)", borderRadius: 16, padding: "18px 22px", textAlign: "center", boxShadow: "0 12px 36px rgba(44,26,14,0.22)" }}>
             <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "2.2rem", fontWeight: 700, lineHeight: 1 }}>7+</div>
             <div style={{ fontSize: "0.66rem", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600, color: "var(--gold-warm)", marginTop: 3 }}>Years of<br />Excellence</div>

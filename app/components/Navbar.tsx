@@ -40,6 +40,17 @@ export default function Navbar({ onOpen }: { onOpen?: () => void }) {
     { name: "SNet IoT Gateway", img: "/3.png", href: "/products/snet-iot-gateway" },
   ];
 
+  const services = [
+    { name: "Solar Inverter Repair", href: "/solar-inverter-repair" },
+    { name: "Inverter Repair in Noida", href: "/solar-inverter-repair/noida" },
+    { name: "Maintenance & AMC", href: "/services/solar-inverter-maintenance-amc" },
+    { name: "PCB Repair", href: "/services/solar-inverter-pcb-repair" },
+    { name: "Solar Plant O&M", href: "/services/solar-plant-operation-maintenance" },
+    { name: "All Services", href: "/services" },
+    { name: "Brands We Repair", href: "/brands" },
+    { name: "Blog & Guides", href: "/blog" },
+  ];
+
   return (
     <>
       <nav
@@ -133,6 +144,17 @@ export default function Navbar({ onOpen }: { onOpen?: () => void }) {
                   {p.img && <img src={p.img} alt="" onError={(e) => e.currentTarget.style.display = 'none'} />}
                   {p.name}
                 </Link>
+              ))}
+            </div>
+          </div>
+          <div className="nv-dropdown">
+            <button className="nv-dropdown-trigger">
+              Services
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+            </button>
+            <div className="nv-dropdown-menu">
+              {services.map((s) => (
+                <Link key={s.href} href={s.href}>{s.name}</Link>
               ))}
             </div>
           </div>

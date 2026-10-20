@@ -1261,6 +1261,8 @@ tr:hover td { background: var(--surface2); }
   padding-left: 16px;
   position: relative;
 }
+.seo-panel a { color: inherit; text-decoration: none; }
+.seo-panel a:hover { color: var(--accent3); text-decoration: underline; }
 .seo-panel li::before {
   content: "";
   width: 6px;
@@ -1288,6 +1290,110 @@ tr:hover td { background: var(--surface2); }
   .seo-copy {
     columns: 1;
   }
+}
+
+/* ── SEO LANDING PAGES (services, locations, brands, blog) ── */
+.lp-hero {
+  background: linear-gradient(135deg, #052e2b 0%, #0b3d39 60%, #0f766e 100%);
+  padding: 130px 6vw 64px;
+  font-family: 'Outfit', sans-serif;
+}
+.lp-hero-inner { max-width: 1180px; margin: 0 auto; }
+.lp-crumbs { font-size: 0.82rem; color: rgba(255,255,255,0.65); margin-bottom: 18px; }
+.lp-crumbs a { color: rgba(255,255,255,0.85); text-decoration: none; }
+.lp-crumbs a:hover { text-decoration: underline; }
+.lp-kicker {
+  color: #5eead4; font-size: 0.72rem; font-weight: 800;
+  letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 12px;
+}
+.lp-hero h1 {
+  color: #fff; font-size: clamp(2rem, 4.6vw, 3.3rem); font-weight: 800;
+  line-height: 1.1; max-width: 900px; margin: 0 0 22px;
+}
+.lp-hero-intro { color: rgba(255,255,255,0.78); max-width: 720px; line-height: 1.75; margin: 0; }
+.lp-meta { color: rgba(255,255,255,0.7); font-size: 0.88rem; margin: -8px 0 22px; }
+.lp-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.lp-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 12px 22px; border-radius: 8px; font-weight: 700; font-size: 0.9rem;
+  text-decoration: none; transition: transform 0.2s, background 0.2s;
+}
+.lp-btn:hover { transform: translateY(-2px); }
+.lp-btn-primary { background: #14b8a6; color: #052e2b; }
+.lp-btn-primary:hover { background: #2dd4bf; }
+.lp-btn-ghost { border: 1.5px solid rgba(255,255,255,0.5); color: #fff; }
+.lp-btn-outline { border: 1.5px solid #0f766e; color: #0f766e; }
+
+.lp-body {
+  max-width: 1180px; margin: 0 auto; padding: 64px 6vw 80px;
+  display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 48px;
+  font-family: 'Outfit', sans-serif; box-sizing: content-box;
+}
+.lp-main p { color: rgba(15,23,42,0.78); font-size: 1rem; line-height: 1.85; margin: 0 0 16px; }
+.lp-main .lp-lead { font-size: 1.1rem; color: #0f172a; }
+.lp-chips { list-style: none; display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0 8px; padding: 0; }
+.lp-chips li {
+  background: #eefaf9; border: 1px solid #b8e0db; color: #0b3d39;
+  font-size: 0.84rem; font-weight: 600; padding: 7px 14px; border-radius: 999px;
+}
+.lp-section { margin-top: 40px; }
+.lp-section h2 { color: #0b3d39; font-size: clamp(1.35rem, 2.4vw, 1.75rem); font-weight: 800; line-height: 1.25; margin: 0 0 14px; }
+.lp-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.lp-list li { position: relative; padding-left: 22px; color: rgba(15,23,42,0.8); line-height: 1.6; }
+.lp-list li::before {
+  content: ""; position: absolute; left: 4px; top: 0.6em;
+  width: 7px; height: 7px; border-radius: 50%; background: #0d9488;
+}
+.lp-faqs { display: grid; gap: 10px; }
+.lp-faq { border: 1px solid var(--border-site, #d3eeeb); border-radius: 10px; background: #fff; padding: 0 18px; }
+.lp-faq summary { cursor: pointer; font-weight: 700; color: #0b3d39; padding: 16px 0; list-style-position: outside; }
+.lp-faq p { margin: 0 0 16px; }
+.lp-cta {
+  margin-top: 48px; padding: 28px; border-radius: 14px;
+  background: #eefaf9; border: 1px solid #b8e0db;
+  display: flex; flex-wrap: wrap; gap: 20px; align-items: center; justify-content: space-between;
+}
+.lp-cta h2 { color: #0b3d39; font-size: 1.35rem; font-weight: 800; margin: 0 0 6px; }
+.lp-cta p { margin: 0; max-width: 520px; }
+
+.lp-aside { display: flex; flex-direction: column; gap: 18px; }
+.lp-aside-card { border: 1px solid var(--border-site, #d3eeeb); background: #f7fdfd; border-radius: 10px; padding: 20px; }
+.lp-aside-card h3 { color: #0b3d39; font-size: 0.95rem; font-weight: 800; margin: 0 0 12px; }
+.lp-aside-card ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.lp-aside-card a { color: #0f766e; font-size: 0.88rem; text-decoration: none; line-height: 1.4; }
+.lp-aside-card a:hover { text-decoration: underline; }
+
+.lp-hub { max-width: 1180px; margin: 0 auto; padding: 64px 6vw 80px; font-family: 'Outfit', sans-serif; box-sizing: content-box; }
+.lp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 22px; }
+.lp-card {
+  display: flex; flex-direction: column; gap: 8px; padding: 24px; border-radius: 12px;
+  background: #fff; border: 1px solid var(--border-site, #d3eeeb); text-decoration: none;
+  transition: transform 0.25s, box-shadow 0.25s;
+}
+.lp-card:hover { transform: translateY(-4px); box-shadow: 0 14px 32px rgba(11,61,57,0.1); }
+.lp-card h2 { color: #0b3d39; font-size: 1.15rem; font-weight: 800; margin: 0; line-height: 1.3; }
+.lp-card p { color: rgba(15,23,42,0.7); font-size: 0.9rem; line-height: 1.6; margin: 0; flex: 1; }
+.lp-card-meta { color: #0d9488; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+.lp-card-more { color: #0f766e; font-weight: 700; font-size: 0.86rem; }
+.lp-footnote { margin-top: 32px; font-size: 0.82rem; color: #64748b; }
+
+/* Site-wide internal link block */
+.sl-section { background: #f7fdfd; border-top: 1px solid var(--border-site, #d3eeeb); padding: 48px 6vw; font-family: 'Outfit', sans-serif; }
+.sl-wrap { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px; }
+.sl-wrap h2 { color: #0b3d39; font-size: 0.95rem; font-weight: 800; margin: 0 0 12px; }
+.sl-wrap ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 7px; }
+.sl-wrap a { color: rgba(15,23,42,0.72); font-size: 0.86rem; text-decoration: none; }
+.sl-wrap a:hover { color: #0f766e; text-decoration: underline; }
+
+@media (max-width: 900px) {
+  .lp-body { grid-template-columns: 1fr; }
+  .sl-wrap { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 540px) {
+  .lp-hero { padding: 110px 16px 48px; }
+  .lp-body, .lp-hub { padding: 44px 16px 60px; }
+  .sl-section { padding: 40px 16px; }
+  .sl-wrap { grid-template-columns: 1fr; }
 }
 
 /* ── LAYOUT VISIBILITY ── */

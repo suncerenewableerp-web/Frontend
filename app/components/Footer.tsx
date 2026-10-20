@@ -26,6 +26,7 @@ export default function Footer() {
             <ul className="ft-links">
               <li><Link href="/">Home</Link></li>
               <li><Link href="/about">About</Link></li>
+              <li><Link href="/blog">Blog</Link></li>
               <li><Link href="/terms-conditions">Terms & Conditions</Link></li>
               <li><Link href="/privacy-policy">Privacy Policy</Link></li>
               <li><Link href="/contact">Contact</Link></li>
@@ -39,7 +40,10 @@ export default function Footer() {
               <li><Link href="/management">Management</Link></li>
               <li><Link href="/career">Careers</Link></li>
               <li><Link href="/products">Products</Link></li>
-              <li><Link href="/contact">Solar Inverter Services</Link></li>
+              <li><Link href="/solar-inverter-repair">Solar Inverter Repair</Link></li>
+              <li><Link href="/solar-inverter-repair/noida">Inverter Repair in Noida</Link></li>
+              <li><Link href="/services">All Services</Link></li>
+              <li><Link href="/brands">Brands We Repair</Link></li>
               <li>
                 <Link href="/Brochure-Sunce-Product.pdf" target="_blank">
                   Brochure
@@ -68,7 +72,7 @@ export default function Footer() {
 
         <div className="ft-bottom">
           <div className="ft-copy">
-            &copy; Copyright 2025 by Sunce Renewable
+            &copy; Copyright {new Date().getFullYear()} by Sunce Renewables Pvt. Ltd.
           </div>
           <div className="ft-socials">
             <a href="#"><i className="fab fa-facebook-f"></i></a>

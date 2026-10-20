@@ -1,14 +1,13 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import dynamic from "next/dynamic";
 import type { ReactNode } from "react";
 import Footer from "./Footer";
 import { WAModal, FloatingWA } from "./GlobalContact";
 import { ModalProvider, useModal } from "./ModalContext";
 import PreFooterQuoteCTA from "./PreFooterQuoteCTA";
 
-const Navbar = dynamic(() => import("./Navbar"), { ssr: false });
+import Navbar from "./Navbar";
 
 const EXCLUDED_PATHS = ["/dashboard", "/forgot-password", "/reset-password"];
 

@@ -1,5 +1,5 @@
 import RootClientLayout from "../components/RootClientLayout";
-import SeoContent from "../components/SeoContent";
+import SeoLinks from "../components/SeoLinks";
 import JsonLd from "../components/JsonLd";
 import { ORG_JSON_LD } from "../lib/site";
 
@@ -9,7 +9,7 @@ export default function SiteLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <RootClientLayout beforeFooter={<SeoContent />}>
+    <RootClientLayout beforeFooter={<SeoLinks />}>
       <JsonLd data={ORG_JSON_LD} />
       {children}
     </RootClientLayout>

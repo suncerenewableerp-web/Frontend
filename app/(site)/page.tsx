@@ -1,20 +1,31 @@
 import type { Metadata } from "next";
 import HomePage from "../homepage";
 import JsonLd from "../components/JsonLd";
+import SeoContent from "../components/SeoContent";
 import { SITE_URL } from "../lib/site";
 
+const TITLE = "Solar Inverter Repair Services in Noida & India | Sunce Renewables";
+const DESCRIPTION =
+  "Sunce Renewables — trusted solar inverter repair company in Noida. On-grid, off-grid & hybrid inverter repair, PCB repair, maintenance, AMC & solar O&M across Delhi NCR & India.";
+
 export const metadata: Metadata = {
-  title: "Solar Inverter Repair & Solar Services in India",
-  description:
-    "Expert solar inverter repair, maintenance, AMC, SCADA monitoring, O&M and solar monitoring products from Noida to pan India. Call Sunce Renewables for reliable solar plant support.",
+  title: { absolute: TITLE },
+  description: DESCRIPTION,
   keywords: [
     "solar inverter repair",
-    "solar inverter services India",
+    "solar inverter repair services",
+    "solar inverter repair company",
+    "solar inverter repair near me",
+    "solar inverter repair in noida",
+    "solar inverter service",
     "solar inverter maintenance",
-    "solar inverter AMC",
-    "solar plant O&M",
-    "SCADA monitoring solar",
-    "solar monitoring devices India",
+    "solar inverter AMC services",
+    "solar inverter repair experts",
+    "solar inverter repair delhi ncr",
+    "solar inverter repair india",
+    "solar plant maintenance services",
+    "Sunce Renewables",
+    "Sunce Renewable",
   ],
   alternates: {
     canonical: "/",
@@ -24,23 +35,21 @@ export const metadata: Metadata = {
     locale: "en_IN",
     url: SITE_URL,
     siteName: "Sunce Renewables",
-    title: "Sunce Renewables | Solar Inverter Repair & Solar Services in India",
-    description:
-      "Expert solar inverter repair, maintenance, AMC, SCADA monitoring, O&M and solar monitoring products from Noida to pan India.",
+    title: TITLE,
+    description: DESCRIPTION,
     images: [
       {
         url: "/hero.webp",
         width: 1200,
         height: 630,
-        alt: "Sunce Renewables solar inverter service team",
+        alt: "Sunce Renewables solar inverter repair team",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Sunce Renewables | Solar Inverter Repair & Solar Services in India",
-    description:
-      "Solar inverter repair, AMC, O&M, SCADA monitoring and solar monitoring products across India.",
+    title: TITLE,
+    description: DESCRIPTION,
     images: ["/hero.webp"],
   },
 };
@@ -50,9 +59,8 @@ const homeJsonLd = {
   "@type": "WebPage",
   "@id": `${SITE_URL}/#webpage`,
   url: SITE_URL,
-  name: "Sunce Renewables | Solar Inverter Repair & Solar Services in India",
-  description:
-    "Expert solar inverter repair, maintenance, AMC, SCADA monitoring, O&M and solar monitoring products from Noida to pan India.",
+  name: TITLE,
+  description: DESCRIPTION,
   isPartOf: { "@id": `${SITE_URL}/#website` },
   about: { "@id": `${SITE_URL}/#organization` },
   primaryImageOfPage: { "@id": `${SITE_URL}/#primaryimage` },
@@ -97,6 +105,7 @@ export default function SiteHomePage() {
         }}
       />
       <HomePage />
+      <SeoContent />
     </>
   );
 }

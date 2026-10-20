@@ -1,12 +1,16 @@
+import Link from "next/link";
+
 const serviceAreas = [
-  "Solar inverter repair",
-  "Solar inverter maintenance",
-  "Solar inverter AMC",
-  "PCB card-level diagnostics",
-  "SCADA monitoring",
-  "Solar O&M services",
-  "Project management consultancy",
-  "Pan India solar support",
+  { label: "Solar inverter repair", href: "/solar-inverter-repair" },
+  { label: "Solar inverter repair in Noida", href: "/solar-inverter-repair/noida" },
+  { label: "Solar inverter repair in Delhi NCR", href: "/solar-inverter-repair/delhi-ncr" },
+  { label: "Solar inverter maintenance & AMC", href: "/services/solar-inverter-maintenance-amc" },
+  { label: "Solar inverter PCB repair", href: "/services/solar-inverter-pcb-repair" },
+  { label: "Solar inverter troubleshooting", href: "/services/solar-inverter-troubleshooting" },
+  { label: "Commercial & industrial inverter repair", href: "/services/commercial-industrial-solar-inverter-repair" },
+  { label: "Solar plant O&M services", href: "/services/solar-plant-operation-maintenance" },
+  { label: "SCADA monitoring", href: "/services/scada-solar-monitoring" },
+  { label: "Brands we repair", href: "/brands" },
 ];
 
 export default function SeoContent() {
@@ -15,7 +19,7 @@ export default function SeoContent() {
       <div className="seo-wrap">
         <div className="seo-kicker">Solar Energy Service Experts</div>
         <h2 id="solar-service-seo-title">
-          Solar Inverter Repair, Maintenance and AMC Services in India
+          Solar Inverter Repair, Maintenance and AMC Services in Noida, Delhi NCR and India
         </h2>
         <div className="seo-grid">
           <div className="seo-copy">
@@ -91,8 +95,9 @@ export default function SeoContent() {
               output without repeated surprises.
             </p>
             <p>
-              If you are searching for solar inverter repair near Noida, solar
-              inverter services in India, solar inverter AMC, SCADA monitoring,
+              If you are searching for solar inverter repair near me in Noida,
+              Greater Noida, Ghaziabad, Delhi, Gurgaon or Faridabad, solar
+              inverter repair services in India, solar inverter AMC, SCADA monitoring,
               solar plant O&M or expert renewable energy service support, Sunce
               Renewables can help you keep your plant productive and your energy
               investment protected. Our goal is simple: faster diagnosis, honest
@@ -104,7 +109,9 @@ export default function SeoContent() {
             <h3>Service Focus</h3>
             <ul>
               {serviceAreas.map((area) => (
-                <li key={area}>{area}</li>
+                <li key={area.href}>
+                  <Link href={area.href}>{area.label}</Link>
+                </li>
               ))}
             </ul>
           </aside>

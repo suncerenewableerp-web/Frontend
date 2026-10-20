@@ -1,6 +1,10 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL } from "./lib/site";
 import { PRODUCTS, productUrl } from "./lib/products";
+import { BLOG_POSTS, blogUrl } from "./lib/seo-pages/blog";
+import { BRANDS, brandUrl } from "./lib/seo-pages/brands";
+import { LOCATIONS, locationUrl } from "./lib/seo-pages/locations";
+import { SERVICES, serviceUrl } from "./lib/seo-pages/services";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
@@ -63,5 +67,23 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.9,
   }));
 
-  return [...staticPages, ...productPages];
+  const page = (
+    path: string,
+    priority: number,
+    changeFrequency: "weekly" | "monthly" = "monthly",
+    lastModified: Date = now
+  ) => ({ url: `${SITE_URL}${path}`, lastModified, changeFrequency, priority });
+
+  const seoPages: MetadataRoute.Sitemap = [
+    page("/solar-inverter-repair", 0.95, "weekly"),
+    page("/services", 0.9, "weekly"),
+    page("/brands", 0.8),
+    page("/blog", 0.8, "weekly"),
+    ...LOCATIONS.map((l) => page(locationUrl(l.slug), 0.9)),
+    ...SERVICES.map((s) => page(serviceUrl(s.slug), 0.85)),
+    ...BRANDS.map((b) => page(brandUrl(b.slug), 0.75)),
+    ...BLOG_POSTS.map((p) => page(blogUrl(p.slug), 0.7, "monthly", new Date(p.datePublished))),
+  ];
+
+  return [...staticPages, ...seoPages, ...productPages];
 }
