@@ -685,12 +685,6 @@ export default function TicketDetail({
   // True while "Other" is picked in the Dispatch courier dropdown (custom name may still be empty).
   const [dispatchCourierOther, setDispatchCourierOther] = useState(false);
   const [dispatchLrNumber, setDispatchLrNumber] = useState("");
-  // Client requirement: Dispatch carries its own "Delivery Method" dropdown with the same
-  // options as Pickup, kept on the ticket's deliveryMethod field.
-  const [dispatchDeliveryMethod, setDispatchDeliveryMethod] = useState(
-    () => String(ticket.deliveryMethod || ""),
-  );
-  const [dispatchDeliveryMethodOther, setDispatchDeliveryMethodOther] = useState(false);
   const [dispatchLocation, setDispatchLocation] = useState("");
   const [dispatchInvoiceGenerated, setDispatchInvoiceGenerated] = useState(false);
   const [dispatchPaymentDone, setDispatchPaymentDone] = useState(false);
@@ -1059,16 +1053,6 @@ export default function TicketDetail({
   useEffect(() => {
     queueMicrotask(() => setNewStatus(ticket.status));
   }, [ticket.status]);
-
-  // Re-sync the Dispatch delivery method whenever the ticket's value changes (save/refresh
-  // or switching to another ticket) so the dropdown never shows a stale selection.
-  useEffect(() => {
-    const value = String(ticket.deliveryMethod || "");
-    queueMicrotask(() => {
-      setDispatchDeliveryMethod(value);
-      setDispatchDeliveryMethodOther(false);
-    });
-  }, [ticket.id, ticket.deliveryMethod]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -3073,103 +3057,6 @@ export default function TicketDetail({
                     ))}
                   </div>
 
-                  {/* Client requirement: the final decision has to sit with the unit identity
-                      (serial number) instead of being buried under Testing, so a decision can
-                      be reviewed/reset without scrolling to the bottom of the job card. */}
-                  <div className="form-section">Job Card Review</div>
-                  <div
-                    style={{
-                      border: "1px solid var(--border)",
-                      borderRadius: 12,
-                      background: "var(--bg2)",
-                      padding: "14px 16px",
-                      marginBottom: 16,
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: 12, color: "var(--text3)" }}>Serial Number</span>
-                      <span className="td-mono" style={{ fontSize: 13, fontWeight: 700 }}>
-                        {String(ticket.serialNumber || "").trim() || "—"}
-                      </span>
-                      <span style={{ fontSize: 12, color: "var(--text3)" }}>
-                        Status: <span className="tag">{statusLabel(ticket.status)}</span>
-                      </span>
-                    </div>
-
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
-                      {canEditJobCard ? (
-                        <>
-                          <span style={{ fontSize: 12, color: "var(--text3)" }}>Finalize date</span>
-                          <input
-                            className="form-input"
-                            type="date"
-                            value={jobCard.engineerFinalizedAt || toDateInputValue(new Date())}
-                            disabled={jobSaving}
-                            onChange={(e) =>
-                              setJobCard((p) =>
-                                p ? { ...p, engineerFinalizedAt: e.target.value } : p,
-                              )
-                            }
-                            style={{ width: 160 }}
-                          />
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            type="button"
-                            disabled={jobSaving}
-                            onClick={() => finalizeJobCard("REPAIRABLE")}
-                          >
-                            Approve (Repaired)
-                          </button>
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            type="button"
-                            disabled={jobSaving}
-                            onClick={() => finalizeJobCard("NOT_REPAIRABLE")}
-                          >
-                            Scrap
-                          </button>
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            type="button"
-                            disabled={jobSaving || !String(jobCard.engineerFinalStatus || "").trim()}
-                            onClick={clearJobCardFinal}
-                            title="Clear Approve (Repaired) / Scrap and move back to Under Repair"
-                          >
-                            Clear
-                          </button>
-                        </>
-                      ) : null}
-                      {String(jobCard.engineerFinalStatus || "").trim() ? (
-                        <span style={{ fontSize: 12, color: "var(--text3)" }}>
-                          Final:{" "}
-                          <span className="tag">
-                            {(() => {
-                              const s = String(jobCard.engineerFinalStatus || "").toUpperCase().trim();
-                              if (s === "NOT_REPAIRABLE") return "SCRAP";
-                              if (s === "REPAIRABLE") return "REPAIRED";
-                              return s || "—";
-                            })()}
-                          </span>
-                          {jobCard.engineerFinalizedAt ? (
-                            <span style={{ marginLeft: 8, fontFamily: "var(--mono)" }}>
-                              {jobCard.engineerFinalizedAt}
-                            </span>
-                          ) : null}
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: 12, color: "var(--text3)" }}>
-                          {canEditJobCard ? "Final decision pending" : "No final decision yet"}
-                        </span>
-                      )}
-                    </div>
-
-                    <div style={{ marginTop: 10, fontSize: 12, color: "var(--text3)", lineHeight: 1.5 }}>
-                      <b>Approve (Repaired)</b> / <b>Scrap</b> records the final decision for this serial number.
-                      Use <b>Clear</b> to reset it — the unit automatically moves back to{" "}
-                      <span className="tag">Under Repair</span>.
-                    </div>
-                  </div>
-
 	                  <div className="form-section">Job Assign To</div>
 	                  <div className="form-grid" style={{ gridTemplateColumns: "minmax(220px, 420px) minmax(180px, 260px) 1fr" }}>
 	                    <div className="form-group">
@@ -3603,6 +3490,73 @@ export default function TicketDetail({
 	                    >
 	                      {jobSaving ? "Saving..." : "Save Job Card"}
 	                    </button>
+	                    {roleName === "ENGINEER" &&
+	                    String(ticket.status || "").toUpperCase() === "UNDER_REPAIRED" ? (
+	                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+	                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+	                          <span style={{ fontSize: 12, color: "var(--text3)" }}>Finalize date</span>
+	                          <input
+	                            className="form-input"
+	                            type="date"
+	                            value={jobCard.engineerFinalizedAt || toDateInputValue(new Date())}
+	                            disabled={jobSaving}
+	                            onChange={(e) =>
+	                              setJobCard((p) =>
+	                                p ? { ...p, engineerFinalizedAt: e.target.value } : p,
+	                              )
+	                            }
+	                            style={{ width: 160 }}
+	                          />
+	                        </div>
+	                        <button
+	                          className="btn btn-ghost btn-sm"
+	                          type="button"
+	                          disabled={jobSaving}
+	                          onClick={() => finalizeJobCard("REPAIRABLE")}
+	                        >
+	                          Approve (Repaired)
+	                        </button>
+	                        <button
+	                          className="btn btn-ghost btn-sm"
+	                          type="button"
+	                          disabled={jobSaving}
+	                          onClick={() => finalizeJobCard("NOT_REPAIRABLE")}
+	                        >
+		                          Scrap
+	                        </button>
+	                        <button
+	                          className="btn btn-ghost btn-sm"
+	                          type="button"
+	                          disabled={jobSaving || !String(jobCard.engineerFinalStatus || "").trim()}
+	                          onClick={clearJobCardFinal}
+	                          title="Clear Approve (Repaired) / Scrap and move back to Under Repair"
+	                        >
+	                          Clear
+	                        </button>
+	                        {String(jobCard.engineerFinalStatus || "").trim() ? (
+	                          <span style={{ fontSize: 12, color: "var(--text3)" }}>
+		                            Final:{" "}
+		                            <span className="tag">
+		                              {(() => {
+		                                const s = String(jobCard.engineerFinalStatus || "").toUpperCase().trim();
+		                                if (s === "NOT_REPAIRABLE") return "SCRAP";
+		                                if (s === "REPAIRABLE") return "REPAIRED";
+		                                return s || "—";
+		                              })()}
+		                            </span>
+	                            {jobCard.engineerFinalizedAt ? (
+	                              <span style={{ marginLeft: 8, fontFamily: "var(--mono)" }}>
+	                                {jobCard.engineerFinalizedAt}
+	                              </span>
+	                            ) : null}
+	                          </span>
+	                        ) : (
+	                          <span style={{ fontSize: 12, color: "var(--text3)" }}>
+	                            Final decision pending
+	                          </span>
+	                        )}
+	                      </div>
+	                    ) : null}
 	                    {!canEditJobCard && (
 	                      <div style={{ fontSize: 12, color: "var(--text3)" }}>
 	                        You don&apos;t have permission to edit job cards.
@@ -4428,7 +4382,6 @@ export default function TicketDetail({
                           courierName: dispatchCourierName,
                           lrNumber: dispatchLrNumber,
                           dispatchLocation,
-                          deliveryMethod: String(dispatchDeliveryMethod || "").trim(),
                         });
 
                   Promise.resolve(save)
@@ -5138,52 +5091,6 @@ export default function TicketDetail({
                       disabled={!canEditLogistics}
                       placeholder="Warehouse / service center"
                     />
-                  </div>
-                  <div className="detail-card">
-                    <div className="detail-label">Delivery Method</div>
-                    {(() => {
-                      // Same option list as Pickup, so dispatch and pickup stay in sync.
-                      const dispatchDeliveryOption = dispatchDeliveryMethodOther
-                        ? "Other"
-                        : resolveCourierOption(dispatchDeliveryMethod).option;
-                      return (
-                        <>
-                          <select
-                            className="form-select"
-                            value={dispatchDeliveryOption}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              if (v === "Other") {
-                                setDispatchDeliveryMethodOther(true);
-                                // Keep an already-typed custom value; drop a preset one.
-                                if (dispatchDeliveryOption !== "Other") setDispatchDeliveryMethod("");
-                              } else {
-                                setDispatchDeliveryMethodOther(false);
-                                setDispatchDeliveryMethod(v);
-                              }
-                            }}
-                            disabled={!canEditLogistics}
-                          >
-                            <option value="">Select delivery method</option>
-                            {DELIVERY_METHODS.map((m) => (
-                              <option key={m} value={m}>
-                                {m}
-                              </option>
-                            ))}
-                          </select>
-                          {dispatchDeliveryOption === "Other" && (
-                            <input
-                              className="form-input"
-                              style={{ marginTop: 8 }}
-                              placeholder="Enter delivery method"
-                              value={dispatchDeliveryMethod}
-                              onChange={(e) => setDispatchDeliveryMethod(e.target.value)}
-                              disabled={!canEditLogistics}
-                            />
-                          )}
-                        </>
-                      );
-                    })()}
                   </div>
                   <div className="detail-card">
                     <div className="detail-label">Courier</div>
