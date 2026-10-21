@@ -6,6 +6,7 @@ import { StatusBadge } from "./Badges";
 import { STATUS_COLORS } from "../constants";
 import {
   LuCircleCheck,
+  LuDownload,
   LuMapPin,
   LuShieldAlert,
   LuShieldCheck,
@@ -46,6 +47,48 @@ const STATUS_PIE_COLORS: Record<string, string> = {
   INSTALLATION_DONE: "#4ade80",
   CLOSED: "#6b7280",
 };
+
+// Escape a value for the HTML-table-as-Excel export below.
+function escapeHtmlCell(input: unknown): string {
+  return String(input ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+// Client requirement: the dashboard ticket-list modal (Under Warranty, trend slices, …)
+// must let the data be downloaded. Same HTML-table trick as the Tickets list export, so
+// the file opens straight in Excel without adding a spreadsheet library.
+function downloadTicketsXls(
+  headers: string[],
+  rows: Array<Array<unknown>>,
+  filenameBase: string,
+) {
+  const table = `<table border="1"><thead><tr>${headers
+    .map((h) => `<th>${escapeHtmlCell(h)}</th>`)
+    .join("")}</tr></thead><tbody>${rows
+    .map((r) => `<tr>${r.map((c) => `<td>${escapeHtmlCell(c)}</td>`).join("")}</tr>`)
+    .join("")}</tbody></table>`;
+
+  const html = `<!doctype html><html><head><meta charset="utf-8" /></head><body>${table}</body></html>`;
+  const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${filenameBase}.xls`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// "Make Model" the way the modal tables show it, with an em-dash when both are empty.
+function makeModelLabel(t: Ticket): string {
+  const label = `${t.inverterMake || ""} ${t.inverterModel || ""}`.trim();
+  return label || "—";
+}
 
 type VendorPieSlice = {
   vendor: string;
@@ -169,6 +212,10 @@ export default function Dashboard({
   const [trendsErr, setTrendsErr] = useState("");
   const [selectedTrendDate, setSelectedTrendDate] = useState<string>("");
   const [trendModal, setTrendModal] = useState<{ label: string; tickets: typeof tickets; summary?: { created: number; repaired: number; closed: number } } | null>(null);
+  // Column filters inside the ticket-list modal (Under Warranty, trend slices, …). Kept
+  // outside `trendModal` so a stale filter never leaks into the next modal that opens.
+  const [trendStatusFilter, setTrendStatusFilter] = useState("");
+  const [trendMakeModelFilter, setTrendMakeModelFilter] = useState("");
   const [showAllDashboardTickets, setShowAllDashboardTickets] = useState(false);
   const [inventoryFilter, setInventoryFilter] = useState<{ type: "vendor" | "model" | "status"; label: string; vendor: string; model?: string; status?: string } | null>(null);
   const [showAllInventoryVendors, setShowAllInventoryVendors] = useState(false);
@@ -1035,9 +1082,8 @@ export default function Dashboard({
       if (to && d > to) return false;
       return true;
     });
-    setTrendModal({ label: point.xTooltip || point.xLabel, tickets: filtered, summary });
+    openTrendModal({ label: point.xTooltip || point.xLabel, tickets: filtered, summary });
   };
-
   const openTrendPieModal = (category: "created" | "repaired" | "closed", label: string, value: number) => {
     const filtered = (tickets || []).filter((t) => {
       const s = String(t.status || "").toUpperCase();
@@ -1045,11 +1091,68 @@ export default function Dashboard({
       if (category === "repaired") return s === "UNDER_REPAIRED" || s === "REPAIRED";
       return true; // "created" → show all in period
     });
-    setTrendModal({
+    openTrendModal({
       label: `${label} (${value})`,
       tickets: filtered,
       summary: undefined,
     });
+  };
+
+  // Opens the ticket-list modal (Under Warranty card, trend slices, …) with the column
+  // filters reset, so a stale filter never leaks into the next modal.
+  const openTrendModal = (next: { label: string; tickets: typeof tickets; summary?: { created: number; repaired: number; closed: number } }) => {
+    setTrendStatusFilter("");
+    setTrendMakeModelFilter("");
+    setTrendModal(next);
+  };
+
+  // Rows actually shown (and downloaded) after the modal's Status / Make-Model filters.
+  const trendModalRows = useMemo(() => {
+    const all = trendModal?.tickets || [];
+    if (!trendStatusFilter && !trendMakeModelFilter) return all;
+    return all.filter(
+      (t) =>
+        (!trendStatusFilter || String(t.status || "") === trendStatusFilter) &&
+        (!trendMakeModelFilter || makeModelLabel(t) === trendMakeModelFilter),
+    );
+  }, [trendModal, trendStatusFilter, trendMakeModelFilter]);
+
+  const trendModalStatusOptions = useMemo(() => {
+    const seen = new Set<string>();
+    for (const t of trendModal?.tickets || []) {
+      const s = String(t.status || "").trim();
+      if (s) seen.add(s);
+    }
+    return Array.from(seen).sort();
+  }, [trendModal]);
+
+  const trendModalMakeModelOptions = useMemo(() => {
+    const seen = new Set<string>();
+    for (const t of trendModal?.tickets || []) {
+      const label = makeModelLabel(t);
+      if (label !== "—") seen.add(label);
+    }
+    return Array.from(seen).sort();
+  }, [trendModal]);
+
+  const downloadTrendModal = () => {
+    if (!trendModal) return;
+    const headers = ["Ticket ID", "Customer", "Make · Model", "Serial No.", "Status", "Priority", "Created"];
+    const rows = trendModalRows.map((t) => [
+      t.ticketId,
+      t.customerName || t.customer || "—",
+      makeModelLabel(t),
+      t.serialNumber || "—",
+      formatTicketStatusLabel(t.status),
+      t.priority,
+      t.createdAt,
+    ]);
+    const slug =
+      String(trendModal.label || "tickets")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "tickets";
+    downloadTicketsXls(headers, rows, `${slug}-${rows.length}-tickets`);
   };
 
   const trendsCard = showTrends ? (
@@ -1556,7 +1659,7 @@ export default function Dashboard({
                 color: "#0891b2",
                 Icon: LuShieldCheck,
                 onClick: () =>
-                  setTrendModal({ label: "Under Warranty", tickets: warrantyTickets, summary: undefined }),
+                  openTrendModal({ label: "Under Warranty", tickets: warrantyTickets, summary: undefined }),
               },
             ].map((k) => (
               <button
@@ -1922,11 +2025,62 @@ export default function Dashboard({
                   <div>
                     <div className="modal-title">{trendModal.label}</div>
                     <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
-                      {trendModal.tickets.length} ticket{trendModal.tickets.length !== 1 ? "s" : ""}
+                      {trendModalRows.length === trendModal.tickets.length
+                        ? `${trendModal.tickets.length} ticket${trendModal.tickets.length !== 1 ? "s" : ""}`
+                        : `${trendModalRows.length} of ${trendModal.tickets.length} tickets`}
                       {trendModal.summary ? ` · Created: ${trendModal.summary.created} · Repaired: ${trendModal.summary.repaired} · Closed: ${trendModal.summary.closed}` : ""}
                     </div>
                   </div>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setTrendModal(null)}>Close</button>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {/* Client requirement: Under Warranty data (and every list this modal
+                        shows) must be downloadable — exports exactly the filtered rows. */}
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={downloadTrendModal}
+                      disabled={!trendModalRows.length}
+                      title="Download the tickets shown below as an Excel sheet"
+                    >
+                      <LuDownload aria-hidden style={{ marginRight: 6 }} />
+                      Download
+                    </button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setTrendModal(null)}>Close</button>
+                  </div>
+                </div>
+                {/* Client requirement: filter the list by Status and by Make · Model. */}
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "10px 16px", borderBottom: "1px solid var(--border)" }}>
+                  <select
+                    className="form-select"
+                    value={trendStatusFilter}
+                    onChange={(e) => setTrendStatusFilter(e.target.value)}
+                    style={{ width: 190, fontSize: 12, fontFamily: "var(--mono)" }}
+                    aria-label="Filter by status"
+                  >
+                    <option value="">All Statuses</option>
+                    {trendModalStatusOptions.map((s) => (
+                      <option key={s} value={s}>{formatTicketStatusLabel(s)}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="form-select"
+                    value={trendMakeModelFilter}
+                    onChange={(e) => setTrendMakeModelFilter(e.target.value)}
+                    style={{ width: 220, fontSize: 12, fontFamily: "var(--mono)" }}
+                    aria-label="Filter by make and model"
+                  >
+                    <option value="">All Make · Model</option>
+                    {trendModalMakeModelOptions.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  {(trendStatusFilter || trendMakeModelFilter) ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => { setTrendStatusFilter(""); setTrendMakeModelFilter(""); }}
+                    >
+                      Clear filters
+                    </button>
+                  ) : null}
                 </div>
                 <div className="scroll-x" style={{ maxHeight: 480, overflowY: "auto" }}>
                   <table>
@@ -1942,9 +2096,9 @@ export default function Dashboard({
                       </tr>
                     </thead>
                     <tbody>
-                      {!trendModal.tickets.length ? (
+                      {!trendModalRows.length ? (
                         <tr><td colSpan={7} style={{ padding: 18, color: "var(--text3)" }}>No tickets found.</td></tr>
-                      ) : trendModal.tickets.map((t) => (
+                      ) : trendModalRows.map((t) => (
                         <tr key={t.id}>
                           <td>
                             <button type="button" className="td-mono table-link"
