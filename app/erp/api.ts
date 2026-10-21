@@ -1473,6 +1473,8 @@ export async function apiScheduleDispatch(input: {
   courierName: string;
   lrNumber: string;
   dispatchLocation: string;
+  // Saved on the ticket (same field the Pickup side uses) so Dispatch can record it too.
+  deliveryMethod?: string;
 }): Promise<void> {
   const payload = {
     ticketId: input.ticketId,
@@ -1480,6 +1482,9 @@ export async function apiScheduleDispatch(input: {
     courierName: input.courierName,
     lrNumber: input.lrNumber,
     dispatchLocation: input.dispatchLocation,
+    ...(input.deliveryMethod !== undefined
+      ? { deliveryMethod: String(input.deliveryMethod || "").trim() }
+      : {}),
   };
   const env = await apiFetch<unknown>("/api/logistics/schedule-dispatch", {
     method: "POST",
