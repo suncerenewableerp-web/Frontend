@@ -1,4 +1,8 @@
-export const SITE_URL = "https://suncerenewable.com";
+// Canonical host is www — the apex domain redirects to www (keep that redirect
+// permanent, 308, in Vercel → Domains), so every
+// canonical / sitemap / og:url / JSON-LD URL must use the www host or Google
+// treats the www pages as "alternate pages with proper canonical tag".
+export const SITE_URL = "https://www.suncerenewable.com";
 export const SITE_NAME = "Sunce Renewables";
 export const SITE_LOCALE = "en_IN";
 

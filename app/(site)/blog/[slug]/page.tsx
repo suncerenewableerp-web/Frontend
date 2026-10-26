@@ -60,7 +60,11 @@ export default async function BlogPostPage({ params }: Props) {
       related={[
         {
           title: "Related Services",
-          links: [{ label: "Solar Inverter Repair", href: "/solar-inverter-repair" }, ...related],
+          links: [
+            { label: "Solar Inverter Repair", href: "/solar-inverter-repair" },
+            ...related,
+            ...(post.relatedLinks ?? []),
+          ],
         },
         blogLinks(post.slug),
         locationLinks(),

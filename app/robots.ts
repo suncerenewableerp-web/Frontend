@@ -20,11 +20,6 @@ export default function robots(): MetadataRoute.Robots {
           "/reset-password",
         ],
       },
-      {
-        userAgent: "Googlebot",
-        allow: "/",
-        disallow: ["/api/", "/uploads/", "/erp", "/dashboard", "/login"],
-      },
     ],
     sitemap: `${SITE_URL}/sitemap.xml`,
     host: SITE_URL,

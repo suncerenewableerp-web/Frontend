@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Script from "next/script";
+import { SITE_URL } from "./lib/site";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -12,7 +13,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://suncerenewable.com"),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "Sunce Renewables | Solar Inverter Repair & Services in India",
     template: "%s | Sunce Renewables",

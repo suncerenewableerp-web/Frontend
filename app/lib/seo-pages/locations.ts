@@ -88,6 +88,11 @@ export const LOCATIONS: LandingPage[] = [
       "solar panel inverter repair noida",
       "solar power system repair noida",
       "solar inverter maintenance noida",
+      "solar inverter in noida",
+      "solar inverters in noida",
+      "solar inverter service centre noida",
+      "solar inverter repair sector 63 noida",
+      "rooftop solar repair noida",
     ],
     localIntro:
       "Sunce Renewables is headquartered at B-203, Sector 63A, Noida, with our solar inverter repair workshop in the same city. That makes us one of the closest specialist solar inverter repair companies for homes, housing societies, offices and factories in Noida.",

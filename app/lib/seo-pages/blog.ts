@@ -7,7 +7,7 @@ export const BLOG_POSTS: BlogPost[] = [
     slug: "why-is-my-solar-inverter-not-working",
     title: "Why Is My Solar Inverter Not Working? 9 Causes & Fixes",
     description:
-      "Solar inverter not working or showing no generation? Learn the 9 most common causes, what you can safely check yourself and when to call a solar inverter technician.",
+      "Solar inverter not working or showing no generation? The 9 most common causes, what you can safely check yourself and when to call a technician.",
     h1: "Why Is My Solar Inverter Not Working?",
     datePublished: PUBLISHED,
     readMinutes: 6,
@@ -89,7 +89,7 @@ export const BLOG_POSTS: BlogPost[] = [
     slug: "signs-your-solar-inverter-needs-repair",
     title: "7 Signs Your Solar Inverter Needs Repair",
     description:
-      "Watch for these 7 warning signs that your solar inverter needs repair — from error lights and noise to falling generation — before a small fault becomes a costly breakdown.",
+      "7 warning signs your solar inverter needs repair — error lights, noise, falling generation — and how to act before a small fault becomes a costly breakdown.",
     h1: "7 Signs Your Solar Inverter Needs Repair",
     datePublished: PUBLISHED,
     readMinutes: 5,
@@ -242,7 +242,7 @@ export const BLOG_POSTS: BlogPost[] = [
     slug: "when-to-replace-a-solar-inverter",
     title: "When to Replace a Solar Inverter: 6 Clear Signals",
     description:
-      "When should you replace a solar inverter instead of repairing it? Six clear signals — age, damage, parts, efficiency and capacity — from solar inverter repair experts.",
+      "When should you replace a solar inverter instead of repairing it? Six clear signals — age, damage, parts, efficiency and capacity — from repair experts.",
     h1: "When to Replace a Solar Inverter",
     datePublished: PUBLISHED,
     readMinutes: 4,
@@ -404,6 +404,346 @@ export const BLOG_POSTS: BlogPost[] = [
       { heading: "Why DIY internal repair is risky", paragraphs: ["Beyond the shock risk, incorrect parts or poor soldering can cause fire or repeat failure and may void warranties. Use an experienced solar inverter repair company."] },
     ],
     relatedServices: ["solar-inverter-pcb-repair", "solar-inverter-troubleshooting"],
+  },
+  {
+    slug: "solar-inverter-repair-in-noida-guide",
+    title: "How to Choose a Solar Inverter Repair Service in Noida",
+    description:
+      "How to choose a reliable solar inverter repair service in Noida — questions to ask, red flags to avoid and how genuine component-level repair works.",
+    h1: "How to Choose a Solar Inverter Repair Service in Noida",
+    datePublished: PUBLISHED,
+    readMinutes: 6,
+    keywords: [
+      "how to choose solar inverter repair service",
+      "questions to ask solar inverter technician",
+      "solar inverter repair red flags",
+    ],
+    intro: [
+      "Noida has hundreds of rooftop solar systems across Sector 62, 63, 137, Greater Noida West and the industrial areas — and when an inverter stops working, most owners face the same problem: who do you call? This guide explains how to judge a solar inverter repair service in Noida before you hand over your inverter.",
+    ],
+    sections: [
+      {
+        heading: "What to check before choosing a repair service",
+        bullets: [
+          "Do they repair at component (PCB) level, or only swap whole boards?",
+          "Do they service your inverter's brand and model?",
+          "Do they give a written estimate after diagnosis, before repair?",
+          "Do they have a workshop, not just field technicians?",
+          "Do they handle out-of-warranty and discontinued inverters?",
+          "Are there genuine customer reviews with local addresses?",
+        ],
+      },
+      {
+        heading: "Red flags to avoid",
+        paragraphs: [
+          "Anyone who quotes a fixed price over the phone without seeing the fault, refuses to explain what failed, or pushes you straight to buying a new inverter is usually not doing you a favour. A trustworthy service diagnoses first, explains the fault in plain language, then shares the cost of repair.",
+        ],
+      },
+      {
+        heading: "Why a local Noida workshop matters",
+        paragraphs: [
+          "For simple faults a technician can fix things on site. But PCB-level failures — burnt power stages, dead power supplies, damaged control boards — need bench testing equipment that only a workshop has. A repair company with its own workshop in Noida can diagnose properly, test the repaired board under load before re-installation, and give you a warranty on the repair itself.",
+        ],
+      },
+      {
+        heading: "Questions worth asking on the first call",
+        bullets: [
+          "What is the diagnosis charge, and is it adjusted against the repair?",
+          "How long will the repair take?",
+          "What warranty do you give on the repair?",
+          "Will you share what actually failed, with photos?",
+          "Do you handle AMC if I have more than one inverter?",
+        ],
+      },
+      {
+        heading: "How Sunce Renewables works",
+        paragraphs: [
+          "We are based at Sector 63A, Noida, with our own repair workshop. Share your inverter brand, model and error code on call or WhatsApp — we first narrow the fault remotely, then either fix it on site or bring it to the workshop for component-level repair. You always get an estimate before any repair starts, and a warranty on the work done.",
+        ],
+      },
+    ],
+    faqs: [
+      {
+        q: "How much does solar inverter repair cost in Noida?",
+        a: "It depends on the fault. Simple fan or fuse replacement costs little; power-stage or control board repair costs more but is still far cheaper than a new inverter. A good service shares the estimate after diagnosis.",
+      },
+      {
+        q: "Do you collect the inverter from my location in Noida?",
+        a: "Yes. For workshop-level repairs we arrange pickup across Noida, Greater Noida and Ghaziabad, and return the inverter after testing.",
+      },
+    ],
+    relatedServices: ["solar-inverter-troubleshooting", "solar-inverter-maintenance-amc"],
+    relatedLinks: [{ label: "Solar Inverter Repair in Noida", href: "/solar-inverter-repair/noida" }],
+  },
+  {
+    slug: "solar-inverter-amc-cost-india",
+    title: "Solar Inverter AMC Cost in India: What's Included & Is It Worth It?",
+    description:
+      "What decides solar inverter AMC cost in India, what a good AMC includes, and how to judge whether an annual maintenance contract is worth it.",
+    h1: "Solar Inverter AMC Cost in India",
+    datePublished: PUBLISHED,
+    readMinutes: 5,
+    keywords: [
+      "solar inverter AMC cost",
+      "solar inverter annual maintenance contract cost",
+      "solar AMC charges india",
+      "solar inverter maintenance plan",
+    ],
+    intro: [
+      "An annual maintenance contract (AMC) keeps your solar inverter serviced on a schedule and gives you priority support when something fails. But AMC pricing is rarely published, and what is actually covered varies enormously. Here is how AMC cost is decided and what you should insist on.",
+    ],
+    sections: [
+      {
+        heading: "What drives AMC cost",
+        bullets: [
+          "Number and capacity of inverters at the site",
+          "Whether it is a comprehensive AMC (all parts included) or a non-comprehensive one (only labour and visit)",
+          "Inverter brand and whether spares are easily available",
+          "Site accessibility and how many visits per year are planned",
+          "Response time commitment you expect",
+        ],
+      },
+      {
+        heading: "Comprehensive vs non-comprehensive AMC",
+        paragraphs: [
+          "A comprehensive AMC covers scheduled visits plus replacement of most parts, and costs more. A non-comprehensive AMC covers inspection, cleaning and labour only — parts are billed separately. For a single healthy residential inverter, a non-comprehensive plan usually gives the best value. For a commercial plant with several inverters and costly downtime, a comprehensive plan removes surprise bills.",
+        ],
+      },
+      {
+        heading: "Signs a good AMC is worth the money",
+        bullets: [
+          "Your plant has more than one inverter or is business-critical",
+          "The site is dusty or exposed and has a history of faults",
+          "You have no in-house team to check generation data regularly",
+          "Downtime directly costs you money or savings",
+        ],
+      },
+      {
+        heading: "Questions to ask before signing",
+        bullets: [
+          "How many preventive visits are included?",
+          "Are cleaning, torque checks and insulation testing included?",
+          "What is the response time for a breakdown?",
+          "Are replacement parts included or billed separately?",
+          "Is there a discount if I bundle panel cleaning or O&M?",
+        ],
+      },
+    ],
+    faqs: [
+      {
+        q: "Is a solar inverter AMC worth it?",
+        a: "For a single small inverter with no fault history, yearly preventive maintenance may be enough. For commercial plants, multi-inverter sites or dusty environments, an AMC usually pays for itself by preventing breakdowns.",
+      },
+      {
+        q: "How often should an inverter be serviced under an AMC?",
+        a: "Most AMCs include one or two preventive visits a year. Dusty or industrial sites benefit from quarterly attention.",
+      },
+    ],
+    relatedServices: ["solar-inverter-maintenance-amc", "solar-plant-operation-maintenance"],
+  },
+  {
+    slug: "growatt-solar-inverter-common-errors",
+    title: "Growatt Solar Inverter Common Errors & What They Mean",
+    description:
+      "Growatt inverter showing an error? What common Growatt faults mean — no AC connection, PV isolation low, residual current — and what to check first.",
+    h1: "Growatt Solar Inverter Common Errors",
+    datePublished: PUBLISHED,
+    readMinutes: 6,
+    keywords: [
+      "growatt inverter error code",
+      "growatt inverter fault",
+      "growatt inverter not working",
+      "growatt inverter repair",
+    ],
+    intro: [
+      "Growatt is one of the most widely installed inverter brands in India, and its fault messages are a frequent search. Exact codes and wording vary across models and firmware (MIN, MID, MOD, SPH), so always check your model's manual — but the messages fall into a few clear groups. Identifying the group tells you whether the problem is the grid, the solar array, the environment or the inverter itself.",
+    ],
+    sections: [
+      {
+        heading: "Common Growatt error groups",
+        bullets: [
+          "No AC Connection / AC V Outrange / AC F Outrange — the grid is absent, or its voltage or frequency is outside the inverter's limits.",
+          "PV Isolation Low — insulation resistance on the DC (panel) side is too low, usually due to moisture or damaged cabling.",
+          "Over-temperature warnings — the inverter is too hot and has derated or shut down.",
+          "Residual I High — residual (leakage) current fault, often caused by moisture or damaged DC cabling.",
+          "Numbered \"Error\" codes (for example relay or internal faults) — usually an internal hardware problem that needs a technician.",
+          "Monitoring offline — the Wi-Fi / ShineLink dongle has lost connection to the inverter or the router.",
+        ],
+      },
+      {
+        heading: "What to check first, safely",
+        bullets: [
+          "Is the grid supply present and stable?",
+          "Are the AC breaker and DC isolator both ON?",
+          "Did the error start after rain, cleaning or recent work on the site?",
+          "Is the inverter in direct sun with blocked ventilation?",
+          "Note the exact code and time it appears before restarting anything.",
+        ],
+      },
+      {
+        heading: "When it needs a technician",
+        paragraphs: [
+          "If the same Growatt error returns immediately after a correct restart, the fault is internal — relay, power supply, control board or power stage. Do not keep resetting: repeated restarts on a damaged power stage can turn a repairable fault into a total failure.",
+        ],
+      },
+    ],
+    faqs: [
+      {
+        q: "Why does my Growatt inverter keep showing a grid fault?",
+        a: "Usually the grid voltage is outside the inverter's acceptable range — common at the far end of a feeder in the afternoon. If the grid reads normal at the terminals and the error persists, the inverter's relay or sensing circuit needs checking.",
+      },
+      {
+        q: "Can a Growatt isolation fault be fixed?",
+        a: "Yes. It is usually caused by damaged DC cable, water in a junction box or a failed MC4 connector. Finding and repairing the specific string resolves it.",
+      },
+    ],
+    relatedServices: ["solar-inverter-troubleshooting", "solar-inverter-pcb-repair"],
+  },
+  {
+    slug: "monsoon-problems-for-solar-inverters",
+    title: "Monsoon Problems for Solar Inverters in India — Protection Guide",
+    description:
+      "How the monsoon affects solar inverters in India — moisture, isolation faults, lightning surges — and the checks that prevent monsoon breakdowns.",
+    h1: "Monsoon Problems for Solar Inverters",
+    datePublished: PUBLISHED,
+    readMinutes: 5,
+    keywords: [
+      "monsoon solar inverter problems",
+      "solar inverter water damage",
+      "solar inverter isolation fault rain",
+      "lightning damage solar inverter",
+    ],
+    intro: [
+      "Every year, just after the first heavy rains, solar inverter faults spike. Moisture, humidity and lightning account for a large share of the breakdowns we see during the monsoon season. Most of them are preventable with a few simple checks.",
+    ],
+    sections: [
+      {
+        heading: "How rain damages inverters",
+        bullets: [
+          "Water entering junction boxes and DC connectors lowers insulation resistance, causing isolation faults",
+          "Humidity causes condensation and corrosion on PCBs over time",
+          "Lightning and grid surges damage input stages and communication boards",
+          "Wet dust becomes conductive and clogs vents and heat sinks",
+        ],
+      },
+      {
+        heading: "Pre-monsoon checks worth doing",
+        bullets: [
+          "Inspect the inverter's mounting shade and cable entries for gaps",
+          "Check that junction boxes and connectors are properly sealed",
+          "Verify earthing and surge protection devices are working",
+          "Clear drainage paths so water does not pool near the inverter",
+          "Check insulation resistance before the rains if the plant is large",
+        ],
+      },
+      {
+        heading: "After heavy rain — what to do",
+        paragraphs: [
+          "If your inverter shows an isolation or residual current error after rain, do not keep restarting it. Let panels and cabling dry, then a technician should test insulation resistance string by string to find the exact point of moisture ingress and seal it properly.",
+        ],
+      },
+    ],
+    faqs: [
+      {
+        q: "Is a solar inverter safe in the rain?",
+        a: "A properly installed inverter with correct IP rating, sealed cable entries and good earthing handles normal rain safely. Problems come from poor installation, damaged seals and missing surge protection.",
+      },
+    ],
+    relatedServices: ["solar-inverter-maintenance-amc", "solar-inverter-troubleshooting"],
+  },
+  {
+    slug: "solar-inverter-warranty-what-is-covered",
+    title: "Solar Inverter Warranty: What's Covered and What Voids It",
+    description:
+      "What a standard solar inverter warranty covers, what voids it, the difference between product and performance warranty, and what to do once it expires.",
+    h1: "Solar Inverter Warranty Explained",
+    datePublished: PUBLISHED,
+    readMinutes: 5,
+    keywords: [
+      "solar inverter warranty",
+      "solar inverter warranty period",
+      "out of warranty solar inverter repair",
+      "does solar inverter warranty void",
+    ],
+    intro: [
+      "Most string inverters in India carry a standard 5-year product warranty, extendable to 10 or 20 years on many brands. But the warranty only protects you if you understand what it covers — and what can void it.",
+    ],
+    sections: [
+      {
+        heading: "Product vs performance warranty",
+        bullets: [
+          "Product warranty covers defects and failures of the inverter itself",
+          "Performance warranty guarantees minimum conversion efficiency over the years",
+          "Extensions usually add to the product warranty, sometimes at extra cost at time of purchase",
+        ],
+      },
+      {
+        heading: "What typically voids a warranty",
+        bullets: [
+          "Opening the inverter or breaking the manufacturer's seal",
+          "Repair by an unauthorised party",
+          "Incorrect installation — wrong earthing, undersized cables, unstable grid",
+          "Damage from lightning or surges where surge protection was not provided",
+          "Using the inverter outside its rated conditions",
+        ],
+      },
+      {
+        heading: "Once the warranty ends",
+        paragraphs: [
+          "Out-of-warranty is where independent repair makes the biggest difference. Component-level repair of the failed board costs a fraction of a new inverter and gets your plant generating again quickly — the same work is often not offered by the manufacturer's service channel once the unit is out of warranty.",
+        ],
+      },
+    ],
+    faqs: [
+      {
+        q: "Can an out-of-warranty solar inverter be repaired?",
+        a: "Yes, and it is usually very economical. Component-level repair restores the inverter at a fraction of replacement cost, even for models with no spare parts available.",
+      },
+    ],
+    relatedServices: ["solar-inverter-replacement", "solar-inverter-pcb-repair"],
+  },
+  {
+    slug: "how-to-reduce-solar-inverter-downtime",
+    title: "How to Reduce Solar Inverter Downtime in Commercial Plants",
+    description:
+      "Practical ways to cut solar inverter downtime in commercial and industrial plants — standby units, monitoring, spares strategy and root-cause analysis.",
+    h1: "Reducing Solar Inverter Downtime",
+    datePublished: PUBLISHED,
+    readMinutes: 5,
+    keywords: [
+      "solar inverter downtime",
+      "solar plant uptime",
+      "commercial solar inverter maintenance",
+      "solar plant availability",
+    ],
+    intro: [
+      "In a commercial or industrial solar plant, a single failed inverter can mean thousands of units of lost generation every week. Here is how plant owners keep downtime low.",
+    ],
+    sections: [
+      {
+        heading: "Strategies that work",
+        bullets: [
+          "Remote monitoring with alerts, so a fault is spotted the same day — not at month end",
+          "A repaired standby unit for plants with several identical inverters",
+          "A small spares kit of fuses, fans, connectors and communication dongles on site",
+          "Root-cause analysis of repeat failures instead of repeated resets",
+          "Scheduled preventive maintenance before peak generation season",
+        ],
+      },
+      {
+        heading: "Why repeat failures happen",
+        paragraphs: [
+          "If the same inverter fails again within months, the fault was never fully diagnosed — or an external cause (grid voltage, cabling, earthing) was never fixed. Replacing parts without finding the root cause just delays the next breakdown.",
+        ],
+      },
+      {
+        heading: "How Sunce helps commercial plants",
+        paragraphs: [
+          "For C&I plants we combine SCADA and string-level monitoring with AMC plans, so under-performance and faults are flagged early. Repaired units are load-tested before re-installation, and we analyse failures across the fleet to fix the cause, not just the symptom.",
+        ],
+      },
+    ],
+    relatedServices: ["commercial-industrial-solar-inverter-repair", "scada-solar-monitoring"],
   },
 ];
 

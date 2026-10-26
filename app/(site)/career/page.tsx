@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import JsonLd from "../../components/JsonLd";
 import { breadcrumbJsonLd, pageMetadata } from "../../lib/seo";
+import { SITE_URL } from "../../lib/site";
 import CareerContent from "./CareerContent";
 
 export const metadata: Metadata = pageMetadata({
@@ -24,7 +25,7 @@ export default function CareerPage() {
           "@context": "https://schema.org",
           "@type": "WebPage",
           name: "Careers at Sunce Renewables",
-          url: "https://suncerenewable.com/career",
+          url: `${SITE_URL}/career`,
           description:
             "Career openings for solar inverter technicians, SCADA engineers and solar O&M professionals.",
         }}

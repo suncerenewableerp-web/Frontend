@@ -40,4 +40,6 @@ export type BlogPost = {
   faqs?: Faq[];
   /** Slugs of service pages to link to at the end of the article. */
   relatedServices: string[];
+  /** Extra links (e.g. a location page) shown with the related services. */
+  relatedLinks?: { label: string; href: string }[];
 };
