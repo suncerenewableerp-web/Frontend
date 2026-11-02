@@ -154,7 +154,7 @@ export default function CareerPage() {
                   </div>
                 </div>
                 <p style={{ fontSize: "0.9rem", color: "rgba(44,26,14,0.6)", lineHeight: 1.7, marginBottom: 18 }}>{o.desc}</p>
-                <a href={`https://wa.me/916361991349?text=${encodeURIComponent(`Hi Sunce! I'm interested in the "${o.title}" position. I'd like to apply.`)}`} target="_blank" rel="noopener noreferrer" style={{
+                <a href={`https://wa.me/916392189472?text=${encodeURIComponent(`Hi Sunce! I'm interested in the "${o.title}" position. I'd like to apply.`)}`} target="_blank" rel="noopener noreferrer" style={{
                   display: "inline-flex", alignItems: "center", gap: 8,
                   background: "var(--navy)", color: "#fff", padding: "10px 22px",
                   borderRadius: 8, fontSize: "0.82rem", fontWeight: 600, textDecoration: "none",
@@ -180,7 +180,7 @@ export default function CareerPage() {
           <p style={{ fontSize: "0.95rem", color: "rgba(255,255,255,0.7)", lineHeight: 1.7, marginBottom: 28 }}>
             We&apos;re always looking for talented professionals. Send us your resume and we&apos;ll reach out when we have a matching opportunity.
           </p>
-          <a href={`https://wa.me/916361991349?text=${encodeURIComponent("Hi Sunce! I'd like to submit my resume for future opportunities.")}`} target="_blank" rel="noopener noreferrer" style={{
+          <a href={`https://wa.me/916392189472?text=${encodeURIComponent("Hi Sunce! I'd like to submit my resume for future opportunities.")}`} target="_blank" rel="noopener noreferrer" style={{
             display: "inline-flex", alignItems: "center", gap: 8,
             background: "var(--gold-warm)", color: "var(--brown)", padding: "14px 32px",
             borderRadius: 8, fontFamily: "'Outfit', sans-serif", fontSize: "0.9rem", fontWeight: 600,

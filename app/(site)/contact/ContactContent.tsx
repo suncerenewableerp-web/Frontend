@@ -29,7 +29,7 @@ export default function ContactPage() {
 
   const handleSend = () => {
     const text = `Hi Sunce Renewables!\n\nName: ${form.name}\nPhone: ${form.phone}\nEmail: ${form.email}\nSubject: ${form.subject}\nMessage: ${form.message}`;
-    window.open(`https://wa.me/916361991349?text=${encodeURIComponent(text)}`, "_blank");
+    window.open(`https://wa.me/916392189472?text=${encodeURIComponent(text)}`, "_blank");
   };
 
   return (

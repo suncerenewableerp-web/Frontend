@@ -11,7 +11,7 @@ export const SITE_LOCALE = "en_IN";
 export const PHONE = "+91-9540263987";
 export const PHONE_ALT = "+91-9354299513";
 export const PHONE_HREF = "tel:+919540263987";
-export const WHATSAPP_HREF = "https://wa.me/916361991349";
+export const WHATSAPP_HREF = "https://wa.me/916392189472";
 export const EMAIL = "info@suncerenewable.com";
 
 export const ADDRESS = {
