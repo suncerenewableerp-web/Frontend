@@ -72,6 +72,7 @@ import DatePicker from "./DatePicker";
 import NameCombobox from "./NameCombobox";
 import TicketTimeline from "./TicketTimeline";
 import WhatsAppShareModal from "./WhatsAppShareModal";
+import InverterHistoryModal from "./InverterHistoryModal";
 import { FiFile, FiFileText, FiImage } from "react-icons/fi";
 
 const DEFAULT_FINAL_TESTING: Array<Pick<JobCardFinalTestingActivity, "sr" | "activity">> = [
@@ -308,6 +309,7 @@ export default function TicketDetail({
   const [newStatus, setNewStatus] = useState(ticket.status);
   const [updating, setUpdating] = useState(false);
   const [statusError, setStatusError] = useState("");
+  const [inverterHistoryOpen, setInverterHistoryOpen] = useState(false);
   const currentIdx = STATUS_ORDER.indexOf(ticket.status);
   // Super Admin has full system access, so every admin-tier gate has to accept it too —
   // matching `isAdminTierRole` on the backend. Checking `roleName === "ADMIN"` alone left
@@ -1485,6 +1487,25 @@ export default function TicketDetail({
                 <StatusBadge status={ticket.status} />
               </>
             ) : null}
+            {ticket.serialNumber && ticket.serialNumber !== "—" && ticket.serialNumber.toUpperCase() !== "NA" ? (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 12,
+                  padding: "3px 10px",
+                  borderColor: "var(--border)",
+                  cursor: "pointer",
+                }}
+                onClick={() => setInverterHistoryOpen(true)}
+                title="View complete service history for this inverter"
+              >
+                🕒 Inverter History
+              </button>
+            ) : null}
           </div>
           <div style={{ fontSize: 13, color: "var(--text2)", marginTop: 3 }}>
             {ticket.customer} · {ticket.inverterMake} {ticket.inverterModel} ({ticket.capacity})
@@ -2057,7 +2078,24 @@ export default function TicketDetail({
             ].map(([label, val]) => (
               <div key={label} className="detail-card">
                 <div className="detail-label">{label}</div>
-                <div className="detail-value">{val}</div>
+                <div className="detail-value">
+                  {label === "Serial Number" && val && val !== "—" && val.toUpperCase() !== "NA" ? (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                      <span>{val}</span>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        style={{ padding: "2px 8px", fontSize: 11, borderColor: "var(--border)" }}
+                        onClick={() => setInverterHistoryOpen(true)}
+                        title="View history for this serial number"
+                      >
+                        🕒 View History
+                      </button>
+                    </div>
+                  ) : (
+                    val
+                  )}
+                </div>
               </div>
             ))}
             {canShowWarranty ? (
@@ -5417,6 +5455,21 @@ export default function TicketDetail({
         onPhoneChange={setWaPhone}
         message={waMessage}
         onClose={() => setWaOpen(false)}
+      />
+
+      <InverterHistoryModal
+        open={inverterHistoryOpen}
+        serialNo={ticket.serialNumber}
+        currentTicketId={ticket.ticketId}
+        onClose={() => setInverterHistoryOpen(false)}
+        onSelectTicket={async (ticketId) => {
+          try {
+            const fresh = await apiTicketGet(ticketId);
+            onTicketUpdated(fresh);
+          } catch (err) {
+            console.error("Failed to load historical ticket:", err);
+          }
+        }}
       />
     </div>
   );

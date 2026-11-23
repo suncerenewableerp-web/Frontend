@@ -1022,6 +1022,74 @@ export async function apiUpdateTicketStatus(
   return toTicket(env.data);
 }
 
+export type InverterHistoryTicket = {
+  _id: string;
+  ticketId: string;
+  serviceType?: string;
+  status: string;
+  issue?: {
+    description?: string;
+    errorCode?: string;
+    priority?: string;
+  };
+  inverter?: {
+    make?: string;
+    model?: string;
+    serialNo?: string;
+    capacity?: string;
+  };
+  customer?: {
+    name?: string;
+    company?: string;
+    phone?: string;
+  };
+  onsite?: {
+    engineerName?: string;
+    visitDate?: string;
+    remark?: string;
+  };
+  remarks?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  slaStatus?: string;
+  jobCard?: {
+    _id?: string;
+    jobNo?: string;
+    status?: string;
+    currentStatus?: string;
+    serviceJobs?: Array<{
+      sn: number;
+      jobName: string;
+      specification?: string;
+      componentsUsed?: Array<{ name: string; qty: number | null }>;
+      doneBy?: string;
+      date?: string;
+    }>;
+  };
+  assignedTo?: Array<{ _id: string; name: string; email: string }>;
+  salesAssignee?: { _id: string; name: string; email: string };
+};
+
+export type InverterHistoryResponse = {
+  serialNo: string;
+  count: number;
+  tickets: InverterHistoryTicket[];
+};
+
+export async function apiGetInverterHistory(serialNo: string): Promise<InverterHistoryResponse> {
+  const trimmed = String(serialNo || "").trim();
+  if (!trimmed || trimmed.toUpperCase() === "NA") {
+    return { serialNo: trimmed, count: 0, tickets: [] };
+  }
+  const env = await apiFetch<InverterHistoryResponse>(
+    `/api/tickets/inverter/${encodeURIComponent(trimmed)}/history`,
+  );
+  if (!env.success) {
+    throw new Error(env.message || "Failed to load inverter history");
+  }
+  return env.data;
+}
+
 export async function apiTicketOnsiteAssign(ticketId: string, engineerId?: string | null): Promise<Ticket> {
   const payload: { engineerId?: string } = {};
   const id = String(engineerId || "").trim();

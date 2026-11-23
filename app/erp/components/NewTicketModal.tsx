@@ -19,6 +19,7 @@ import {
 import { DELIVERY_METHODS } from "../constants";
 import inverterCatalog from "../data/inverter_catalog.json";
 import DatePicker from "./DatePicker";
+import InverterHistoryModal from "./InverterHistoryModal";
 import { LuPlus, LuSearch, LuTrash2 } from "react-icons/lu";
 
 const INVERTER_BRANDS = [
@@ -383,6 +384,7 @@ export default function NewTicketModal({
   userRole?: string;
 }) {
   const [mode, setMode] = useState<"single" | "bulk">("single");
+  const [historyCheckSerial, setHistoryCheckSerial] = useState("");
   const [form, setForm] = useState({
     customerName: "",
     customerCompany: "",
@@ -2315,10 +2317,24 @@ export default function NewTicketModal({
 		                </div>
                 {!isCustomer ? (
                   <div className="form-group">
-                    <label className="form-label">Serial Number</label>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <label className="form-label">Serial Number</label>
+                      {form.serialNumber.trim() && form.serialNumber.trim().toUpperCase() !== "NA" ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          style={{ padding: "0 6px", fontSize: 11, color: "var(--accent)", height: "auto" }}
+                          onClick={() => setHistoryCheckSerial(form.serialNumber.trim())}
+                          title="Check previous tickets for this serial number"
+                        >
+                          🕒 Check History
+                        </button>
+                      ) : null}
+                    </div>
                     <input
                       className="form-input"
                       placeholder="Equipment serial"
+                      value={form.serialNumber}
                       onChange={(e) => set("serialNumber", e.target.value)}
                     />
                   </div>
@@ -3403,7 +3419,21 @@ export default function NewTicketModal({
 	                    </div>
                     {!isCustomer ? (
                       <div className="form-group">
-                        <label className="form-label">Serial Number</label>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <label className="form-label">Serial Number</label>
+                          {bulkItems[bulkActiveIndex]?.serialNumber?.trim() &&
+                          bulkItems[bulkActiveIndex]!.serialNumber.trim().toUpperCase() !== "NA" ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              style={{ padding: "0 6px", fontSize: 11, color: "var(--accent)", height: "auto" }}
+                              onClick={() => setHistoryCheckSerial(bulkItems[bulkActiveIndex]!.serialNumber.trim())}
+                              title="Check previous tickets for this serial number"
+                            >
+                              🕒 Check History
+                            </button>
+                          ) : null}
+                        </div>
                         <input
                           className="form-input"
                           placeholder="Equipment serial"
@@ -3484,6 +3514,12 @@ export default function NewTicketModal({
           </button>
         </div>
       </div>
+
+      <InverterHistoryModal
+        open={Boolean(historyCheckSerial)}
+        serialNo={historyCheckSerial}
+        onClose={() => setHistoryCheckSerial("")}
+      />
     </div>
   );
 }
